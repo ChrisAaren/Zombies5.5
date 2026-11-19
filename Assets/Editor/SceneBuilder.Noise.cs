@@ -99,13 +99,32 @@ namespace Zombies55.EditorTools
         static void Poster(PixCanvas cv, int ox, int oy, string t1, string t2, string l1, string l2, string l3, Color paper, Color band, Color ink, int imageStyle)
         {
             int x0 = ox + 30, x1 = ox + 226, y0 = oy + 6, y1 = oy + 250;
-            // paper with a torn, slightly wavy edge
+            // An older flyer pasted underneath: it peeks out at the left and bottom edges and shows through the tears.
+            {
+                var older = Color.Lerp(paper, new Color(0.72f, 0.66f, 0.55f), 0.55f);
+                int ux0 = x0 - 16, ux1 = x1 - 34, uy0 = y0, uy1 = y1 - 70;
+                for (int y = uy0; y < uy1; y++)
+                    for (int x = ux0; x < ux1; x++)
+                    {
+                        float e = Mathf.Min(Mathf.Min(x - ux0, ux1 - x), Mathf.Min(y - uy0, uy1 - y));
+                        float w = (Mathf.PerlinNoise(x * 0.09f + oy, y * 0.09f + ox) - 0.5f) * 9f;
+                        if (e + w < 1f) continue;
+                        float stripe = (y - uy0) % 46 < 9 ? 0.78f : 1f;
+                        cv.Over(x, y, new Color(older.r * stripe, older.g * stripe, older.b * stripe, 1f));
+                    }
+            }
+            // paper with a torn, ragged edge, bitten corners and a peeled-off corner chunk
+            int peel = 34 + (ox / 256 + oy / 128) % 3 * 12;
+            bool peelLeft = ((ox / 256) & 1) == 0;
             for (int y = y0; y < y1; y++)
                 for (int x = x0; x < x1; x++)
                 {
                     float edge = Mathf.Min(Mathf.Min(x - x0, x1 - x), Mathf.Min(y - y0, y1 - y));
-                    float wob = (Mathf.PerlinNoise(x * 0.11f + ox, y * 0.11f + oy) - 0.5f) * 5f;
-                    if (edge + wob < 1f) continue;
+                    float wob = (Mathf.PerlinNoise(x * 0.11f + ox, y * 0.11f + oy) - 0.5f) * 8f + (Mathf.PerlinNoise(x * 0.4f + oy, y * 0.4f) - 0.5f) * 3.5f;
+                    if (edge + wob < 1.5f) continue;
+                    if (edge < 30f && Mathf.PerlinNoise(x * 0.06f + 3f + oy, y * 0.06f + ox) > 0.76f) continue;
+                    int cx = peelLeft ? x - x0 : x1 - x, cy = y1 - y;
+                    if (cx + cy < peel + (int)(wob * 2f)) continue;
                     float fade = 0.9f + 0.1f * Mathf.PerlinNoise(x * 0.05f, y * 0.05f + ox);
                     cv.Over(x, y, new Color(paper.r * fade, paper.g * fade, paper.b * fade, 1f));
                 }
@@ -151,6 +170,40 @@ namespace Zombies55.EditorTools
             cv.Text(x0 + 12, y1 - 190, l1, 2, ink);
             cv.Text(x0 + 12, y1 - 204, l2, 2, ink);
             cv.Text(x0 + 12, y1 - 218, l3, 2, Color.Lerp(ink, paper, 0.35f));
+            Weather(cv, ox, oy, x0 - 16, y0, x1, y1);
+        }
+
+        // Sun fade, water streaks, creases, scuffs and pin-holes: a flyer that has hung on a wall for a season.
+        static void Weather(PixCanvas cv, int ox, int oy, int x0, int y0, int x1, int y1)
+        {
+            int foldY = y0 + 100 + (ox / 256) * 9 % 40, foldX = (x0 + x1) / 2 + (oy / 256) * 7 % 30 - 15;
+            for (int y = y0; y < y1; y++)
+                for (int x = Mathf.Max(x0, ox); x < Mathf.Min(x1, ox + 256); x++)
+                {
+                    var c = cv.P[y * cv.W + x];
+                    if (c.a <= 0.01f) continue;
+                    float up = Mathf.InverseLerp(y0, y1, y);
+                    float n = Mathf.PerlinNoise(x * 0.03f + ox * 0.1f, y * 0.03f + oy * 0.1f);
+                    float fadeAmt = Mathf.Clamp01(0.28f + 0.42f * n + 0.25f * up);
+                    float lum = c.r * 0.3f + c.g * 0.55f + c.b * 0.15f;
+                    var bleached = Color.Lerp(new Color(lum, lum, lum), new Color(0.78f, 0.74f, 0.66f), 0.45f);
+                    var rgb = Color.Lerp(new Color(c.r, c.g, c.b), bleached, fadeAmt);
+                    // vertical rain / damp streaks
+                    float streak = Mathf.PerlinNoise(x * 0.22f + oy, y * 0.012f + ox);
+                    if (streak > 0.64f) rgb *= Mathf.Lerp(1f, 0.72f, Mathf.Clamp01((streak - 0.64f) * 5f));
+                    if (streak > 0.64f) rgb = Color.Lerp(rgb, rgb * new Color(0.95f, 0.88f, 0.75f), 0.5f);
+                    // folds
+                    if (Mathf.Abs(y - foldY) <= 1) rgb *= y == foldY ? 0.72f : 1.12f;
+                    if (Mathf.Abs(x - foldX) <= 1) rgb *= x == foldX ? 0.8f : 1.08f;
+                    // scuffs: paper fibre showing through ink
+                    float scuff = Mathf.PerlinNoise(x * 0.35f + 9f, y * 0.35f + oy);
+                    if (scuff > 0.74f) rgb = Color.Lerp(rgb, new Color(0.8f, 0.77f, 0.7f), 0.55f);
+                    float a = c.a;
+                    // pin-holes and rips
+                    float hole = Mathf.PerlinNoise(x * 0.16f + oy * 0.3f, y * 0.16f + ox * 0.3f);
+                    if (hole > 0.83f) a *= 0f;
+                    cv.P[y * cv.W + x] = new Color(Mathf.Clamp01(rgb.r), Mathf.Clamp01(rgb.g), Mathf.Clamp01(rgb.b), a);
+                }
         }
 
         static void WriteTextureAsset(string name, PixCanvas cv, bool clamp)
@@ -441,7 +494,7 @@ namespace Zombies55.EditorTools
                             var a = Chunk(wall, hit.point);
                             float ph = Nf(0.42f, 0.8f);
                             WallDecal(a, hit.point, nrm, ph * 0.98f, ph, _noise.Next(8), Nf(-4f, 4f));
-                            if (_noise.NextDouble() < 0.4)   // a second flyer pasted overlapping
+                            if (_noise.NextDouble() < 0.7)   // a second flyer pasted overlapping
                             {
                                 var right = Vector3.Cross(Vector3.up, nrm);
                                 WallDecal(a, hit.point + right * Nf(-0.35f, 0.35f) + Vector3.up * Nf(-0.15f, 0.2f), nrm, ph * 0.9f, ph * 0.92f, _noise.Next(8), Nf(-6f, 6f));

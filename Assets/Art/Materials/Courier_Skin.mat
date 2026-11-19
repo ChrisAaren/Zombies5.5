@@ -101,12 +101,12 @@ Material:
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
-    - _CavityStrength: 0.85
+    - _CavityStrength: 0.25
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
     - _Cull: 2
     - _Cutoff: 0.5
-    - _Desaturate: 0
+    - _Desaturate: 0.1
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
     - _DstBlend: 0
@@ -115,9 +115,9 @@ Material:
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
-    - _HairlineStrength: 0.8
+    - _HairlineStrength: 0.4
     - _Metallic: 0
-    - _MicroStrength: 0.65
+    - _MicroStrength: 0.25
     - _MottleAmount: 0
     - _OcclusionStrength: 1
     - _Parallax: 0.005
@@ -125,29 +125,29 @@ Material:
     - _PoreTiling: 36
     - _QueueOffset: 0
     - _ReceiveShadows: 1
-    - _SSSStrength: 0.7
+    - _SSSStrength: 0.25
     - _ScreenSpaceReflections: 1
     - _ScreenSpaceReflectionsContributeTransparent: 1
-    - _ShineBoost: 0.42
+    - _ShineBoost: 0.3
     - _Smoothness: 0.26
     - _SmoothnessTextureChannel: 0
-    - _SocketAmount: 0.15
+    - _SocketAmount: 0.1
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
-    - _StubbleStrength: 0.85
+    - _StubbleStrength: 0.06
     - _Surface: 0
     - _WorkflowMode: 1
     - _Wrap: 0.5
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _BaseColor: {r: 0.95, g: 0.87, b: 0.82, a: 1}
+    - _Color: {r: 0.95, g: 0.87, b: 0.82, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _MottleColor: {r: 0.66, g: 0.52, b: 0.62, a: 1}
-    - _SSSColor: {r: 0.62, g: 0.16, b: 0.08, a: 1}
-    - _SocketColor: {r: 0.55, g: 0.4, b: 0.38, a: 1}
+    - _SSSColor: {r: 0.8, g: 0.45, b: 0.35, a: 1}
+    - _SocketColor: {r: 0.55, g: 0.45, b: 0.45, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _StubbleColor: {r: 0.6, g: 0.55, b: 0.55, a: 1}
   m_BuildTextureStacks: []

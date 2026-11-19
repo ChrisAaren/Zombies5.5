@@ -445,7 +445,7 @@ namespace Zombies55.EditorTools
                     probe.boxProjection = true;
                     probe.hdr = true;
                     probe.importance = 1;
-                    probe.intensity = 1f;
+                    probe.intensity = 1.3f;
                     probe.size = new Vector3(38f, 32f, 38f);
                     probe.center = new Vector3(0f, 8f, 0f);
                     probe.nearClipPlane = 0.3f;

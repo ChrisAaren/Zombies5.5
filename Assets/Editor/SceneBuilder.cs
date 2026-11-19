@@ -253,11 +253,11 @@ namespace Zombies55.EditorTools
             EditorUtility.SetDirty(mSky);
 
             RenderSettings.skybox = mSky;
-            // Warm-gray fill (never blue-green): a tri-light ambient instead of the sky gradient. Reflections still come from the sky and the baked probes.
+            // Bright, slightly blue sky fill with neutral bounce (never green): a tri-light ambient instead of the sky gradient. Reflections still come from the sky and the baked probes.
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.66f, 0.72f, 0.82f);
-            RenderSettings.ambientEquatorColor = new Color(0.66f, 0.63f, 0.6f);
-            RenderSettings.ambientGroundColor = new Color(0.48f, 0.43f, 0.38f);
+            RenderSettings.ambientSkyColor = new Color(0.74f, 0.83f, 0.96f);
+            RenderSettings.ambientEquatorColor = new Color(0.74f, 0.74f, 0.74f);
+            RenderSettings.ambientGroundColor = new Color(0.56f, 0.52f, 0.48f);
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
             RenderSettings.reflectionIntensity = 1f;
@@ -292,7 +292,7 @@ namespace Zombies55.EditorTools
             wb.temperature.Override(4f);                              // warm, slightly sepia
             wb.tint.Override(0f);
             var split = GetOrAdd<SplitToning>(profile);                // warm-gray shadows (no blue-green), warm highlights
-            split.shadows.Override(new Color(0.58f, 0.52f, 0.46f));
+            split.shadows.Override(new Color(0.55f, 0.55f, 0.57f));
             split.highlights.Override(new Color(0.98f, 0.9f, 0.76f));
             split.balance.Override(-10f);
             var grain = GetOrAdd<FilmGrain>(profile);
@@ -357,9 +357,9 @@ namespace Zombies55.EditorTools
                 if (settings != null)
                 {
                     settings.FindPropertyRelative("Source").intValue = 1; // DepthNormals
-                    settings.FindPropertyRelative("Intensity").floatValue = 1.0f;
+                    settings.FindPropertyRelative("Intensity").floatValue = 0.7f;
                     settings.FindPropertyRelative("Radius").floatValue = 0.6f;
-                    settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.4f;
+                    settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.22f;
                 }
                 sso.ApplyModifiedPropertiesWithoutUndo();
                 ssao.SetActive(true);

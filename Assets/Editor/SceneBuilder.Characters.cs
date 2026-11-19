@@ -70,13 +70,16 @@ namespace Zombies55.EditorTools
         // Worn canvas gear: the flat terracotta read as a glowing orange block in full sun.
         static Material CourierGearMat() { return Surf("S_CourierGear", new Color(0.46f, 0.27f, 0.2f), null, Vector2.one, 0.1f); }
 
+        // The cap: faded navy cotton, so it reads as cloth instead of a painted helmet.
+        static Material CourierCapMat() { return Surf("S_CourierCap", new Color(0.1f, 0.14f, 0.23f), null, Vector2.one, 0.08f); }
+
         static Shader _skinShader;
 
         // Skin on the Zombies55/Skin shader: wrapped diffuse with a warm terminator, tiled pore normal, face-zone shine and
         // cavity map, eye-socket tint. Built on MpfbMat so the albedo, tint and smoothness plumbing stay the same.
         static Material MpfbSkin(string name, string albedo, Color tint, float smooth, float shine, float socket, float desat,
             Color socketColor, Color sss, float sssStrength, float wrap,
-            float pore = 0.8f, float stubble = 0f, float micro = 0f, float mottle = 0f)
+            float pore = 0.8f, float stubble = 0f, float micro = 0f, float mottle = 0f, float cavity = 0.85f)
         {
             if (_mats.TryGetValue(name, out var cached)) return cached;
             var mat = MpfbMat(name, albedo, null, null, tint, smooth);
@@ -93,7 +96,7 @@ namespace Zombies55.EditorTools
             mat.SetFloat("_MottleAmount", 0f);
             mat.SetFloat("_MicroStrength", micro);
             mat.SetFloat("_StubbleStrength", stubble);
-            mat.SetFloat("_HairlineStrength", stubble > 0f ? 0.8f : 0.3f);
+            mat.SetFloat("_HairlineStrength", stubble > 0f ? 0.4f : 0.3f);
             mat.SetFloat("_MottleAmount", mottle);
             mat.SetColor("_StubbleColor", new Color(0.6f, 0.55f, 0.55f));
             mat.SetColor("_MottleColor", new Color(0.66f, 0.52f, 0.62f));
@@ -102,7 +105,7 @@ namespace Zombies55.EditorTools
             mat.SetColor("_SSSColor", sss);
             mat.SetFloat("_SSSStrength", sssStrength);
             mat.SetFloat("_ShineBoost", shine);
-            mat.SetFloat("_CavityStrength", 0.85f);
+            mat.SetFloat("_CavityStrength", cavity);
             mat.SetColor("_SocketColor", socketColor);
             mat.SetFloat("_SocketAmount", socket);
             mat.SetFloat("_Desaturate", desat);
@@ -117,8 +120,8 @@ namespace Zombies55.EditorTools
         {
             return new Dictionary<string, Material>
             {
-                { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", Color.white, 0.26f, 0.42f, 0.15f, 0f,
-                    new Color(0.55f, 0.4f, 0.38f), new Color(0.62f, 0.16f, 0.08f), 0.7f, 0.5f, 1.25f, 0.85f, 0.65f, 0f) },
+                { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", new Color(0.95f, 0.87f, 0.82f), 0.26f, 0.3f, 0.1f, 0.1f,
+                    new Color(0.55f, 0.45f, 0.45f), new Color(0.8f, 0.45f, 0.35f), 0.25f, 0.5f, 1.25f, 0.06f, 0.25f, 0f, 0.25f) },
                 { "Eyes", MpfbMat("Courier_Eyes", "Courier_Eyes_Albedo", null, null, Color.white, 0.75f) },
                 { "Brows", MpfbMat("Courier_Brows", "Courier_Brows_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
                 { "Lashes", MpfbMat("Courier_Lashes", "Courier_Lashes_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
@@ -285,7 +288,7 @@ namespace Zombies55.EditorTools
         {
             var go = BuildMpfb("MPFB_Courier", parent, PlayerControllerPath, false, CourierMaterials());
             var head = HBone(go, HumanBodyBones.Head);
-            var gearLook = new Look { Override = new Dictionary<string, Material> { { "Cap", CourierGearMat() }, { "Bag", CourierGearMat() } } };
+            var gearLook = new Look { Override = new Dictionary<string, Material> { { "Cap", CourierCapMat() }, { "Bag", CourierGearMat() } } };
             FitCap(go, head, gearLook);
             FitBackpack(go, gearLook);
             return go;
@@ -316,104 +319,24 @@ namespace Zombies55.EditorTools
             return b;
         }
 
-        // Char2_Cap mesh (model space, pivot at the old head bone): crown 0.264 wide, top at y 0.219, crown centred on x = z = 0.
-        const float CapModelWidth = 0.264f;
-        const float CapModelTop = 0.219f;
-        // Tunables, fitted against the captures: crown width over the hair width, and how far the crown top sits above the hair.
-        const float CapWidthOverHair = 1.3f;
-        const float CapRaise = 0.0f;
-        const float CapHeightScale = 1.0f;
-
+        // Char2_Cap_V2 (Tools/Blender/make_courier_cap.py): a smooth crown with a rolled band and a curved bill, authored in the
+        // MPFB_Courier rest pose against its own skin and hair, so it is placed at the character root and rides the Head bone.
+        // The hair under it is covered by the crown; the hair at the sides and back stays visible below the band.
         static void FitCap(GameObject go, Transform head, Look look)
         {
-            var hair = HairBounds(go);
-            var scale = new Vector3(1f, CapHeightScale, 1f) * (hair.size.x * CapWidthOverHair / CapModelWidth);
-            scale.y = scale.x * CapHeightScale;
-            var skull = SkinBoundsAbove(go, head.position.y);
-            var origin = new Vector3(skull.center.x, skull.max.y - CapModelTop * scale.y, (skull.center.z + hair.center.z) * 0.5f + CapForward);
-            // Raise the cap until no skull or hair vertex pokes through the dome.
-            var points = new List<Vector3>();
-            CollectWorldVertices(go, "Skin", head.position.y, points);
-            origin.y += CapClearance(Model("Char2_Cap").GetComponentInChildren<MeshFilter>().sharedMesh, scale, origin, points) + CapRaise;
-            PlaceAccessory("Char2_Cap", head, go.transform, look, scale, origin);
-            float rim = origin.y + CapModelRim * scale.y;
-            CutHairAbove(go, rim + HairCutAboveRim);
-            BuildSkullCap(go, head, rim, look.Override["Cap"]);
+            var cap = Spawn("Char2_Cap_V2", head, Vector3.zero, 0f, look, "Char2_Cap_V2");
+            foreach (var c in cap.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+            cap.transform.SetPositionAndRotation(go.transform.position, go.transform.rotation);
+            CutHairUnderCap(go);
         }
 
-        const string SkullCapPath = ModelDir + "/Characters/Generated/Courier_SkullCap.asset";
-        const float SkullCapThickness = 0.012f;
-
-        // The crown of the cap is a shell cut from the head itself: every skin triangle above the rim, pushed out along its
-        // normal, rigid on the Head bone. It always fits the skull; the cap model supplies the bill (and a second, loose crown
-        // under this one).
-        static void BuildSkullCap(GameObject go, Transform head, float rimY, Material material)
-        {
-            foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (!HasPart(smr, "Skin")) continue;
-                var baked = new Mesh();
-                smr.BakeMesh(baked, true);
-                var m = smr.transform.localToWorldMatrix;
-                var verts = baked.vertices;
-                var normals = baked.normals;
-                var world = new Vector3[verts.Length];
-                for (int i = 0; i < verts.Length; i++) world[i] = m.MultiplyPoint3x4(verts[i]);
-                var map = new Dictionary<int, int>();
-                var pos = new List<Vector3>();
-                var nor = new List<Vector3>();
-                var tris = new List<int>();
-                var src = baked.triangles;
-                for (int t = 0; t < src.Length; t += 3)
-                {
-                    int a = src[t], b = src[t + 1], c = src[t + 2];
-                    if (world[a].y < rimY || world[b].y < rimY || world[c].y < rimY) continue;
-                    foreach (int idx in new[] { a, b, c })
-                    {
-                        if (!map.TryGetValue(idx, out int n))
-                        {
-                            n = pos.Count;
-                            map[idx] = n;
-                            var wn = m.MultiplyVector(normals[idx]).normalized;
-                            pos.Add(head.InverseTransformPoint(world[idx] + wn * SkullCapThickness));
-                            nor.Add(head.InverseTransformDirection(wn));
-                        }
-                        tris.Add(n);
-                    }
-                }
-                Object.DestroyImmediate(baked);
-                var mesh = new Mesh { name = "Courier_SkullCap" };
-                mesh.SetVertices(pos);
-                mesh.SetNormals(nor);
-                mesh.SetTriangles(tris, 0);
-                mesh.RecalculateBounds();
-                EnsureFolder(ModelDir + "/Characters/Generated");
-                var existing = AssetDatabase.LoadAssetAtPath<Mesh>(SkullCapPath);
-                if (existing != null)
-                {
-                    EditorUtility.CopySerialized(mesh, existing);
-                    Object.DestroyImmediate(mesh);
-                    mesh = existing;
-                }
-                else AssetDatabase.CreateAsset(mesh, SkullCapPath);
-                var cap = new GameObject("Courier_SkullCap");
-                cap.transform.SetParent(head, false);
-                cap.AddComponent<MeshFilter>().sharedMesh = mesh;
-                var mr = cap.AddComponent<MeshRenderer>();
-                mr.sharedMaterial = material;
-                return;
-            }
-        }
-
-        // Char2_Cap: the dome's lowest edge (model space).
-        const float CapModelRim = 0.119f;
-        const float HairCutAboveRim = 0.012f;
-
+        // Keep in step with EDGE_FRONT / EDGE_BACK and CENTER in make_courier_cap.py (character-local metres, +Z forward).
+        const float CapEdgeFront = 1.716f, CapEdgeBack = 1.688f, CapCenterForward = 0.062f;
         const string HairFitPath = ModelDir + "/Characters/Generated/Courier_Hair_Fit.asset";
 
-        // The hair is a thick shell that would poke through the cap's crown. The triangles above the cap's rim are cut (the
-        // cap covers that part of the head anyway); saved as a mesh copy, weights and bind poses unchanged.
-        static void CutHairAbove(GameObject go, float worldY)
+        // Hides the hair the crown covers: every hair triangle whose three vertices lie above the cap's band edge. The hair
+        // below the band (fringe, sides, nape) stays. Saved as a mesh copy, weights and bind poses unchanged.
+        static void CutHairUnderCap(GameObject go)
         {
             foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
@@ -421,14 +344,21 @@ namespace Zombies55.EditorTools
                 var mesh = Object.Instantiate(smr.sharedMesh);
                 mesh.name = "Courier_Hair_Fit";
                 var v = mesh.vertices;
-                float cut = smr.transform.InverseTransformPoint(new Vector3(0f, worldY, 0f)).y;
+                var covered = new bool[v.Length];
+                for (int i = 0; i < v.Length; i++)
+                {
+                    var p = go.transform.InverseTransformPoint(smr.transform.TransformPoint(v[i]));
+                    float theta = Mathf.Atan2(p.x, p.z - CapCenterForward);
+                    float edge = Mathf.Lerp(CapEdgeFront, CapEdgeBack, (1f - Mathf.Cos(theta)) * 0.5f);
+                    covered[i] = p.y > edge;
+                }
                 for (int sub = 0; sub < mesh.subMeshCount; sub++)
                 {
                     var tris = mesh.GetTriangles(sub);
                     var kept = new List<int>(tris.Length);
                     for (int i = 0; i < tris.Length; i += 3)
                     {
-                        if (v[tris[i]].y > cut && v[tris[i + 1]].y > cut && v[tris[i + 2]].y > cut) continue;
+                        if (covered[tris[i]] && covered[tris[i + 1]] && covered[tris[i + 2]]) continue;
                         kept.Add(tris[i]); kept.Add(tris[i + 1]); kept.Add(tris[i + 2]);
                     }
                     mesh.SetTriangles(kept, sub);
@@ -461,47 +391,6 @@ namespace Zombies55.EditorTools
                 }
                 Object.DestroyImmediate(baked);
             }
-        }
-
-        // How far the cap must rise so every point under its dome sits below the dome surface. The dome surface is a height
-        // field of the cap's vertices (cells of 2 cm, looking one cell around for the sparse mesh).
-        static float CapClearance(Mesh cap, Vector3 scale, Vector3 origin, List<Vector3> points)
-        {
-            const float cell = 0.02f;
-            var top = new Dictionary<Vector2Int, float>();
-            var bottom = new Dictionary<Vector2Int, float>();
-            foreach (var v in cap.vertices)
-            {
-                var k = new Vector2Int(Mathf.RoundToInt(v.x / cell), Mathf.RoundToInt(v.z / cell));
-                top[k] = top.TryGetValue(k, out var t) ? Mathf.Max(t, v.y) : v.y;
-                bottom[k] = bottom.TryGetValue(k, out var b) ? Mathf.Min(b, v.y) : v.y;
-            }
-            float shift = 0f;
-            foreach (var w in points)
-            {
-                var k = new Vector2Int(Mathf.RoundToInt((w.x - origin.x) / scale.x / cell), Mathf.RoundToInt((w.z - origin.z) / scale.z / cell));
-                float capTop = float.NegativeInfinity, capBottom = float.PositiveInfinity;
-                for (int dx = -1; dx <= 1; dx++)
-                    for (int dz = -1; dz <= 1; dz++)
-                    {
-                        var n = new Vector2Int(k.x + dx, k.y + dz);
-                        if (top.TryGetValue(n, out var tv)) capTop = Mathf.Max(capTop, tv);
-                        if (bottom.TryGetValue(n, out var bv)) capBottom = Mathf.Min(capBottom, bv);
-                    }
-                if (float.IsNegativeInfinity(capTop)) continue;
-                float topW = origin.y + capTop * scale.y, bottomW = origin.y + capBottom * scale.y;
-                if (w.y > bottomW) shift = Mathf.Max(shift, w.y - topW);
-            }
-            return shift;
-        }
-
-        const float CapForward = 0.0f;
-
-        static Bounds HairBounds(GameObject character)
-        {
-            foreach (var smr in character.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                if (HasPart(smr, "Hair")) return smr.bounds;
-            throw new InvalidOperationException("No hair renderer on " + character.name);
         }
 
         const float PackWidth = 0.28f;

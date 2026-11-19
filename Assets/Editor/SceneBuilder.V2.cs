@@ -64,6 +64,16 @@ namespace Zombies55.EditorTools
             return SurfW("S_Wall_" + t + "_" + Hx(l.Wall), l.Wall, t, new Vector2(0.5f, 0.5f), 0.3f, 1.0f);
         }
 
+        // The plain shell of a skyline building: the same brick (or plaster) as the face, tiled per metre across the box, so a
+        // distant side wall reads as masonry instead of a flat colour.
+        static Material RingShellMat(Look l, float w, float d, float h)
+        {
+            bool brick = l.WallTex == "BrickRed" || l.WallTex == "BrickBrown" || l.WallTex == "BrickTan";
+            var tiling = brick ? new Vector2((w + d) * 0.5f * 2f / 1.5f, h * 2f / 1.6f) : new Vector2((w + d) * 0.25f, h * 0.25f);
+            string key = "S_RingShell_" + l.WallTex + "_" + Hx(l.Wall) + "_" + Mathf.RoundToInt(w) + "x" + Mathf.RoundToInt(d) + "x" + Mathf.RoundToInt(h);
+            return SurfW(key, l.Wall * 0.92f, l.WallTex, tiling, 0.2f, brick ? 1.35f : 1.0f);
+        }
+
         // Window glass: reflective, a touch metallic, see-through enough to show the interior card behind it.
         static Material WindowGlassMat()
         {
@@ -71,13 +81,13 @@ namespace Zombies55.EditorTools
             var shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/WindowGlass.shader");
             if (shader == null) throw new InvalidOperationException("Shader 'Zombies55/WindowGlass' not found.");
             var m = LoadOrCreateMat("S_WindowGlass", shader);
-            m.SetColor("_BaseColor", new Color(0.04f, 0.07f, 0.09f, 1f));
+            m.SetColor("_BaseColor", new Color(0.07f, 0.1f, 0.13f, 1f));
             m.SetFloat("_Smoothness", 0.98f);
             m.SetFloat("_FresnelPower", 3.2f);
-            m.SetFloat("_ReflMin", 0.08f);
+            m.SetFloat("_ReflMin", 0.13f);
             m.SetFloat("_ReflMax", 0.92f);
             m.SetFloat("_ReflIntensity", 1.3f);
-            m.SetFloat("_InteriorDim", 0.22f);
+            m.SetFloat("_InteriorDim", 0.4f);
             m.renderQueue = (int)RenderQueue.Transparent;
             EditorUtility.SetDirty(m);
             _mats["S_WindowGlass"] = m;
@@ -471,7 +481,7 @@ namespace Zombies55.EditorTools
             // Skyline buildings only carry the city-facing face: a plain shell closes the other three sides and the roof underside.
             if (ring)
                 Box("Shell", b, new Vector3(0f, baseY + (height + 0.3f) * 0.5f, 0f), new Vector3(w - 0.7f, height + 0.3f, d - 0.7f),
-                    Surf("S_RingShell_" + Hx(look.Wall), new Color(look.Wall.r * 0.5f, look.Wall.g * 0.26f, look.Wall.b * 0.19f, 1f), null, Vector2.one, 0.15f), false);
+                    RingShellMat(look, w - 0.7f, d - 0.7f, height + 0.3f), false);
 
             // Roof slab and rooftop furniture.
             Box("Roof", b, new Vector3(0f, baseY + height + 0.15f, 0f), new Vector3(w - 0.5f, 0.3f, d - 0.5f), RoofSlabMat(w - 0.5f, d - 0.5f), false);

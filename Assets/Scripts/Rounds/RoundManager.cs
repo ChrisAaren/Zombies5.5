@@ -198,7 +198,7 @@ namespace Zombies55
                 }
                 bool occluded = Physics.Linecast(eye, p + Vector3.up * 1.4f, occluders, QueryTriggerInteraction.Ignore);
                 bool ready = _pointReadyAt == null || i >= _pointReadyAt.Length || Time.time >= _pointReadyAt[i];
-                int score = (inView ? 0 : 4) + (occluded ? 2 : 0) + (ready ? 1 : 0);
+                int score = (inView ? 0 : 4) + (ready ? 2 : 0) + (occluded ? 1 : 0);   // off-screen first, then a point not used in the last 1.5 s, then hidden ones
                 _cand.Add(i);
                 _candScore.Add(score);
             }

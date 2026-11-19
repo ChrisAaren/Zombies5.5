@@ -55,8 +55,8 @@ namespace Zombies55
 
         void Start()
         {
-            _barriers = FindObjectsByType<ZoneBarrier>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            _gates = FindObjectsByType<ZoneGate>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            _barriers = FindObjectsByType<ZoneBarrier>(FindObjectsInactive.Include);
+            _gates = FindObjectsByType<ZoneGate>(FindObjectsInactive.Include);
             Refresh(false);
         }
 

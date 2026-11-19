@@ -289,7 +289,7 @@ namespace Zombies55.EditorTools
             var districtGroup = districtBanner.gameObject.AddComponent<CanvasGroup>();
             districtGroup.interactable = false;
             districtGroup.blocksRaycasts = false;
-            var districtBannerText = CreateText(districtBanner, "DistrictBannerText", "DISTRICT UNLOCKED", 78, Palette.Accent, 8f, true);
+            var districtBannerText = CreateText(districtBanner, "DistrictBannerText", "DISTRICT UNLOCKED", 38, Palette.Accent, 5f, true);
             Stretch(districtBannerText.rectTransform);
 
             // Round banner last so it draws above the HUD.

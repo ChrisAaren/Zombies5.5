@@ -47,11 +47,19 @@ namespace Zombies55.EditorTools
             var template = BuildEnemyTemplate(enemiesRoot);
             SetRef(rounds, "enemyTemplate", template);
 
+            // The district barriers carry carving obstacles. Even with ignoreNavMeshObstacle set, a bake or a path
+            // query made while they are enabled cuts a hole along every barrier line, so no cell connects to the
+            // player. Keep them off for the bake and the connectivity check; they carve at runtime on top of the data.
+            var obstacles = Object.FindObjectsByType<NavMeshObstacle>(FindObjectsInactive.Include);
+            var wasEnabled = new bool[obstacles.Length];
+            for (int i = 0; i < obstacles.Length; i++) { wasEnabled[i] = obstacles[i].enabled; obstacles[i].enabled = false; }
+
             // NavMesh over everything that has a physics collider on the walkable layers.
             BuildNavMesh();
 
             // Spawn points, kept only when they sit on the baked NavMesh and connect to the player.
             var points = ValidSpawnPoints();
+            for (int i = 0; i < obstacles.Length; i++) obstacles[i].enabled = wasEnabled[i];
             var so = new SerializedObject(rounds);
             var prop = so.FindProperty("spawnPoints");
             prop.arraySize = points.Count;

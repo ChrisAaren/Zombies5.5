@@ -1,0 +1,16 @@
+MPFB_Courier.fbx and MPFB_Hollow.fbx
+Generated with MPFB 2.0.18 (MakeHuman Plugin For Blender) in Blender 5.2.1, script Tools/Blender/make_mpfb_characters.py.
+The faces are original shape-target mixes; no real or fictional likeness.
+
+MakeHuman system assets used (all released CC0 by the MakeHuman community / Data Collection AB, Joel Palmius, Jonas Hauquier):
+  Base mesh + macro and face targets: MPFB data/targets (CC0), mixamo_unity rig and weights (MPFB)
+  Skins:        young_caucasian_male (Courier), middleage_caucasian_male (Hollow)
+  Eyes:         high-poly (Courier), low-poly (Hollow); eye materials brownlight, grey
+  Eyebrows:     eyebrow004 (Courier), eyebrow007 (Hollow)
+  Eyelashes:    eyelashes02 (Courier)
+  Hair:         short02 (Courier), short04 (Hollow)
+  Clothes:      male_casualsuit05 (Courier), male_casualsuit03 (Hollow), shoes06 (Courier)
+  Teeth/tongue: teeth_base, tongue01 (Courier)
+  Proxy mesh:   male1591 (Hollow body)
+License: CC0 1.0 Universal, https://creativecommons.org/publicdomain/zero/1.0/
+Textures in Assets/Art/Textures/Characters/MPFB are CC0 source maps recolored/graded by the script.

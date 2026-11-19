@@ -139,7 +139,7 @@ namespace Zombies55
 
             if (_ring.gameObject.activeSelf && _ringSprite != null)
             {
-                float radius = gap + 6f * size;
+                float radius = Mathf.Max(1f, Mathf.Max(3f, GameSettings.CrosshairGap * size + length * 0.5f) + _spread);
                 float s = radius / _ringBaseRadius;
                 _ring.rectTransform.anchoredPosition = Vector2.zero;
                 _ring.rectTransform.sizeDelta = new Vector2(_ringTex.width, _ringTex.height);
@@ -157,7 +157,7 @@ namespace Zombies55
         void RebuildRing()
         {
             float size = GameSettings.CrosshairSize;
-            float radius = Mathf.Max(3f, GameSettings.CrosshairGap * size + 6f * size);
+            float radius = Mathf.Max(3f, GameSettings.CrosshairGap * size + GameSettings.CrosshairLength * size * 0.5f);
             float thick = Mathf.Max(1f, GameSettings.CrosshairThickness * size);
             int keyD = Mathf.RoundToInt(radius * 2f);
             int keyT = Mathf.RoundToInt(thick * 4f);

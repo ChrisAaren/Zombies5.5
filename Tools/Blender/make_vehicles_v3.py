@@ -524,7 +524,8 @@ def add_lamps(S, s, PT, D):
             fn2 = lamp_fn(s, True, sd, lerp(hx0, hx1, .03), lerp(hx0, hx1, .97),
                           lambda u: hzl(lerp(.03, .97, u)) + .007, lambda u: hzh(lerp(.03, .97, u)) - .007)
             patch(S, PT, fn2, NU, 3, .036, "Glass")
-            for (u, v, rr) in ((.28, .5, .032), (.72, .5, .024)):
+            ls = clamp((hz1 - hz0) / .16, 1.0, 1.6)
+            for (u, v, rr) in ((.28, .5, .032 * ls), (.72, .5, .024 * ls)):
                 o, d = fn(u, v)
                 loc, n = S.ray(o, d)
                 if loc:
@@ -583,8 +584,9 @@ def add_details(S, s, D, PT, plates):
     if loc:
         gh = s.get("grille_h", .10)
         lens(D, loc, n, (gx * 2, gh, .03), "Rubber", .016, inset=.25)                       # opening with depth
-        for k in range(3):
-            lens(D, loc + n * .004 + Vector((0, 0, (k - 1) * gh * .3)), n, (gx * 1.9, .011, .03), "Chrome", .004, inset=.05)
+        nb = s.get("grille_bars", 3)
+        for k in range(nb):
+            lens(D, loc + n * .004 + Vector((0, 0, (k - (nb - 1) / 2) * gh * .9 / nb)), n, (gx * 1.9, .011, .03), "Chrome", .004, inset=.05)
         lens(D, loc + n * -.006, n, (gx * 2 + .035, gh + .03, .016), "Chrome", .008, inset=.0)
     loc, n = S.fb(0, s["intake_z"], 6)
     if loc:
@@ -880,17 +882,18 @@ def extras_van(s, D, S):
     hw = s["hw0"]
     f0, f1 = 1.0, s["fmin"] + .12
     cw = .80
-    D.rbox(V(0, (f0 + f1) / 2, .62), (cw * 2, f0 - f1, .05), "Interior", .01, 1)
+    # dark cargo liner (rubber) up to the roof: the pale cab seats must not show through the rear windows
+    D.rbox(V(0, (f0 + f1) / 2, .62), (cw * 2, f0 - f1, .05), "Rubber", .01, 1)
     for sd in (-1, 1):
-        D.rbox(V(sd * cw, (f0 + f1) / 2, 1.2), (.04, f0 - f1, 1.1), "Interior", .01, 1)
-    D.rbox(V(0, f0, 1.2), (cw * 2, .04, 1.1), "Interior", .01, 1)
+        D.rbox(V(sd * cw, (f0 + f1) / 2, 1.22), (.04, f0 - f1, 1.2), "Rubber", .01, 1)
+    D.rbox(V(0, f0, 1.22), (cw * 2, .04, 1.2), "Rubber", .01, 1)
     loc, n = S.fb(0, 1.0, -6)
     if loc:
         groove(D, [S.lift(S.fb(0, .5 + k * .2, -6), .002) for k in range(9)])
     for sx in (-.43, .43):
         loc, n = S.fb(sx, 1.55, -6)
         if loc:
-            lens(D, loc, n, (.64, .5, .03), "Glass", .03, inset=.3)
+            lens(D, loc, n, (.64, .5, .09), "Rubber", .03, inset=.2)    # blanked-out cargo glass: nothing to see through
             lens(D, loc, n, (.7, .56, .016), "Rubber", .03, inset=.0)
     for sx in (-.07, .07):
         loc, n = S.fb(sx, 1.0, -6)
@@ -965,8 +968,8 @@ SUV = dict(
     ws=(1.12, .34), bl=(-1.7, -2.27), side_win=[(.78, -.12), (-.25, -1.0), (-1.12, -1.55)], tumb=.17,
     cab_extra=[.78, -.12, -.25, -1.0, -1.12, -1.55],
     wheels=(1.39, -1.39), wr=.36, tw=.235, track=.78, rim="alloy6",
-    hl=(.46, .88, .72, .88), tl=(.46, .88, .86, 1.04), plate_zf=.56, plate_zr=.72,
-    grille_z=.68, grille_h=.1, intake_z=.46, bumper_line=.75, bumper_line_r=.6,
+    hl=(.40, .90, .70, .94), tl=(.46, .88, .86, 1.04), plate_zf=.56, plate_zr=.72,
+    grille_z=.76, grille_h=.17, grille_bars=5, intake_z=.46, bumper_line=.75, bumper_line_r=.6,
     seams=[.72, -.18, -1.2], handles=[-.06, -1.0], mirror_f=.72, mirror_z=1.2, seats=(.12, -.8),
     bonnet=(.95, 2.1), hatch=True, hatch_z=.55, exh=(.6,), handle_m="CarPaint", arch_lip=.02, dash_f=.75,
 )
@@ -993,8 +996,8 @@ VAN = dict(
     ws=(1.78, 1.20), bl=None, side_win=[(1.12, .5)], tumb=.05,
     cab_extra=[1.12, .5],
     wheels=(1.5, -1.5), wr=.345, tw=.205, track=.81, rim="steel",
-    hl=(.50, .92, .70, .86), tl=(.80, .96, .70, 1.2), plate_zf=.52, plate_zr=.62,
-    grille_z=.72, grille_h=.12, intake_z=.45, bumper_line=.82, bumper_line_r=.5,
+    hl=(.44, .94, .68, .94), tl=(.80, .96, .70, 1.2), plate_zf=.52, plate_zr=.62,
+    grille_z=.78, grille_h=.17, grille_bars=5, intake_z=.45, bumper_line=.82, bumper_line_r=.5,
     seams=[1.18, .32, -.9], handles=[.45, .12], mirror_f=1.2, mirror_z=1.48, seats=(.8,),
     bonnet=(1.7, 2.3), exh=(.6,), handle_m="Chrome", arch_lip=.025, extras=extras_van, open=(-2.45, 1.75), dash_f=1.48,
     seat_z=.55, belt_chrome=False,

@@ -264,8 +264,8 @@ namespace Zombies55.EditorTools
             RenderSettings.reflectionIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.0028f;                      // warm dusty street haze
-            RenderSettings.fogColor = new Color(0.78f, 0.76f, 0.7f);
+            RenderSettings.fogDensity = 0.0036f;                      // warm dusty street haze
+            RenderSettings.fogColor = new Color(0.80f, 0.76f, 0.68f);
             DynamicGI.UpdateEnvironment();
 
             ConfigureUrpAssets();
@@ -290,7 +290,7 @@ namespace Zombies55.EditorTools
             grade.saturation.Override(-15f);                           // desaturated, grounded
             grade.contrast.Override(16f);
             var wb = GetOrAdd<WhiteBalance>(profile);
-            wb.temperature.Override(4f);                              // warm, slightly sepia
+            wb.temperature.Override(8f);                              // warm, slightly sepia
             wb.tint.Override(0f);
             var split = GetOrAdd<SplitToning>(profile);                // warm-gray shadows (no blue-green), warm highlights
             split.shadows.Override(new Color(0.55f, 0.55f, 0.57f));

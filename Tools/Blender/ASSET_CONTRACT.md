@@ -127,3 +127,58 @@ face (nose, brow, ears; eyes as `Eye` slot geometry).
 Rig placement Unity will use (relative to the character root on the ground, facing +Z):
 hips at y = 0.95; legs at x = +/-0.11 from the hips; shoulders at (x = +/-0.21, y = +0.55) above the
 hips; neck base at y = +0.60 above the hips; backpack at (0, +0.55, -0.13) above the hips.
+
+## Survival mode additions
+New material slots (use exactly): `GunMetal` (dark gunmetal), `GunPolymer` (matte polymer
+furniture), `GunGrip` (textured grip), `Sight` (small emissive sight dot or lens), `Hazard`
+(warning stripe band), `KioskScreen` (emissive screen), `Hood` (enemy hoodie hood).
+
+### Weapons (`Weapons/`)
+Pivot at the **grip, where the right hand closes** (top of the pistol grip, behind the trigger).
+The barrel points **forward (+Z)**. Each FBX also contains an **empty named `Muzzle`** at the
+barrel tip (its +Z = shot direction). Realistic sizes; clean, modern, original designs (no real
+brand or trademarked gun copies); 1.5-4k triangles.
+
+| Name | Length | Notes |
+|---|---|---|
+| `Gun_Pistol` | ~0.20 m | compact semi-auto sidearm |
+| `Gun_SMG` | ~0.50 m | compact SMG, folding stock, long magazine |
+| `Gun_Shotgun` | ~0.95 m | pump shotgun, tube magazine, pump grip |
+| `Gun_Rifle` | ~0.85 m | assault rifle, rail and optic |
+| `Gun_DMR` | ~1.05 m | marksman rifle with a long scope |
+| `Gun_LMG` | ~1.0 m | light machine gun, box magazine, bipod folded |
+
+### Props (`Props/`)
+- `ExplosiveBarrel` 0.6 m diameter x 0.9 m: steel drum with rolled rims (`Metal`), painted body
+  (`Paint`), a `Hazard` band. Pivot bottom center.
+- `WeaponKiosk` ~1.3 w x 2.3 h x 0.6 d: a free-standing street arms locker/vending kiosk with a
+  glass display front (`Glass`, `Frame`, `Metal`, `Paint`), a small `KioskScreen` price panel above,
+  and an **empty named `Display`** inside the glass where Unity floats a copy of the gun on sale.
+  Pivot bottom center, front facing +Z.
+
+### Characters
+- `Char_Hood` (slot `Hood`): same pivot as `Char_Head`; a hoodie hood that covers the back and top
+  of the head and the neck, with an open face, sitting slightly off the head. Enemies wear it.
+
+### Skinned human body (replaces the rigid Char_Torso/Arm/Leg/Head look)
+- `Char_Body`: **one smooth skinned mesh** of a whole adult (1.80 m, feet on the ground at y = 0,
+  facing +Z), arms hanging down and ~8 deg away from the body, legs straight. Realistic, clean
+  anatomy: head with skull, jaw, chin, nose, lips, ears, brow ridge; eyes as separate geometry on
+  the `Eye` slot; eyebrows on the `Hair` slot; neck of natural length; trapezius, shoulders,
+  chest, waist, hips; arms and legs tapered with elbow and knee shape; hands with a separated thumb
+  and a mitten of fingers; shoes with soles. Clothing is painted by slot on the same mesh:
+  `Skin` (face, neck, hands), `Top` (shirt/jacket incl. sleeves), `Pants`, `Shoe`, `Eye`, `Hair`.
+  6-12k triangles. Smooth shading, no visible seams.
+- **Armature** with exactly six bones, named exactly: `Body` (head at the hips, 0, 0.95, 0),
+  `LegL` / `LegR` (heads at the hip joints, x = -/+0.11, y = 0.95; parent `Body`),
+  `ArmL` / `ArmR` (heads at the shoulder joints, x = -/+0.21, y = 1.50; parent `Body`),
+  `Head` (head at the neck base, 0, 1.55, 0; parent `Body`). Character left = -X.
+  Weight-paint with smooth falloff across the hip, shoulder and neck joints (and the upper chest,
+  so a raised arm pulls the shoulder naturally); every vertex weighted, max 4 influences.
+  Unity rebinds the mesh to its own joint transforms by bone name, so bone roll and orientation
+  don't matter, only the names and head positions.
+- Export with `object_types={'MESH','ARMATURE'}`, `add_leaf_bones=False`, `use_armature_deform_only=True`,
+  plus the same axis/scale settings as the rest of the kit.
+- Hair and headwear stay separate rigid meshes, re-fitted to the new head, with the same pivot as
+  the head joint (neck base at the `Head` bone head): `Char_HairShort`, `Char_HairLong`, `Char_Cap`,
+  `Char_Hood`. `Char_Backpack` is re-fitted to the new back, with its pivot at the top center of its back face.

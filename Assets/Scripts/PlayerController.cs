@@ -6,7 +6,7 @@ namespace Zombies55
 {
     // Camera-relative run and jump on a CharacterController.
     // Keyboard: WASD / arrows to move, Shift to sprint, Space to jump.
-    // Gamepad: left stick to move, left stick press or right trigger to sprint, South button to jump.
+    // Gamepad: left stick to move, left stick press to sprint (right trigger fires), South button to jump.
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour, ICharacterMover
     {
@@ -15,6 +15,10 @@ namespace Zombies55
         [SerializeField] float sprintSpeed = 8.5f;
         [SerializeField] float acceleration = 40f;
         [SerializeField] float turnSpeed = 900f;
+
+        [Header("Combat")]
+        [SerializeField] float aimSpeedScale = 0.55f;
+        [SerializeField] float combatStanceSeconds = 0.5f;
 
         [Header("Jump")]
         [SerializeField] float jumpHeight = 1.5f;
@@ -36,6 +40,7 @@ namespace Zombies55
         public float PlanarSpeed => _planarVelocity.magnitude;
         public float MaxSpeed => sprintSpeed;
         public bool IsGrounded { get; private set; } = true;
+        public bool IsSprinting { get; private set; }
 
         public event Action Jumped;
         public event Action<float> Landed; // impact speed
@@ -55,15 +60,28 @@ namespace Zombies55
             bool sprint = canAct && ReadSprint();
             if (canAct && ReadJumpPressed()) _lastJumpPressedTime = Time.time;
 
+            // Aiming or recently firing: face the camera yaw and strafe. Aiming cancels sprint.
+            var weapons = PlayerWeapons.Instance;
+            bool aiming = canAct && weapons != null && weapons.IsAiming;
+            bool combat = aiming || (canAct && weapons != null && Time.time - weapons.LastFireTime < combatStanceSeconds);
+            if (aiming) sprint = false;
+
             // Camera-relative wish direction.
             float yaw = cameraYaw != null ? cameraYaw.eulerAngles.y : transform.eulerAngles.y;
             Vector3 wish = Quaternion.Euler(0f, yaw, 0f) * new Vector3(move.x, 0f, move.y);
             wish = Vector3.ClampMagnitude(wish, 1f);
 
+            IsSprinting = sprint && wish.sqrMagnitude > 0.01f;
             float targetSpeed = sprint ? sprintSpeed : walkSpeed;
+            if (aiming) targetSpeed *= aimSpeedScale;
             _planarVelocity = Vector3.MoveTowards(_planarVelocity, wish * targetSpeed, acceleration * dt);
 
-            if (wish.sqrMagnitude > 0.01f)
+            if (combat)
+            {
+                var face = Quaternion.Euler(0f, yaw, 0f);
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, face, turnSpeed * dt);
+            }
+            else if (wish.sqrMagnitude > 0.01f)
             {
                 var face = Quaternion.LookRotation(wish, Vector3.up);
                 transform.rotation = Quaternion.RotateTowards(transform.rotation, face, turnSpeed * dt);
@@ -114,7 +132,7 @@ namespace Zombies55
             var kb = Keyboard.current;
             var pad = Gamepad.current;
             return (kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed))
-                || (pad != null && (pad.leftStickButton.isPressed || pad.rightTrigger.isPressed));
+                || (pad != null && pad.leftStickButton.isPressed);
         }
 
         static bool ReadJumpPressed()

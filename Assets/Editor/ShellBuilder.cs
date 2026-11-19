@@ -14,11 +14,11 @@ namespace Zombies55.EditorTools
     {
         const string UiFolder = "Assets/Art/UI";
         const string RoundedRectPath = UiFolder + "/RoundedRect.png";
-        const string CoinPath = UiFolder + "/Coin.png";
+        const string VignettePath = UiFolder + "/Vignette.png";
         const string OutlineMaterialPath = UiFolder + "/UIText_Outline.mat";
 
         static Sprite s_RoundedRect;
-        static Sprite s_Coin;
+        static Sprite s_Vignette;
         static Material s_Outline;
 
         // ------------------------------------------------------------------ public contract
@@ -28,7 +28,7 @@ namespace Zombies55.EditorTools
             // Resources first, so a missing TMP import fails before we touch the scene.
             s_Outline = GetOrCreateOutlineMaterial();
             s_RoundedRect = GetOrCreateRoundedRect();
-            s_Coin = GetOrCreateCoin();
+            s_Vignette = GetOrCreateVignette();
 
             var existing = UnityEngine.Object.FindAnyObjectByType<GameShell>();
             if (existing != null) UnityEngine.Object.DestroyImmediate(existing.gameObject);
@@ -50,8 +50,7 @@ namespace Zombies55.EditorTools
             var root = (RectTransform)canvasGo.transform;
 
             var title = BuildTitle(root, out var promptText);
-            var hud = BuildHud(root, out var counterText, out var counterRect, out var progressFill,
-                out var timerText, out var timerRect);
+            var hud = BuildHud(root, out var survivalHud);
             var pause = BuildPause(root, out var resume, out var pauseRestart, out var pauseTitle,
                 out var musicSlider, out var sfxSlider);
             var end = BuildEnded(root, out var bannerText, out var bannerRect, out var statsText,
@@ -65,11 +64,7 @@ namespace Zombies55.EditorTools
             Wire(so, "titleRoot", title);
             Wire(so, "promptText", promptText);
             Wire(so, "hudRoot", hud);
-            Wire(so, "counterText", counterText);
-            Wire(so, "counterRect", counterRect);
-            Wire(so, "progressFill", progressFill);
-            Wire(so, "timerText", timerText);
-            Wire(so, "timerRect", timerRect);
+            Wire(so, "survivalHud", survivalHud);
             Wire(so, "pauseRoot", pause);
             Wire(so, "resumeButton", resume);
             Wire(so, "pauseRestartButton", pauseRestart);
@@ -132,57 +127,203 @@ namespace Zombies55.EditorTools
             var title = CreateText(root, "Title", "ZOMBIES 5.5", 165, Palette.Accent, 10f, true);
             Place(title.rectTransform, new Vector2(0.5f, 0.6f), Vector2.zero, new Vector2(1500f, 260f));
 
+            var subtitle = CreateText(root, "Subtitle", "SURVIVE THE CITY", 56, Palette.UiLight, 24f, true);
+            Place(subtitle.rectTransform, new Vector2(0.5f, 0.6f), new Vector2(0f, -190f), new Vector2(1200f, 80f));
+
             prompt = CreateText(root, "Prompt", "PRESS ANY KEY", 40, Palette.UiLight, 14f, true);
             Place(prompt.rectTransform, new Vector2(0.5f, 0.25f), Vector2.zero, new Vector2(900f, 70f));
 
             var controls = CreateText(root, "Controls",
-                "WASD MOVE · SHIFT SPRINT · SPACE JUMP · MOUSE LOOK · ESC PAUSE",
-                26, Palette.WithAlpha(Palette.UiLight, 0.85f), 4f, true);
-            Place(controls.rectTransform, new Vector2(0.5f, 0.18f), Vector2.zero, new Vector2(1500f, 50f));
+                "WASD MOVE · SHIFT SPRINT · SPACE JUMP · LMB FIRE · RMB AIM · R RELOAD · 1/2 SWAP · E BUY · ESC PAUSE",
+                24, Palette.WithAlpha(Palette.UiLight, 0.85f), 2f, true);
+            Place(controls.rectTransform, new Vector2(0.5f, 0.18f), Vector2.zero, new Vector2(1850f, 50f));
 
             return root.gameObject;
         }
 
-        static GameObject BuildHud(RectTransform parent, out TMP_Text counter, out RectTransform counterRect,
-            out UnityEngine.UI.Image fill, out TMP_Text timer, out RectTransform timerRect)
+        static GameObject BuildHud(RectTransform parent, out SurvivalHud hud)
         {
             var root = CreateStretched("Hud", parent);
+            hud = root.gameObject.AddComponent<SurvivalHud>();
 
-            // Top-left token panel.
-            var panel = CreateImage(root, "TokenPanel", s_RoundedRect, Palette.WithAlpha(Palette.UiDark, 0.8f), true);
-            PlaceCorner(panel.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -40f), new Vector2(380f, 130f));
+            Color panelColor = Palette.WithAlpha(Palette.UiDark, 0.8f);
+            Color soft = Palette.WithAlpha(Palette.UiLight, 0.85f);
 
-            var coin = CreateImage(panel.rectTransform, "CoinIcon", s_Coin, Palette.Accent, false);
-            Place(coin.rectTransform, new Vector2(0f, 1f), new Vector2(60f, -50f), new Vector2(60f, 60f));
+            // Damage vignette sits behind everything else.
+            var vignette = CreateImage(root, "DamageVignette", s_Vignette, Palette.WithAlpha(Palette.Danger, 0f), false);
+            Stretch(vignette.rectTransform);
 
-            counter = CreateText(panel.rectTransform, "Counter", "0 / 12", 54, Palette.UiLight, 4f, true);
-            counter.alignment = TextAlignmentOptions.MidlineLeft;
-            counterRect = counter.rectTransform;
-            counterRect.pivot = new Vector2(0f, 0.5f); // pops from the left edge
-            Place(counterRect, new Vector2(0f, 1f), new Vector2(110f, -50f), new Vector2(250f, 70f), keepPivot: true);
+            // Round counter, top-left.
+            var roundLabel = CreateText(root, "RoundLabel", "ROUND", 30, soft, 12f, true);
+            roundLabel.alignment = TextAlignmentOptions.MidlineLeft;
+            PlaceCorner(roundLabel.rectTransform, new Vector2(0f, 1f), new Vector2(56f, -34f), new Vector2(300f, 40f));
 
-            var barBack = CreateImage(panel.rectTransform, "ProgressBack", s_RoundedRect, Palette.Shadow, true);
-            barBack.pixelsPerUnitMultiplier = 2f; // smaller slice borders for a thin bar
-            PlaceCorner(barBack.rectTransform, new Vector2(0f, 1f), new Vector2(25f, -95f), new Vector2(330f, 22f));
+            var roundNumber = CreateText(root, "RoundNumber", "0", 150, Palette.Accent, 0f, true);
+            roundNumber.alignment = TextAlignmentOptions.MidlineLeft;
+            Place(roundNumber.rectTransform, new Vector2(0f, 1f), new Vector2(50f, -151f), new Vector2(320f, 170f));
+            roundNumber.rectTransform.pivot = new Vector2(0f, 0.5f); // pops from the left edge
 
-            // A Filled image needs a sprite, or fillAmount does nothing.
-            fill = CreateImage(barBack.rectTransform, "ProgressFill", s_RoundedRect, Palette.Accent, false);
-            fill.type = UnityEngine.UI.Image.Type.Filled;
-            fill.fillMethod = UnityEngine.UI.Image.FillMethod.Horizontal;
-            fill.fillOrigin = (int)UnityEngine.UI.Image.OriginHorizontal.Left;
-            fill.fillAmount = 0f;
-            Stretch(fill.rectTransform);
-            fill.rectTransform.offsetMin = new Vector2(3f, 3f);
-            fill.rectTransform.offsetMax = new Vector2(-3f, -3f);
+            var enemies = CreateText(root, "EnemiesLeft", "0 ENEMIES LEFT", 34, Palette.UiLight, 4f, true);
+            enemies.alignment = TextAlignmentOptions.MidlineLeft;
+            PlaceCorner(enemies.rectTransform, new Vector2(0f, 1f), new Vector2(56f, -240f), new Vector2(520f, 44f));
 
-            // Top-center timer.
-            var timerPanel = CreateImage(root, "TimerPanel", s_RoundedRect, Palette.WithAlpha(Palette.UiDark, 0.8f), true);
-            PlaceCorner(timerPanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -40f), new Vector2(260f, 110f));
+            // Health pips, bottom-left.
+            var healthPanel = CreateImage(root, "HealthPanel", s_RoundedRect, panelColor, true);
+            PlaceCorner(healthPanel.rectTransform, new Vector2(0f, 0f), new Vector2(40f, 40f), new Vector2(330f, 84f));
 
-            timer = CreateText(timerPanel.rectTransform, "Timer", "1:30", 80, Palette.UiLight, 4f, true);
-            timerRect = timer.rectTransform;
-            Stretch(timerRect);
+            var healthLabel = CreateText(healthPanel.rectTransform, "HealthLabel", "HEALTH", 22, soft, 8f, false);
+            healthLabel.alignment = TextAlignmentOptions.MidlineLeft;
+            PlaceCorner(healthLabel.rectTransform, new Vector2(0f, 1f), new Vector2(20f, -10f), new Vector2(200f, 28f));
 
+            var pips = new UnityEngine.UI.Image[5];
+            for (int i = 0; i < pips.Length; i++)
+            {
+                pips[i] = CreateImage(healthPanel.rectTransform, "Pip" + (i + 1), s_RoundedRect, Palette.UiLight, true);
+                pips[i].pixelsPerUnitMultiplier = 2f;
+                PlaceCorner(pips[i].rectTransform, new Vector2(0f, 0f), new Vector2(20f + i * 60f, 16f), new Vector2(52f, 24f));
+            }
+
+            // Points, top-right.
+            var pointsLabel = CreateText(root, "PointsLabel", "POINTS", 28, soft, 12f, true);
+            pointsLabel.alignment = TextAlignmentOptions.MidlineRight;
+            PlaceCorner(pointsLabel.rectTransform, new Vector2(1f, 1f), new Vector2(-56f, -34f), new Vector2(300f, 36f));
+
+            var points = CreateText(root, "Points", "0", 76, Palette.UiLight, 2f, true);
+            points.alignment = TextAlignmentOptions.MidlineRight;
+            Place(points.rectTransform, new Vector2(1f, 1f), new Vector2(-50f, -117f), new Vector2(500f, 90f));
+            points.rectTransform.pivot = new Vector2(1f, 0.5f);
+
+            var floatRoot = CreateStretched("PointFloats", root);
+            var floatTemplate = CreateText(floatRoot, "FloatTemplate", "+0", 44, Palette.Accent, 2f, true);
+            floatTemplate.alignment = TextAlignmentOptions.MidlineRight;
+            Place(floatTemplate.rectTransform, new Vector2(1f, 1f), new Vector2(-56f, -205f), new Vector2(300f, 50f));
+            floatTemplate.rectTransform.pivot = new Vector2(1f, 0.5f);
+            floatTemplate.gameObject.SetActive(false);
+
+            // Weapon panel, bottom-right.
+            var weaponPanel = CreateImage(root, "WeaponPanel", s_RoundedRect, panelColor, true);
+            PlaceCorner(weaponPanel.rectTransform, new Vector2(1f, 0f), new Vector2(-40f, 40f), new Vector2(520f, 230f));
+            var wp = weaponPanel.rectTransform;
+            var top = new Vector2(0f, 1f);
+
+            var weaponName = CreateText(wp, "WeaponName", "P-9 SIDEARM", 30, Palette.UiLight, 6f, true);
+            weaponName.alignment = TextAlignmentOptions.MidlineLeft;
+            PlaceCorner(weaponName.rectTransform, top, new Vector2(24f, -14f), new Vector2(472f, 40f));
+
+            var mag = CreateText(wp, "Magazine", "12", 100, Palette.UiLight, 0f, true);
+            mag.alignment = TextAlignmentOptions.MidlineRight;
+            PlaceCorner(mag.rectTransform, top, new Vector2(24f, -54f), new Vector2(250f, 104f));
+
+            var reserve = CreateText(wp, "Reserve", "/ 84", 52, soft, 2f, true);
+            reserve.alignment = TextAlignmentOptions.MidlineLeft;
+            PlaceCorner(reserve.rectTransform, top, new Vector2(288f, -76f), new Vector2(200f, 60f));
+
+            var reloadBack = CreateImage(wp, "ReloadBar", s_RoundedRect, Palette.Shadow, true);
+            reloadBack.pixelsPerUnitMultiplier = 2f;
+            PlaceCorner(reloadBack.rectTransform, top, new Vector2(24f, -160f), new Vector2(472f, 12f));
+            var reloadFill = CreateImage(reloadBack.rectTransform, "ReloadFill", s_RoundedRect, Palette.Accent, false);
+            reloadFill.type = UnityEngine.UI.Image.Type.Filled; // a Filled image needs a sprite
+            reloadFill.fillMethod = UnityEngine.UI.Image.FillMethod.Horizontal;
+            reloadFill.fillOrigin = (int)UnityEngine.UI.Image.OriginHorizontal.Left;
+            reloadFill.fillAmount = 0f;
+            Stretch(reloadFill.rectTransform);
+            reloadFill.rectTransform.offsetMin = new Vector2(2f, 2f);
+            reloadFill.rectTransform.offsetMax = new Vector2(-2f, -2f);
+
+            var chips = new UnityEngine.UI.Image[PlayerWeapons.SlotCount];
+            var chipLabels = new TMP_Text[PlayerWeapons.SlotCount];
+            for (int i = 0; i < chips.Length; i++)
+            {
+                chips[i] = CreateImage(wp, "SlotChip" + (i + 1), s_RoundedRect, Palette.WithAlpha(Palette.UiDark, 0.8f), true);
+                chips[i].pixelsPerUnitMultiplier = 2f;
+                PlaceCorner(chips[i].rectTransform, top, new Vector2(24f + i * 244f, -178f), new Vector2(228f, 40f));
+
+                var label = CreateText(chips[i].rectTransform, "Label", (i + 1) + "  EMPTY", 22, Palette.UiLight, 2f, false);
+                label.enableAutoSizing = true;
+                label.fontSizeMin = 14f;
+                label.fontSizeMax = 22f;
+                Stretch(label.rectTransform);
+                chipLabels[i] = label;
+            }
+
+            // Crosshair: four ticks around the center; SurvivalHud sets their positions every frame.
+            var crosshair = NewRect("Crosshair", root);
+            Place(crosshair, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var ticks = new RectTransform[4];
+            string[] tickNames = { "TickUp", "TickDown", "TickLeft", "TickRight" };
+            for (int i = 0; i < 4; i++)
+            {
+                var tick = CreateImage(crosshair, tickNames[i], null, Palette.UiLight, false);
+                bool vertical = i < 2;
+                Place(tick.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero,
+                    vertical ? new Vector2(4f, 16f) : new Vector2(16f, 4f));
+                var outline = tick.gameObject.AddComponent<UnityEngine.UI.Outline>();
+                outline.effectColor = Palette.WithAlpha(Palette.UiDark, 0.85f);
+                outline.effectDistance = new Vector2(1.5f, -1.5f);
+                ticks[i] = tick.rectTransform;
+            }
+
+            // Hit marker: four short diagonal ticks that flash and fade.
+            var hitRect = NewRect("HitMarker", crosshair);
+            Place(hitRect, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var hitGroup = hitRect.gameObject.AddComponent<CanvasGroup>();
+            hitGroup.alpha = 0f;
+            hitGroup.interactable = false;
+            hitGroup.blocksRaycasts = false;
+            var hitImages = new UnityEngine.UI.Image[4];
+            Vector2[] hitPos = { new Vector2(14f, 14f), new Vector2(-14f, 14f), new Vector2(-14f, -14f), new Vector2(14f, -14f) };
+            for (int i = 0; i < 4; i++)
+            {
+                hitImages[i] = CreateImage(hitRect, "Hit" + (i + 1), null, Palette.UiLight, false);
+                Place(hitImages[i].rectTransform, new Vector2(0.5f, 0.5f), hitPos[i], new Vector2(4f, 16f));
+                hitImages[i].rectTransform.localRotation = Quaternion.Euler(0f, 0f, i % 2 == 0 ? -45f : 45f);
+            }
+
+            // Context prompt, lower third.
+            var prompt = CreateText(root, "Prompt", string.Empty, 40, Palette.UiLight, 4f, true);
+            Place(prompt.rectTransform, new Vector2(0.5f, 0.27f), Vector2.zero, new Vector2(1400f, 60f));
+
+            // Round banner last so it draws above the HUD.
+            var banner = NewRect("RoundBanner", root);
+            Place(banner, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(1700f, 230f));
+            var bannerGroup = banner.gameObject.AddComponent<CanvasGroup>();
+            bannerGroup.interactable = false;
+            bannerGroup.blocksRaycasts = false;
+            var bannerText = CreateText(banner, "BannerText", "ROUND 1", 130, Palette.Accent, 8f, true);
+            Stretch(bannerText.rectTransform);
+            var bannerSub = CreateText(banner, "BannerSub", string.Empty, 60, Palette.UiLight, 8f, true);
+            Place(bannerSub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -125f), new Vector2(1200f, 80f));
+
+            var so = new SerializedObject(hud);
+            Wire(so, "roundNumberText", roundNumber);
+            Wire(so, "roundNumberRect", roundNumber.rectTransform);
+            Wire(so, "enemiesText", enemies);
+            WireArray(so, "healthPips", pips);
+            Wire(so, "vignette", vignette);
+            Wire(so, "pointsText", points);
+            Wire(so, "pointsRect", points.rectTransform);
+            Wire(so, "floatTemplate", floatTemplate);
+            Wire(so, "floatRoot", floatRoot);
+            Wire(so, "weaponNameText", weaponName);
+            Wire(so, "magText", mag);
+            Wire(so, "reserveText", reserve);
+            WireArray(so, "slotChips", chips);
+            WireArray(so, "slotLabels", chipLabels);
+            Wire(so, "reloadBar", reloadBack.gameObject);
+            Wire(so, "reloadFill", reloadFill);
+            Wire(so, "crosshairRoot", crosshair.gameObject);
+            WireArray(so, "crosshairTicks", ticks);
+            Wire(so, "hitMarkerGroup", hitGroup);
+            Wire(so, "hitMarkerRect", hitRect);
+            WireArray(so, "hitMarkerImages", hitImages);
+            Wire(so, "promptText", prompt);
+            Wire(so, "bannerRect", banner);
+            Wire(so, "bannerGroup", bannerGroup);
+            Wire(so, "bannerText", bannerText);
+            Wire(so, "bannerSubText", bannerSub);
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            banner.gameObject.SetActive(false);
             return root.gameObject;
         }
 
@@ -225,18 +366,22 @@ namespace Zombies55.EditorTools
             var scrim = CreateImage(root, "Scrim", null, Palette.WithAlpha(Palette.UiDark, 0.55f), true);
             Stretch(scrim.rectTransform);
 
-            banner = CreateText(root, "Banner", "BLOCK CLEARED!", 170, Palette.Accent, 8f, true);
+            banner = CreateText(root, "Banner", "YOU DIDN'T MAKE IT", 130, Palette.Danger, 8f, true);
             bannerRect = banner.rectTransform;
-            Place(bannerRect, new Vector2(0.5f, 0.5f), new Vector2(0f, 170f), new Vector2(1700f, 230f));
+            Place(bannerRect, new Vector2(0.5f, 0.5f), new Vector2(0f, 300f), new Vector2(1700f, 230f));
 
-            stats = CreateText(root, "Stats", "TOKENS 0 / 0  ·  TIME 0:00", 52, Palette.UiLight, 4f, true);
-            Place(stats.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 20f), new Vector2(1400f, 80f));
+            stats = CreateText(root, "Stats", "ROUNDS SURVIVED  0", 46, Palette.UiLight, 4f, true);
+            stats.lineSpacing = 10f;
+            Place(stats.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 50f), new Vector2(1400f, 260f));
 
             extra = CreateText(root, "ExtraStats", string.Empty, 36, Palette.Accent, 4f, true);
-            Place(extra.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -55f), new Vector2(1400f, 60f));
+            Place(extra.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -110f), new Vector2(1400f, 50f));
 
-            restart = CreateButton(root, "RestartButton", "RESTART", new Vector2(-230f, -190f), new Vector2(400f, 100f));
-            toTitle = CreateButton(root, "TitleButton", "TITLE", new Vector2(230f, -190f), new Vector2(400f, 100f));
+            restart = CreateButton(root, "RestartButton", "RESTART", new Vector2(-230f, -230f), new Vector2(400f, 100f));
+            toTitle = CreateButton(root, "TitleButton", "TITLE", new Vector2(230f, -230f), new Vector2(400f, 100f));
+
+            var hint = CreateText(root, "RestartHint", "R / ENTER TO RESTART", 28, Palette.WithAlpha(Palette.UiLight, 0.7f), 6f, true);
+            Place(hint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -320f), new Vector2(900f, 40f));
 
             return root.gameObject;
         }
@@ -425,6 +570,16 @@ namespace Zombies55.EditorTools
             prop.objectReferenceValue = value;
         }
 
+        static void WireArray<T>(SerializedObject so, string field, T[] values) where T : UnityEngine.Object
+        {
+            var prop = so.FindProperty(field);
+            if (prop == null)
+                throw new InvalidOperationException($"{so.targetObject.GetType().Name} has no serialized field '{field}'.");
+            prop.arraySize = values.Length;
+            for (int i = 0; i < values.Length; i++)
+                prop.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
+        }
+
         static void EnsureEventSystem()
         {
             var es = UnityEngine.Object.FindAnyObjectByType<EventSystem>();
@@ -475,34 +630,27 @@ namespace Zombies55.EditorTools
             return WriteSprite(RoundedRectPath, size, pixels, new Vector4(20f, 20f, 20f, 20f));
         }
 
-        static Sprite GetOrCreateCoin()
+        // White texels with alpha rising toward the screen edges; SurvivalHud tints it Danger.
+        static Sprite GetOrCreateVignette()
         {
-            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(CoinPath);
+            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(VignettePath);
             if (existing != null) return existing;
 
-            const int size = 64;
-            const float outer = 30f;
-            const float ringInner = 17f;
-            const float ringOuter = 21f;
+            const int size = 128;
             var pixels = new Color32[size * size];
-            float center = size * 0.5f;
-
             for (int y = 0; y < size; y++)
             {
                 for (int x = 0; x < size; x++)
                 {
-                    float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(center, center));
-                    float alpha = Mathf.Clamp01(outer - d + 0.5f);
-
-                    // Slightly darker ring (value only) between ringInner and ringOuter.
-                    float ring = Mathf.Clamp01(d - ringInner + 0.5f) * Mathf.Clamp01(ringOuter - d + 0.5f);
-                    byte value = (byte)Mathf.RoundToInt(Mathf.Lerp(255f, 205f, ring));
-
-                    pixels[y * size + x] = new Color32(value, value, value, (byte)Mathf.RoundToInt(alpha * 255f));
+                    float nx = Mathf.Abs((x + 0.5f) / size * 2f - 1f);
+                    float ny = Mathf.Abs((y + 0.5f) / size * 2f - 1f);
+                    float edge = Mathf.Max(nx, ny);
+                    float a = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 1f, edge));
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
                 }
             }
 
-            return WriteSprite(CoinPath, size, pixels, Vector4.zero);
+            return WriteSprite(VignettePath, size, pixels, Vector4.zero);
         }
 
         static Sprite WriteSprite(string path, int size, Color32[] pixels, Vector4 border)

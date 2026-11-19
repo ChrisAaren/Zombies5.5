@@ -800,7 +800,7 @@ namespace Zombies55.EditorTools
 
         // ------------------------------------------------------------------ character rig
 
-        enum HeadGear { Cap, ShortHair, LongHair }
+        enum HeadGear { Cap, ShortHair, LongHair, Hood }
 
         struct CharacterRig
         {
@@ -844,6 +844,14 @@ namespace Zombies55.EditorTools
             {
                 case HeadGear.Cap: Spawn("Char_Cap", head, Vector3.zero, 0f, look, "Cap"); break;
                 case HeadGear.ShortHair: Spawn("Char_HairShort", head, Vector3.zero, 0f, look, "Hair"); break;
+                case HeadGear.Hood:
+                    if (AssetDatabase.FindAssets("Char_Hood t:Model", new[] { ModelDir }).Length > 0)
+                    {
+                        look.Override["Hood"] = gearMat;
+                        Spawn("Char_Hood", head, Vector3.zero, 0f, look, "Hood");
+                    }
+                    else Spawn("Char_HairShort", head, Vector3.zero, 0f, look, "Hair"); // hood model not exported yet
+                    break;
                 default: Spawn("Char_HairLong", head, Vector3.zero, 0f, look, "Hair"); break;
             }
 

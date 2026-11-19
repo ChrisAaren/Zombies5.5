@@ -90,12 +90,34 @@ namespace Zombies55
         public static readonly Color GroundAmbient = Hex("#6B5A4A");
         public static readonly Color SunKey = Hex("#FFD9A6");
 
+        // Combat (survival mode)
+        public static readonly Color GunMetal = Hex("#3A3D44");        // gun barrels, receivers
+        public static readonly Color GunPolymer = Hex("#26282C");      // matte gun furniture
+        public static readonly Color GunGrip = Hex("#1F1F22");         // textured grips
+        public static readonly Color SightGlow = Hex("#FF5A3C");       // small emissive sight dot
+        public static readonly Color HazardYellow = Hex("#E8B923");    // hazard stripe band on barrels
+        public static readonly Color BarrelRed = Hex("#B23A2E");       // explosive barrel body paint
+        public static readonly Color WreckChar = Hex("#1F1D1C");       // burnt car wreck
+        public static readonly Color HoodGrey = Hex("#4B4F58");        // enemy hoodie hood
+        public static readonly Color MuzzleFlash = Hex("#FFD27A");     // muzzle flash and its light
+        public static readonly Color TracerWarm = Hex("#FFE2A0");      // bullet tracers
+        public static readonly Color SparkYellow = Hex("#FFD36B");     // sparks and fireball core
+        public static readonly Color FireOrange = Hex("#FF7A2B");      // fireballs, fire fuse, blast light
+        public static readonly Color SmokeGrey = Hex("#6B6A6C");       // smoke puffs
+        public static readonly Color SmokeDark = Hex("#2E2D2F");       // dark smoke from burning cars
+
         // Shared
         public static readonly Color Shadow = Hex("#2B2D42");
         public static readonly Color Accent = Hex("#FFC53D");
         public static readonly Color Danger = Hex("#E63946");
         public static readonly Color UiLight = Hex("#FFF4E0");
         public static readonly Color UiDark = Hex("#1E2036");
+
+        // Enemies (survival mode)
+        public static readonly Color EnemyHoodie = Hex("#3A3745");   // dark violet-grey hoodie and hood on the hostile NPCs
+        public static readonly Color EnemyPants = Hex("#23262D");    // near-black trousers for the hostile NPCs
+        public static readonly Color EnemySkin = Hex("#A99C93");     // ashen, desaturated skin so enemies read as unwell
+        public static readonly Color EnemyEyeRed = Hex("#FF2A1F");   // emissive red eyes, the enemies' signature read at distance
 
         public static Color WithAlpha(Color c, float a)
         {

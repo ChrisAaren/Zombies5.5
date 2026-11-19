@@ -1,3 +1,4 @@
+using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -23,29 +24,95 @@ namespace Zombies55
         [SerializeField] float idleOrbitSpeed = 5f;
         [SerializeField] float idlePitch = 24f;
 
+        [Header("Aim (SetAiming)")]
+        [SerializeField] CinemachineCamera vcam;          // found at Start when empty
+        [SerializeField] float aimFov = 38f;
+        [SerializeField] float aimShoulderX = 0.85f;
+        [SerializeField] float aimDistance = 3.6f;
+        [SerializeField] float aimLookScale = 0.6f;
+        [SerializeField] float aimBlendSharpness = 10f;
+
+        [Header("Recoil")]
+        [SerializeField] float recoilRecoverTime = 0.16f;
+        [SerializeField] float recoilMax = 12f;
+
         float _yaw;
         float _pitch;
         int _ignoreMouseFrames;
+        CinemachineThirdPersonFollow _follow;
+        float _baseFov, _baseDistance;
+        Vector3 _baseShoulder;
+        float _aim, _aimTarget;
+        float _recoilPitch, _recoilYaw, _recoilVelPitch, _recoilVelYaw;
+
+        public bool IsAiming => _aimTarget > 0.5f;
+        public float AimBlend => _aim;
+
+        // Zoom and tighten the shoulder framing; look sensitivity drops while aimed.
+        public void SetAiming(bool aiming) => _aimTarget = aiming ? 1f : 0f;
+
+        // Camera kick that recovers. Pitch is degrees upward, yaw degrees to the right.
+        public void AddRecoil(float pitch, float yaw)
+        {
+            _recoilPitch = Mathf.Clamp(_recoilPitch - pitch, -recoilMax, recoilMax);
+            _recoilYaw = Mathf.Clamp(_recoilYaw + yaw, -recoilMax, recoilMax);
+        }
+
+        void FindCamera()
+        {
+            if (vcam == null) vcam = FindAnyObjectByType<CinemachineCamera>();
+            if (vcam == null) return;
+            _follow = vcam.GetComponent<CinemachineThirdPersonFollow>();
+            _baseFov = vcam.Lens.FieldOfView;
+            if (_follow != null)
+            {
+                _baseShoulder = _follow.ShoulderOffset;
+                _baseDistance = _follow.CameraDistance;
+            }
+        }
+
+        void ApplyAim(float dt)
+        {
+            _aim += (_aimTarget - _aim) * (1f - Mathf.Exp(-aimBlendSharpness * dt));
+            if (vcam == null) return;
+            var lens = vcam.Lens;
+            lens.FieldOfView = Mathf.Lerp(_baseFov, aimFov, _aim);
+            vcam.Lens = lens;
+            if (_follow != null)
+            {
+                var shoulder = _baseShoulder;
+                shoulder.x = Mathf.Lerp(_baseShoulder.x, aimShoulderX, _aim);
+                _follow.ShoulderOffset = shoulder;
+                _follow.CameraDistance = Mathf.Lerp(_baseDistance, aimDistance, _aim);
+            }
+        }
 
         void Start()
         {
             _yaw = target != null ? target.eulerAngles.y : transform.eulerAngles.y;
             _pitch = startPitch;
+            FindCamera();
             Snap();
         }
 
         void LateUpdate()
         {
             var state = GameLoop.Instance != null ? GameLoop.Instance.State : RunState.Running;
+            float dt = Time.unscaledDeltaTime;
+            if (state != RunState.Running) _aimTarget = 0f;
+            ApplyAim(dt);
+            _recoilPitch = Mathf.SmoothDamp(_recoilPitch, 0f, ref _recoilVelPitch, recoilRecoverTime, float.PositiveInfinity, dt);
+            _recoilYaw = Mathf.SmoothDamp(_recoilYaw, 0f, ref _recoilVelYaw, recoilRecoverTime, float.PositiveInfinity, dt);
+            float sens = Mathf.Lerp(1f, aimLookScale, _aim);
 
             if (state == RunState.Running)
             {
                 Vector2 look = Vector2.zero;
                 var mouse = Mouse.current;
                 // Locking the cursor produces a one-off delta spike; skip the first frames after it.
-                if (mouse != null && _ignoreMouseFrames == 0) look += mouse.delta.ReadValue() * mouseSensitivity;
+                if (mouse != null && _ignoreMouseFrames == 0) look += mouse.delta.ReadValue() * (mouseSensitivity * sens);
                 var pad = Gamepad.current;
-                if (pad != null) look += pad.rightStick.ReadValue() * (stickSpeed * Time.unscaledDeltaTime);
+                if (pad != null) look += pad.rightStick.ReadValue() * (stickSpeed * sens * Time.unscaledDeltaTime);
                 _yaw += look.x;
                 _pitch = Mathf.Clamp(_pitch - look.y, minPitch, maxPitch);
             }
@@ -67,7 +134,7 @@ namespace Zombies55
                 float t = 1f - Mathf.Exp(-followSharpness * Time.unscaledDeltaTime);
                 transform.position = Vector3.Lerp(transform.position, goal, t);
             }
-            transform.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
+            transform.rotation = Quaternion.Euler(_pitch + _recoilPitch, _yaw + _recoilYaw, 0f);
         }
 
         void Snap()

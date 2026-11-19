@@ -18,11 +18,7 @@ namespace Zombies55
 
         [Header("HUD")]
         [SerializeField] GameObject hudRoot;
-        [SerializeField] TMP_Text counterText;
-        [SerializeField] RectTransform counterRect;
-        [SerializeField] UnityEngine.UI.Image progressFill;
-        [SerializeField] TMP_Text timerText;
-        [SerializeField] RectTransform timerRect;
+        [SerializeField] SurvivalHud survivalHud;
 
         [Header("Pause")]
         [SerializeField] GameObject pauseRoot;
@@ -53,10 +49,9 @@ namespace Zombies55
         int _startFrame;
         float _startTime;
         bool _leaving;
-        int _lastTimerSecond = -1;
         float _fadeAlpha;
 
-        Coroutine _transition, _flash, _banner, _pop, _fill, _timerPulse;
+        Coroutine _transition, _flash, _banner;
 
         void Start()
         {
@@ -67,7 +62,7 @@ namespace Zombies55
             if (_loop == null) return;
 
             _loop.StateChanged += OnStateChanged;
-            _loop.PickupCollected += OnPickupCollected;
+            if (survivalHud != null) survivalHud.FlashRequested += OnFlashRequested;
 
             resumeButton.onClick.AddListener(() => Click(_loop.Resume));
             pauseRestartButton.onClick.AddListener(() => Click(Restart));
@@ -91,7 +86,7 @@ namespace Zombies55
         {
             if (_loop == null) return;
             _loop.StateChanged -= OnStateChanged;
-            _loop.PickupCollected -= OnPickupCollected;
+            if (survivalHud != null) survivalHud.FlashRequested -= OnFlashRequested;
         }
 
         // A later step (for example a leaderboard) can show an extra line under the stats.
@@ -117,7 +112,6 @@ namespace Zombies55
                     break;
 
                 case RunState.Running:
-                    UpdateTimer();
                     if (PausePressed()) _loop.Pause();
                     break;
 
@@ -125,7 +119,6 @@ namespace Zombies55
                     if (PausePressed()) _loop.Resume();
                     break;
 
-                case RunState.Won:
                 case RunState.Lost:
                     if (RestartKeyPressed()) Restart();
                     break;
@@ -178,13 +171,13 @@ namespace Zombies55
 
             if (_transition != null) StopCoroutine(_transition);
 
-            if (state == RunState.Won || state == RunState.Lost)
+            if (state == RunState.Lost)
             {
                 // The flash covers the swap, so the panels change instantly here.
                 SetFade(0f);
                 ApplyState(state);
                 if (_flash != null) StopCoroutine(_flash);
-                _flash = StartCoroutine(FlashRoutine(state == RunState.Won ? Palette.Accent : Palette.Danger));
+                _flash = StartCoroutine(FlashRoutine(Palette.Danger, 0.6f));
             }
             else
             {
@@ -211,39 +204,33 @@ namespace Zombies55
             titleRoot.SetActive(state == RunState.Ready);
             hudRoot.SetActive(state == RunState.Running || state == RunState.Paused);
             pauseRoot.SetActive(state == RunState.Paused);
-            endRoot.SetActive(state == RunState.Won || state == RunState.Lost);
+            endRoot.SetActive(state == RunState.Lost);
 
             switch (state)
             {
-                case RunState.Running:
                 case RunState.Paused:
-                    RefreshHud();
-                    if (state == RunState.Paused) Select(resumeButton);
+                    Select(resumeButton);
                     break;
 
-                case RunState.Won:
                 case RunState.Lost:
-                    ShowEnded(state == RunState.Won);
+                    ShowEnded();
                     break;
             }
         }
 
-        void RefreshHud()
+        void ShowEnded()
         {
-            counterText.text = CounterString();
-            progressFill.fillAmount = Progress();
-            counterRect.localScale = Vector3.one;
-            timerRect.localScale = Vector3.one;
-            _lastTimerSecond = -1;
-            UpdateTimer();
-        }
+            var rm = RoundManager.Instance;
+            var wallet = PlayerWallet.Instance;
+            string v = "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Accent) + ">";
+            statsText.text =
+                $"ROUNDS SURVIVED  {v}{(rm != null ? rm.RoundsSurvived : 0)}</color>\n" +
+                $"KILLS  {v}{(rm != null ? rm.TotalKills : 0)}</color>\n" +
+                $"HEADSHOTS  {v}{(rm != null ? rm.TotalHeadshots : 0)}</color>\n" +
+                $"POINTS EARNED  {v}{(wallet != null ? wallet.TotalEarned : 0):N0}</color>";
 
-        void ShowEnded(bool won)
-        {
-            bannerText.text = won ? "BLOCK CLEARED!" : "TIME'S UP";
-            bannerText.color = won ? Palette.Accent : Palette.Danger;
-            statsText.text = $"TOKENS {_loop.Collected} / {_loop.TargetCount}  ·  TIME {FormatTime(Mathf.FloorToInt(_loop.ElapsedSeconds))}";
-
+            bannerText.text = "YOU DIDN'T MAKE IT";
+            bannerText.color = Palette.Danger;
             bannerRect.localScale = Vector3.zero;
             if (_banner != null) StopCoroutine(_banner);
             _banner = StartCoroutine(BannerRoutine());
@@ -251,10 +238,16 @@ namespace Zombies55
             Select(endRestartButton);
         }
 
-        IEnumerator FlashRoutine(Color color)
+        void OnFlashRequested(Color color, float alpha)
         {
-            yield return Ease.Tween(0.1f,
-                t => flashOverlay.color = Palette.WithAlpha(color, Mathf.Lerp(0.6f, 0f, t)),
+            if (_flash != null) StopCoroutine(_flash);
+            _flash = StartCoroutine(FlashRoutine(color, alpha));
+        }
+
+        IEnumerator FlashRoutine(Color color, float peak)
+        {
+            yield return Ease.Tween(peak > 0.5f ? 0.1f : 0.25f,
+                t => flashOverlay.color = Palette.WithAlpha(color, Mathf.Lerp(peak, 0f, t)),
                 Ease.OutCubic);
             _flash = null;
         }
@@ -264,65 +257,6 @@ namespace Zombies55
             yield return new WaitForSecondsRealtime(0.05f);
             yield return Ease.Tween(0.35f, t => bannerRect.localScale = Vector3.one * t, Ease.OutBack);
             _banner = null;
-        }
-
-        // ---------------------------------------------------------------- HUD
-
-        void OnPickupCollected(Pickup pickup)
-        {
-            counterText.text = CounterString();
-
-            if (_pop != null) StopCoroutine(_pop);
-            _pop = StartCoroutine(PopRoutine(counterRect, 1.25f, 0.25f));
-
-            if (_fill != null) StopCoroutine(_fill);
-            _fill = StartCoroutine(FillRoutine(Progress()));
-        }
-
-        // Scale 1 -> peak -> 1 over the duration, using OutBack on each half.
-        IEnumerator PopRoutine(RectTransform target, float peak, float duration)
-        {
-            float half = duration * 0.5f;
-            yield return Ease.Tween(half, t => target.localScale = Vector3.one * Mathf.Lerp(1f, peak, t), Ease.OutBack);
-            yield return Ease.Tween(half, t => target.localScale = Vector3.one * Mathf.Lerp(peak, 1f, t), Ease.OutBack);
-            target.localScale = Vector3.one;
-        }
-
-        IEnumerator FillRoutine(float target)
-        {
-            float from = progressFill.fillAmount;
-            yield return Ease.Tween(0.3f, t => progressFill.fillAmount = Mathf.Lerp(from, target, t), Ease.OutCubic);
-            _fill = null;
-        }
-
-        void UpdateTimer()
-        {
-            float left = _loop.TimeLeft;
-            int second = Mathf.CeilToInt(left);
-            bool danger = left < 10f;
-
-            timerText.color = danger ? Palette.Danger : Palette.UiLight;
-
-            if (second == _lastTimerSecond) return;
-            _lastTimerSecond = second;
-            timerText.text = FormatTime(second);
-
-            // Under 10 seconds the timer pulses once for every new second.
-            if (danger && second > 0)
-            {
-                if (_timerPulse != null) StopCoroutine(_timerPulse);
-                _timerPulse = StartCoroutine(PopRoutine(timerRect, 1.3f, 0.4f));
-            }
-        }
-
-        string CounterString() => $"{_loop.Collected} / {_loop.TargetCount}";
-
-        float Progress() => _loop.TargetCount > 0 ? (float)_loop.Collected / _loop.TargetCount : 0f;
-
-        static string FormatTime(int totalSeconds)
-        {
-            totalSeconds = Mathf.Max(0, totalSeconds);
-            return $"{totalSeconds / 60}:{totalSeconds % 60:00}";
         }
 
         // ---------------------------------------------------------------- helpers

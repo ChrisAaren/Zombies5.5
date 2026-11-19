@@ -356,7 +356,7 @@ def draw_cell(i, rng):
         cv.glow(cv.mask_ell(0.56, 0.33, 0.10, 0.075), (1.0, 0.78, 0.4), 1.0)
         cv.glow(cv.mask_rect(0.0, 0.0, 1, 0.78) * (0.15 + 0.35 * glow), (1.0, 0.62, 0.3), 0.7)
     elif kind == "EmptyDark":
-        room_base(cv, (0.07, 0.065, 0.065), (0.035, 0.03, 0.03))
+        room_base(cv, (0.14, 0.13, 0.125), (0.07, 0.06, 0.06))
         cv.paint(cv.mask_rect(0.72, 0.18, 0.96, 0.80), (0.05, 0.045, 0.045))             # door frame
         cv.paint(cv.mask_rect(0.74, 0.20, 0.94, 0.80), (0.03, 0.028, 0.028))
         cv.paint(cv.mask_rect(0.0, 0.76, 1.0, 0.78), (0.12, 0.11, 0.10))                  # skirting
@@ -391,6 +391,7 @@ def make_window_atlas():
         a, e = draw_cell(i, rng)
         A[r * CH:(r + 1) * CH, c * CW:(c + 1) * CW] = a
         E[r * CH:(r + 1) * CH, c * CW:(c + 1) * CW] = e
+    E = np.maximum(E, np.clip(A * 0.55, 0, 1))   # daylight-lit rooms: curtains, blinds and furniture read from the street
     save("WindowInteriors", "Albedo", A)
     save("WindowInteriors", "Emission", E, srgb=True)
 

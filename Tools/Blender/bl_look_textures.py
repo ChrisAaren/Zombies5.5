@@ -79,7 +79,26 @@ def skin_zones(N=1024, seed=900):
     save("SkinZones", "Mask", np.stack([np.clip(shine, 0, 1), np.clip(cav, 0, 1), sock], -1))
 
 
+def skin_zones2(N=1024, seed=950):
+    """R stubble / beard shadow (jaw, chin, upper lip, sideburns), G hairline transition (forehead top, temples), B brow ridge."""
+    u = (np.arange(N)[None, :] + 0.5) / N
+    v = (np.arange(N)[:, None] + 0.5) / N
+    def blob(cu, cv, su, sv):
+        return np.exp(-(((u - cu) / su) ** 2 + ((v - cv) / sv) ** 2))
+    beard = (blob(0.918, 0.512, 0.030, 0.085) + blob(0.903, 0.425, 0.026, 0.040) + blob(0.903, 0.600, 0.026, 0.040)
+             + blob(0.895, 0.470, 0.022, 0.030) + blob(0.895, 0.555, 0.022, 0.030) + 0.8 * blob(0.892, 0.512, 0.012, 0.045)
+             + 0.6 * blob(0.86, 0.385, 0.03, 0.02) + 0.6 * blob(0.86, 0.640, 0.03, 0.02))
+    beard = np.clip(beard, 0, 1)
+    beard *= 1.0 - 0.85 * blob(0.908, 0.512, 0.010, 0.028)       # lips stay clean
+    beard *= 1.0 - 0.9 * blob(0.870, 0.512, 0.025, 0.020)         # nose
+    grain = 0.55 + 0.45 * sstep(noise(N, N, 0.4, 40, 500, seed=seed), -0.2, 0.5)
+    hair = np.clip(blob(0.750, 0.512, 0.016, 0.075) + 0.8 * blob(0.775, 0.42, 0.022, 0.03) + 0.8 * blob(0.775, 0.605, 0.022, 0.03), 0, 1)
+    brow = np.clip(blob(0.812, 0.478, 0.013, 0.032) + blob(0.812, 0.548, 0.013, 0.032), 0, 1)
+    save("SkinZones2", "Mask", np.stack([np.clip(beard * grain, 0, 1), hair, brow], -1))
+
+
 if __name__ == "__main__":
     facade_grime()
     skin_pore()
     skin_zones()
+    skin_zones2()

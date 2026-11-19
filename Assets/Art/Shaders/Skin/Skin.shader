@@ -20,6 +20,13 @@ Shader "Zombies55/Skin"
         _SocketColor("Eye socket tint", Color) = (0.35,0.28,0.30,1)
         _SocketAmount("Eye socket amount", Range(0,1)) = 0.0
         _Desaturate("Desaturate", Range(0,1)) = 0.0
+        _SkinZones2("Zones2 (R stubble, G hairline, B brow ridge)", 2D) = "black" {}
+        _StubbleColor("Stubble / beard shadow tint", Color) = (0.55,0.5,0.5,1)
+        _StubbleStrength("Stubble strength", Range(0,1)) = 0.0
+        _HairlineStrength("Hairline and brow transition", Range(0,1)) = 0.0
+        _MottleColor("Mottle (bruise) tint", Color) = (0.5,0.38,0.5,1)
+        _MottleAmount("Mottled bruising", Range(0,1)) = 0.0
+        _MicroStrength("Micro detail (second pore scale)", Range(0,2)) = 0.0
 
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
 

@@ -16,9 +16,16 @@
 // NOTE: Do not ifdef the properties here as SRP batcher can not handle different layouts.
 TEXTURE2D(_SkinZones); SAMPLER(sampler_SkinZones);
 TEXTURE2D(_PoreMap); SAMPLER(sampler_PoreMap);
+TEXTURE2D(_SkinZones2); SAMPLER(sampler_SkinZones2);
 CBUFFER_START(UnityPerMaterial)
 half4 _SSSColor;
 half4 _SocketColor;
+half4 _StubbleColor;
+half4 _MottleColor;
+half _StubbleStrength;
+half _HairlineStrength;
+half _MottleAmount;
+half _MicroStrength;
 half _PoreTiling;
 half _PoreStrength;
 half _Wrap;

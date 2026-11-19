@@ -75,7 +75,8 @@ namespace Zombies55.EditorTools
         // Skin on the Zombies55/Skin shader: wrapped diffuse with a warm terminator, tiled pore normal, face-zone shine and
         // cavity map, eye-socket tint. Built on MpfbMat so the albedo, tint and smoothness plumbing stay the same.
         static Material MpfbSkin(string name, string albedo, Color tint, float smooth, float shine, float socket, float desat,
-            Color socketColor, Color sss, float sssStrength, float wrap)
+            Color socketColor, Color sss, float sssStrength, float wrap,
+            float pore = 0.8f, float stubble = 0f, float micro = 0f, float mottle = 0f)
         {
             if (_mats.TryGetValue(name, out var cached)) return cached;
             var mat = MpfbMat(name, albedo, null, null, tint, smooth);
@@ -86,6 +87,17 @@ namespace Zombies55.EditorTools
             mat.SetTexture("_PoreMap", Tex("SkinPore_Normal"));
             mat.SetFloat("_PoreTiling", 36f);
             mat.SetFloat("_PoreStrength", 0.8f);
+            mat.SetTexture("_SkinZones2", Tex("SkinZones2_Mask"));
+            mat.SetFloat("_StubbleStrength", 0f);
+            mat.SetFloat("_HairlineStrength", 0f);
+            mat.SetFloat("_MottleAmount", 0f);
+            mat.SetFloat("_MicroStrength", micro);
+            mat.SetFloat("_StubbleStrength", stubble);
+            mat.SetFloat("_HairlineStrength", stubble > 0f ? 0.8f : 0.3f);
+            mat.SetFloat("_MottleAmount", mottle);
+            mat.SetColor("_StubbleColor", new Color(0.6f, 0.55f, 0.55f));
+            mat.SetColor("_MottleColor", new Color(0.66f, 0.52f, 0.62f));
+            mat.SetFloat("_PoreStrength", pore);
             mat.SetFloat("_Wrap", wrap);
             mat.SetColor("_SSSColor", sss);
             mat.SetFloat("_SSSStrength", sssStrength);
@@ -105,8 +117,8 @@ namespace Zombies55.EditorTools
         {
             return new Dictionary<string, Material>
             {
-                { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", Color.white, 0.38f, 0.5f, 0.15f, 0f,
-                    new Color(0.55f, 0.4f, 0.38f), new Color(0.62f, 0.16f, 0.08f), 0.7f, 0.5f) },
+                { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", Color.white, 0.26f, 0.42f, 0.15f, 0f,
+                    new Color(0.55f, 0.4f, 0.38f), new Color(0.62f, 0.16f, 0.08f), 0.7f, 0.5f, 1.25f, 0.85f, 0.65f, 0f) },
                 { "Eyes", MpfbMat("Courier_Eyes", "Courier_Eyes_Albedo", null, null, Color.white, 0.75f) },
                 { "Brows", MpfbMat("Courier_Brows", "Courier_Brows_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
                 { "Lashes", MpfbMat("Courier_Lashes", "Courier_Lashes_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
@@ -126,8 +138,8 @@ namespace Zombies55.EditorTools
             return new Dictionary<string, Material>
             {
                 // Sickly, pale grey with sunken, dark sockets; the wrap tint is a cold grey-violet, not a warm blush.
-                { "Skin", MpfbSkin("Hollow_Skin", "Hollow_Skin_Albedo", new Color(1.12f, 1.18f, 1.3f), 0.3f, 0.3f, 0.9f, 0.45f,
-                    new Color(0.22f, 0.2f, 0.26f), new Color(0.38f, 0.3f, 0.38f), 0.35f, 0.4f) },
+                { "Skin", MpfbSkin("Hollow_Skin", "Hollow_Skin_Albedo", new Color(1.0f, 1.02f, 1.1f), 0.28f, 0.25f, 0.9f, 0.45f,
+                    new Color(0.22f, 0.2f, 0.26f), new Color(0.38f, 0.3f, 0.38f), 0.35f, 0.4f, 1.0f, 0f, 0.5f, 0.85f) },
                 // Whole eye is tinted red and emissive: the signature read at distance.
                 { "Eyes", MpfbMat("Hollow_Eyes", "Hollow_Eyes_Albedo", null, null, new Color(1f, 0.1f, 0.08f), 0.5f, AlphaMode.Opaque, 0.5f, false,
                     Palette.EnemyEyeRed * 1.6f, true) },

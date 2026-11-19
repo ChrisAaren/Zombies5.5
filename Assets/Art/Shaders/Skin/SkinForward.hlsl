@@ -246,10 +246,32 @@ void LitPassFragment(
     SurfaceData surfaceData;
     InitializeStandardLitSurfaceData(input.uv, surfaceData);
     half4 zones = SAMPLE_TEXTURE2D(_SkinZones, sampler_SkinZones, input.uv);
-    half3 pore = UnpackNormal(SAMPLE_TEXTURE2D(_PoreMap, sampler_PoreMap, input.uv * _PoreTiling));
-    surfaceData.normalTS = normalize(half3(pore.xy * _PoreStrength, 1.0h));
+    half4 zones2 = SAMPLE_TEXTURE2D(_SkinZones2, sampler_SkinZones2, input.uv);
+    half3 pore = UnpackNormal(SAMPLE_TEXTURE2D_BIAS(_PoreMap, sampler_PoreMap, input.uv * _PoreTiling, -1.0h));
+    half3 pore2 = UnpackNormal(SAMPLE_TEXTURE2D_BIAS(_PoreMap, sampler_PoreMap, input.uv * (_PoreTiling * 2.9h) + 0.37h, -1.0h));
+    surfaceData.normalTS = normalize(half3(pore.xy * _PoreStrength + pore2.xy * _MicroStrength, 1.0h));
     half lum = dot(surfaceData.albedo, half3(0.3h, 0.55h, 0.15h));
     surfaceData.albedo = lerp(surfaceData.albedo, lum.xxx, _Desaturate);
+    // pores read as tiny darker pits in the albedo too, so skin never looks like smooth plastic at mid range
+    surfaceData.albedo *= 1.0h + (pore.x * 0.5h + pore2.y * 0.5h) * 0.12h * (_MicroStrength > 0.001h ? 1.0h : 0.0h);
+    // stubble and beard shadow along the jaw, upper lip and chin; hairline and brow-ridge shading
+    half grain = saturate(0.55h + pore2.x * 1.4h + pore.y * 0.6h);
+    half stub = zones2.r * _StubbleStrength * (0.55h + 0.6h * grain);
+    surfaceData.albedo = lerp(surfaceData.albedo, surfaceData.albedo * _StubbleColor.rgb, saturate(stub));
+    surfaceData.albedo *= 1.0h - saturate(zones2.g + zones2.b * 0.7h) * _HairlineStrength * 0.38h;
+    // mottled, bruised variation (low-frequency value noise)
+    {
+        float2 mp = input.uv * 95.0;
+        float2 ip = floor(mp), fp = frac(mp);
+        fp = fp * fp * (3.0 - 2.0 * fp);
+        float n00 = frac(sin(dot(ip, float2(12.9898, 78.233))) * 43758.5453);
+        float n10 = frac(sin(dot(ip + float2(1, 0), float2(12.9898, 78.233))) * 43758.5453);
+        float n01 = frac(sin(dot(ip + float2(0, 1), float2(12.9898, 78.233))) * 43758.5453);
+        float n11 = frac(sin(dot(ip + float2(1, 1), float2(12.9898, 78.233))) * 43758.5453);
+        half vn = lerp(lerp(n00, n10, fp.x), lerp(n01, n11, fp.x), fp.y);
+        half mott = smoothstep(0.5h, 0.82h, vn) * _MottleAmount;
+        surfaceData.albedo = lerp(surfaceData.albedo, surfaceData.albedo * _MottleColor.rgb, mott);
+    }
     surfaceData.albedo *= lerp(1.0h, zones.g, _CavityStrength);
     surfaceData.albedo = lerp(surfaceData.albedo, surfaceData.albedo * _SocketColor.rgb, zones.b * _SocketAmount);
     surfaceData.smoothness = saturate(surfaceData.smoothness * (1.0h - _ShineBoost * 0.5h + _ShineBoost * 1.3h * zones.r));

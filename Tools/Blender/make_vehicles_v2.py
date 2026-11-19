@@ -279,7 +279,7 @@ def make_liner(s):
         z3 = min(z3, rz - .1)
         pts = [(hb, zf), (hb, zb), (hw2, zb + .05), (hw3, z3), (hr, rz - .08), (0, rz - .075)]
         rings.append([V(x, f, z) for x, z in pts] + [V(-x, f, z) for x, z in reversed(pts[1:-1])] + [V(-hb, f, zf)])
-    p.loft(rings, "Rubber")
+    p.loft(rings, "Interior")
     ob = p.build2(smooth=0, name="liner")
     ob.data.flip_normals()
     return ob

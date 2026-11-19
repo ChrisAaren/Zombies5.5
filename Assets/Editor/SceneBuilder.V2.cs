@@ -90,13 +90,13 @@ namespace Zombies55.EditorTools
             if (_mats.TryGetValue("S_CarGlass", out var cached)) return cached;
             var shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/WindowGlass.shader");
             var m = LoadOrCreateMat("S_CarGlass", shader);
-            m.SetColor("_BaseColor", new Color(0.05f, 0.08f, 0.08f, 1f));
+            m.SetColor("_BaseColor", new Color(0.16f, 0.2f, 0.2f, 1f));
             m.SetFloat("_Smoothness", 0.97f);
             m.SetFloat("_FresnelPower", 2.6f);
             m.SetFloat("_ReflMin", 0.1f);
             m.SetFloat("_ReflMax", 0.9f);
             m.SetFloat("_ReflIntensity", 1.15f);
-            m.SetFloat("_InteriorDim", 0.34f);
+            m.SetFloat("_InteriorDim", 0.3f);
             m.SetFloat("_Waviness", 0.02f);
             m.renderQueue = (int)RenderQueue.Transparent;
             EditorUtility.SetDirty(m);
@@ -107,7 +107,10 @@ namespace Zombies55.EditorTools
         // Seats, dash and headliner: a dim warm grey fabric, lighter than the black the building interiors use.
         static Material CarInteriorMat()
         {
-            return Surf("S_CarInterior", new Color(0.2f, 0.18f, 0.16f), null, Vector2.one, 0.12f);
+            var m = Surf("S_CarInterior", new Color(0.36f, 0.32f, 0.27f), null, Vector2.one, 0.12f);
+            m.SetColor("_EmissionColor", new Color(0.09f, 0.08f, 0.065f));   // light bounced into the shaded cabin
+            m.EnableKeyword("_EMISSION");
+            return m;
         }
 
         // One quad per window selects one cell of the atlas; only the lamp and TV cells carry emission.
@@ -116,7 +119,7 @@ namespace Zombies55.EditorTools
             if (_mats.TryGetValue("S_WindowInterior", out var cached)) return cached;
             var m = Surf("S_WindowInterior", new Color(0.95f, 0.95f, 0.95f), "WindowInteriors", Vector2.one, 0.05f);
             m.SetTexture("_EmissionMap", Tex("WindowInteriors_Emission"));
-            m.SetColor("_EmissionColor", new Color(0.55f, 0.55f, 0.55f, 1f));
+            m.SetColor("_EmissionColor", new Color(0.5f, 0.5f, 0.5f, 1f));
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             return m;
@@ -386,6 +389,7 @@ namespace Zombies55.EditorTools
                         {
                             string piece = fl == floors - 1 ? "V2_FireEscape_Top" : (((fl % 2 == 0) != flip) ? "V2_FireEscape_ZigA" : "V2_FireEscape_ZigB");
                             Put(piece, xs[escBay], 4f + 3.2f * fl);
+                            GrimeQuad(face, At(xs[escBay], 4f + 3.2f * fl - 0.5f, 0.04f), rot, Gf(2.6f, 3.2f), Gf(2.8f, 3.6f));   // soot and rust staining below each landing
                         }
                         if (r.NextDouble() < 0.6) Put("V2_FireEscape_DropLadder", xs[escBay] + (flip ? 1.2f : -1.2f), 4f);
                     }
@@ -459,6 +463,7 @@ namespace Zombies55.EditorTools
                     else if (odd && i == bays - 1) { Squeezed(c, ins, -ins * 0.5f); if (pr != null) Squeezed(pr, 0.36f, -0.18f); }
                     if (odd && bays == 1) { /* never happens: footprints are at least 2 bays */ }
                     GrimeQuad(face, At(xs[i], height - 0.55f, 0.03f), rot, 3.05f, 1.0f + (float)r.NextDouble() * 0.3f);
+                    if (Gp(0.65f)) GrimeQuad(face, At(xs[i] + Gf(-0.4f, 0.4f), height - 1.7f, 0.035f), rot, Gf(2.2f, 3.0f), Gf(2.2f, 3.4f));   // long rain stain under the cornice, readable from the street
                 }
                 if (bracketed) Put("V2_Cornice_Bracketed_Corner_L", xe, height);
             }

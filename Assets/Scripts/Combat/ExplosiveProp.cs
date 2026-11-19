@@ -27,6 +27,7 @@ namespace Zombies55
         bool _exploded;
         bool _playerCaused;
         float _fuseEnd = -1f;
+        float _resetAt = -1f;   // a round started mid-fuse: let the blast happen, then reset
         Renderer[] _renderers;
         Material[][] _origMats;
         Collider[] _colliders;
@@ -96,6 +97,8 @@ namespace Zombies55
 
         void Update()
         {
+            if (_resetAt > 0f && Time.time >= _resetAt) ResetProp();
+
             if (_rounds == null && RoundManager.Instance != null)
             {
                 _rounds = RoundManager.Instance;
@@ -109,7 +112,11 @@ namespace Zombies55
                     var em = _fire.emission;
                     em.rateOverTime = 22f + Mathf.Sin(Time.time * 30f) * 6f;
                 }
-                if (Time.time >= _fuseEnd) Explode();
+                if (Time.time >= _fuseEnd)
+                {
+                    Explode();
+                    if (_resetAt == 0f) _resetAt = Time.time + 2.5f;
+                }
             }
         }
 
@@ -255,7 +262,11 @@ namespace Zombies55
 
         // ------------------------------------------------------------------ reset
 
-        void OnRoundStarted(int round) => ResetProp();
+        void OnRoundStarted(int round)
+        {
+            if (_fuseEnd > 0f) { _resetAt = 0f; return; }   // mid-fuse: reset 2.5 s after the pending explosion instead of silently now
+            ResetProp();
+        }
 
         public void ResetProp()
         {
@@ -263,6 +274,7 @@ namespace Zombies55
             _exploded = false;
             _playerCaused = false;
             _fuseEnd = -1f;
+            _resetAt = -1f;
             for (int i = 0; i < _renderers.Length; i++)
             {
                 _renderers[i].enabled = true;

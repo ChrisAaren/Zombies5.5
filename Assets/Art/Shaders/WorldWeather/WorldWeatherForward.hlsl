@@ -248,6 +248,16 @@ void ApplyWeathering(float3 posWS, float3 normalWS, inout SurfaceData s)
         soil = saturate(soil * _GrimeAmount * 1.5h) * side;
         // rust bleeds in the narrow drips under metal
         half rust = smoothstep(0.55h, 0.9h, g.b * g.r) * _RustAmount * side;
+        // Gameplay-distance grime: wall-wide sun-faded / water-stained patches, vertical stain bands, a dirt gradient at street level.
+        half4 gL = SAMPLE_TEXTURE2D(_GrimeMask, sampler_GrimeMask, wuv * float2(0.022h, 0.016h) + float2(0.13, 0.71));
+        half4 gB = SAMPLE_TEXTURE2D(_GrimeMask, sampler_GrimeMask, wuv * float2(0.09h, 0.011h) + float2(0.53, 0.29));
+        half fadeAmt = smoothstep(0.35h, 0.75h, gL.g);
+        half stainBand = smoothstep(0.45h, 0.85h, gB.r * 0.7h + gB.g * 0.5h);
+        half lum0 = dot(albedo, half3(0.299h, 0.587h, 0.114h));
+        albedo = lerp(albedo, lerp(half3(lum0, lum0, lum0), albedo, 0.6h) * 1.16h, fadeAmt * 0.7h);
+        albedo *= 1.0h - stainBand * 0.32h * saturate(_GrimeAmount);
+        half street = 1.0h - smoothstep(0.0h, 5.5h, posWS.y);
+        albedo *= 1.0h - street * (0.22h + 0.18h * g2.g);
         albedo = lerp(albedo, albedo * half3(0.5h, 0.46h, 0.42h), soil * 0.8h);
         albedo = lerp(albedo, _GrimeColor.rgb, soil * 0.3h);
         albedo = lerp(albedo, half3(0.32h, 0.14h, 0.06h), rust * 0.6h);
@@ -281,6 +291,8 @@ void ApplyWeathering(float3 posWS, float3 normalWS, inout SurfaceData s)
         albedo = lerp(albedo, a, up * _SlabMode);
         smooth = lerp(smooth, smooth * (1.0h - stain * 0.5h) * (1.0h - joint * 0.4h), up * _SlabMode);
     }
+    half lumA = dot(albedo, half3(0.299h, 0.587h, 0.114h));
+    albedo = lerp(half3(lumA, lumA, lumA), albedo, 0.78h) * half3(1.02h, 1.0h, 0.96h);   // duller red-brown and tan, a faint warm cast
     s.albedo = albedo;
     s.smoothness = saturate(smooth);
 }

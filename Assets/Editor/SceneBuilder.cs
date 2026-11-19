@@ -123,7 +123,7 @@ namespace Zombies55.EditorTools
             if (_litShader == null) throw new InvalidOperationException("URP Lit shader not found.");
 
             // Worn texture sets; the packed _MS maps carry smoothness (and metal), so the float is a multiplier.
-            mAsphalt = Surf("Asphalt", new Color(0.58f, 0.58f, 0.58f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
+            mAsphalt = Surf("Asphalt", new Color(0.78f, 0.77f, 0.75f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
             mRoadLine = Mat("RoadLine", Palette.RoadLine);
             mSidewalk = SurfW("Sidewalk", new Color(0.8f, 0.75f, 0.67f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f, 1.0f, 1f, 0.6f, 0f);
             mCurb = SurfW("Curb", new Color(0.72f, 0.67f, 0.6f), "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f, 1.0f, 0f, 0.6f, 0f);
@@ -156,8 +156,8 @@ namespace Zombies55.EditorTools
             if (skyShader == null) skyShader = Shader.Find("Zombies55/CloudSky");
             if (skyShader == null) throw new InvalidOperationException("Shader 'Zombies55/CloudSky' not found.");
             mSky = LoadOrCreateMat("SkyClouds", skyShader);
-            mSky.SetColor("_ZenithColor", new Color(0.05f, 0.22f, 0.72f));
-            mSky.SetColor("_HorizonColor", new Color(0.62f, 0.8f, 0.97f));
+            mSky.SetColor("_ZenithColor", new Color(0.17f, 0.35f, 0.68f));
+            mSky.SetColor("_HorizonColor", new Color(0.74f, 0.84f, 0.93f));
             mSky.SetColor("_GroundColor", Palette.GroundAmbient);
             mSky.SetColor("_SunColor", Palette.SunHaze);
             mSky.SetColor("_CloudLit", new Color(1f, 0.97f, 0.92f));
@@ -247,7 +247,7 @@ namespace Zombies55.EditorTools
             sun.color = new Color(1f, 0.94f, 0.83f);
             sun.intensity = 3.6f;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 1f;
+            sun.shadowStrength = 0.9f;
             RenderSettings.sun = sun;
             mSky.SetVector("_SunDir", -sunGo.transform.forward);
             EditorUtility.SetDirty(mSky);
@@ -255,9 +255,9 @@ namespace Zombies55.EditorTools
             RenderSettings.skybox = mSky;
             // Warm-gray fill (never blue-green): a tri-light ambient instead of the sky gradient. Reflections still come from the sky and the baked probes.
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.62f, 0.69f, 0.8f);
-            RenderSettings.ambientEquatorColor = new Color(0.58f, 0.56f, 0.54f);
-            RenderSettings.ambientGroundColor = new Color(0.4f, 0.36f, 0.32f);
+            RenderSettings.ambientSkyColor = new Color(0.66f, 0.72f, 0.82f);
+            RenderSettings.ambientEquatorColor = new Color(0.66f, 0.63f, 0.6f);
+            RenderSettings.ambientGroundColor = new Color(0.48f, 0.43f, 0.38f);
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
             RenderSettings.reflectionIntensity = 1f;
@@ -278,31 +278,31 @@ namespace Zombies55.EditorTools
             }
             GetOrAdd<Tonemapping>(profile).mode.Override(TonemappingMode.ACES);   // contrasty filmic curve
             var bloom = GetOrAdd<Bloom>(profile);                      // gentle halo round the sky, lamps and muzzle flashes
-            bloom.intensity.Override(0.22f);
-            bloom.threshold.Override(1.05f);
-            bloom.scatter.Override(0.62f);
+            bloom.intensity.Override(0.38f);
+            bloom.threshold.Override(0.9f);
+            bloom.scatter.Override(0.7f);
             var vig = GetOrAdd<Vignette>(profile);
             vig.intensity.Override(0.16f);
             vig.smoothness.Override(0.45f);
             var grade = GetOrAdd<ColorAdjustments>(profile);
-            grade.postExposure.Override(0.35f);                        // brighter, warm exposure
-            grade.saturation.Override(-4f);                           // desaturated, grounded
-            grade.contrast.Override(28f);
+            grade.postExposure.Override(0.45f);                        // brighter, warm exposure
+            grade.saturation.Override(-15f);                           // desaturated, grounded
+            grade.contrast.Override(16f);
             var wb = GetOrAdd<WhiteBalance>(profile);
             wb.temperature.Override(4f);                              // warm, slightly sepia
             wb.tint.Override(0f);
             var split = GetOrAdd<SplitToning>(profile);                // warm-gray shadows (no blue-green), warm highlights
-            split.shadows.Override(new Color(0.56f, 0.5f, 0.44f));
-            split.highlights.Override(new Color(0.98f, 0.88f, 0.72f));
+            split.shadows.Override(new Color(0.58f, 0.52f, 0.46f));
+            split.highlights.Override(new Color(0.98f, 0.9f, 0.76f));
             split.balance.Override(-10f);
             var grain = GetOrAdd<FilmGrain>(profile);
             grain.type.Override(FilmGrainLookup.Thin1);
             grain.intensity.Override(0.1f);
             grain.response.Override(0.8f);
             var smh = GetOrAdd<ShadowsMidtonesHighlights>(profile);
-            smh.shadows.Override(new Vector4(1.04f, 0.98f, 0.9f, -0.02f));
+            smh.shadows.Override(new Vector4(1.06f, 1.0f, 0.92f, 0.04f));
             smh.midtones.Override(new Vector4(1.02f, 1f, 0.95f, 0f));
-            smh.highlights.Override(new Vector4(1.04f, 1f, 0.94f, 0.05f));
+            smh.highlights.Override(new Vector4(1.03f, 1f, 0.95f, -0.03f));
             EditorUtility.SetDirty(profile);
 
             var volGo = new GameObject("Global Volume");
@@ -534,6 +534,7 @@ namespace Zombies55.EditorTools
             BuildStreetGrit();
             BuildShopTrash();
             BuildStreetDirt();
+            BuildStreetNoise();
             BuildSignalController();
         }
 

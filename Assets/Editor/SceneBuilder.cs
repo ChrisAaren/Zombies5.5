@@ -25,8 +25,8 @@ namespace Zombies55.EditorTools
         const float RoadWidth = 12f;
         const float SidewalkTop = 0.15f;
 
-        static readonly float[] RoadCenters = { -57f, -19f, 19f, 57f };
-        static readonly float[] BlockCenters = { -38f, 0f, 38f };
+        static readonly float[] RoadCenters = { -95f, -57f, -19f, 19f, 57f, 95f };
+        static readonly float[] BlockCenters = { -76f, -38f, 0f, 38f, 76f };
 
         static System.Random _rng;
         static readonly Dictionary<string, Material> _mats = new Dictionary<string, Material>();
@@ -37,11 +37,11 @@ namespace Zombies55.EditorTools
         static Material mAsphalt, mRoadLine, mSidewalk, mCurb, mCurbZ, mPlaza, mEye;
         static Material mTerracotta, mSage, mSand, mDustyBlue, mWindow, mTrim;
         static Material mPrimary, mSecondary, mPants, mLeaf, mTrunk, mShadow;
-        static Material mGold, mTokenFace, mLampHead, mBeacon, mParticle, mSky;
+        static Material mLampHead, mParticle, mSky;
         static Material[] _buildingMats;
 
         // Roots
-        static Transform _env, _city, _props, _tokens, _player, _game, _camera;
+        static Transform _env, _city, _props, _player, _game, _camera;
 
         // Results shared between steps
         static Transform _playerRoot, _cameraPivot;
@@ -71,7 +71,6 @@ namespace Zombies55.EditorTools
             _env = Root("Environment");
             _city = Root("City");
             _props = Root("Props");
-            _tokens = Root("Tokens");
             _player = Root("Player");
             _game = Root("Game");
             _camera = Root("Camera");
@@ -81,9 +80,7 @@ namespace Zombies55.EditorTools
             BuildLighting();
             BuildCity();
             BuildProps();
-            BuildTokens();
             BuildPlayer();
-            BuildPedestrians();
             BuildCamera();
             BuildGame();
             BuildCombat();
@@ -131,28 +128,8 @@ namespace Zombies55.EditorTools
             mLeaf = Mat("Leaf", Palette.Leaf);
             mTrunk = Mat("Trunk", Palette.Trunk);
             mShadow = Mat("Shadow", Palette.Shadow);
-            mGold = Mat("GoldToken", Palette.Accent, 2.5f);
-            mTokenFace = Mat("GoldTokenFace", Palette.Accent * 0.8f, 1.2f);
             mLampHead = Mat("LampHead", Palette.SunKey, 1.2f);
             _buildingMats = new[] { mTerracotta, mSage, mSand, mDustyBlue };
-
-            // Transparent beacon
-            var unlit = Shader.Find("Universal Render Pipeline/Unlit");
-            if (unlit == null) throw new InvalidOperationException("Shader 'Universal Render Pipeline/Unlit' not found.");
-            mBeacon = LoadOrCreateMat("Beacon", unlit);
-            mBeacon.SetFloat("_Surface", 1f);
-            mBeacon.SetFloat("_Blend", 0f);
-            mBeacon.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-            mBeacon.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-            mBeacon.SetFloat("_ZWrite", 0f);
-            mBeacon.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            mBeacon.SetOverrideTag("RenderType", "Transparent");
-            mBeacon.SetShaderPassEnabled("ShadowCaster", false);
-            mBeacon.renderQueue = 3000;
-            var beaconColor = Palette.WithAlpha(Palette.Accent, 0.22f);
-            mBeacon.SetColor("_BaseColor", beaconColor);
-            mBeacon.color = beaconColor;
-            EditorUtility.SetDirty(mBeacon);
 
             // Particles
             var sprites = Shader.Find("Sprites/Default");
@@ -367,7 +344,7 @@ namespace Zombies55.EditorTools
             probe.hdr = true;
             probe.importance = 1;
             probe.intensity = 1f;
-            probe.size = new Vector3(260f, 80f, 260f);
+            probe.size = new Vector3(300f, 80f, 300f);
             probe.center = Vector3.zero;
             probe.nearClipPlane = 0.3f;
             probe.farClipPlane = 400f;
@@ -386,23 +363,23 @@ namespace Zombies55.EditorTools
         static void BuildCity()
         {
             // Ground: one big asphalt box, top at y = 0
-            Box("Ground", _city, new Vector3(0f, -0.5f, 0f), new Vector3(240f, 1f, 240f), mAsphalt, true);
+            Box("Ground", _city, new Vector3(0f, -0.5f, 0f), new Vector3(280f, 1f, 280f), mAsphalt, true);
 
             BuildRoadLines();
 
             int k = 0;
             int[] counts = { 4, 3, 2, 4, 3, 4, 2, 3 };
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < BlockCenters.Length; i++)
             {
-                for (int j = 0; j < 3; j++)
+                for (int j = 0; j < BlockCenters.Length; j++)
                 {
                     float cx = BlockCenters[i];
                     float cz = BlockCenters[j];
-                    bool plaza = i == 1 && j == 1;
+                    bool plaza = i == BlockCenters.Length / 2 && j == BlockCenters.Length / 2;
                     BuildBlockBase(cx, cz, plaza);
                     if (!plaza)
                     {
-                        BuildBlockBuildings(cx, cz, k, counts[k]);
+                        BuildBlockBuildings(cx, cz, k, counts[k % counts.Length]);
                         k++;
                     }
                 }
@@ -416,7 +393,7 @@ namespace Zombies55.EditorTools
             var lines = Node("RoadLines", _city, Vector3.zero);
             foreach (float road in RoadCenters)
             {
-                for (float s = -60f; s <= 60f; s += 6f)
+                for (float s = -102f; s <= 102f; s += 6f)
                 {
                     bool nearIntersection = false;
                     foreach (float r in RoadCenters)
@@ -484,16 +461,17 @@ namespace Zombies55.EditorTools
         {
             var ring = Node("Skyline", _env, Vector3.zero);
             // North / south rows cover the corners; east / west rows fill between them.
-            Row(ring, true, 1f, -77f, 77f, 66f, 2);
-            Row(ring, true, -1f, -77f, 77f, 66f, 1);
-            Row(ring, false, 1f, -65f, 65f, 66f, 8);
-            Row(ring, false, -1f, -65f, 65f, 66f, 4);
+            const float near = 104f;
+            Row(ring, true, 1f, -119f, 119f, near, 2);
+            Row(ring, true, -1f, -119f, 119f, near, 1);
+            Row(ring, false, 1f, -104f, 104f, near, 8);
+            Row(ring, false, -1f, -104f, 104f, near, 4);
 
             var walls = Node("Boundary", _env, Vector3.zero);
-            Wall(walls, "WallN", new Vector3(0f, 4f, 64f), new Vector3(132f, 8f, 1f));
-            Wall(walls, "WallS", new Vector3(0f, 4f, -64f), new Vector3(132f, 8f, 1f));
-            Wall(walls, "WallE", new Vector3(64f, 4f, 0f), new Vector3(1f, 8f, 132f));
-            Wall(walls, "WallW", new Vector3(-64f, 4f, 0f), new Vector3(1f, 8f, 132f));
+            Wall(walls, "WallN", new Vector3(0f, 4f, 102f), new Vector3(206f, 8f, 1f));
+            Wall(walls, "WallS", new Vector3(0f, 4f, -102f), new Vector3(206f, 8f, 1f));
+            Wall(walls, "WallE", new Vector3(102f, 4f, 0f), new Vector3(1f, 8f, 206f));
+            Wall(walls, "WallW", new Vector3(-102f, 4f, 0f), new Vector3(1f, 8f, 206f));
         }
 
         static void Row(Transform parent, bool alongX, float sign, float from, float to, float near, int mask)
@@ -528,16 +506,16 @@ namespace Zombies55.EditorTools
 
             int k = 0;
             int[] counts = { 4, 3, 2, 4, 3, 4, 2, 3 };
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < BlockCenters.Length; i++)
             {
-                for (int j = 0; j < 3; j++)
+                for (int j = 0; j < BlockCenters.Length; j++)
                 {
                     float cx = BlockCenters[i];
                     float cz = BlockCenters[j];
-                    bool plaza = i == 1 && j == 1;
+                    bool plaza = i == BlockCenters.Length / 2 && j == BlockCenters.Length / 2;
                     BuildCornerLamps(cx, cz);
                     if (plaza) continue;
-                    BuildBlockProps(cx, cz, k, counts[k]);
+                    BuildBlockProps(cx, cz, k, counts[k % counts.Length]);
                     k++;
                 }
             }
@@ -577,8 +555,9 @@ namespace Zombies55.EditorTools
             box.size = Vector3.one * 1.1f;
         }
 
-        // Sidewalk furniture sits on the line midway between the two NPC lanes (10.8 and 12.3).
+        // Sidewalk furniture line, measured from the block center.
         const float FurnitureLine = 11.55f;
+        const float OuterLane = 12.3f;      // sidewalk lane near the curb (spawn candidates and trees)
 
         static void BuildBlockProps(float cx, float cz, int k, int count)
         {
@@ -657,6 +636,10 @@ namespace Zombies55.EditorTools
 
             // Fountain: stone basin with a basin-height collider, plus the water meshes
             var fountain = Spawn("Fountain", Sub("Plaza"), new Vector3(0f, b, 0f));
+            // The basin top is higher than an agent can step, so keep the NavMesh off it.
+            var noWalk = fountain.AddComponent<Unity.AI.Navigation.NavMeshModifier>();
+            noWalk.overrideArea = true;
+            noWalk.area = 1; // Not Walkable
             var basin = fountain.AddComponent<BoxCollider>();
             basin.center = new Vector3(0f, 0.3f, 0f);
             basin.size = new Vector3(8f, 0.6f, 8f);
@@ -703,72 +686,30 @@ namespace Zombies55.EditorTools
                 new Vector3(38f, -14.2f, 90f),
                 new Vector3(52.2f, -10f, 0f),
                 new Vector3(-8f, 52.2f, 90f),
+                // Outer streets of the 5x5 grid
+                new Vector3(-61.8f, 38f, 0f),
+                new Vector3(61.8f, -76f, 0f),
+                new Vector3(90.2f, 20f, 0f),
+                new Vector3(-99.8f, -50f, 0f),
+                new Vector3(99.8f, 70f, 0f),
+                new Vector3(-52.2f, -76f, 0f),
+                new Vector3(-76f, 90.2f, 90f),
+                new Vector3(45f, -99.8f, 90f),
+                new Vector3(-76f, 23.8f, 90f),
+                new Vector3(76f, 14.2f, 90f),
+                new Vector3(-38f, -14.2f, 90f),
+                new Vector3(0f, -23.8f, 90f),
             };
-            var models = new[] { "Car_Sedan", "Car_Hatchback", "Car_Van", "Car_Sedan", "Car_Hatchback", "Car_Sedan", "Car_Van", "Car_Hatchback" };
-            var paints = new[] { Palette.CarRed, Palette.CarBlue, Palette.CarWhite, Palette.CarSilver, Palette.CarGreen, Palette.CarYellow, Palette.CarBlack, Palette.CarWhite };
+            var models = new[] { "Car_Sedan", "Car_Hatchback", "Car_Van" };
+            var paintSet = new[] { Palette.CarRed, Palette.CarBlue, Palette.CarWhite, Palette.CarSilver, Palette.CarGreen, Palette.CarYellow, Palette.CarBlack };
             for (int i = 0; i < cars.Length; i++)
-                MakeCar(models[i], new Vector3(cars[i].x, 0f, cars[i].y), cars[i].z, paints[i]);
+                MakeCar(models[(i * 5 + i / 3) % models.Length], new Vector3(cars[i].x, 0f, cars[i].y), cars[i].z, paintSet[(i * 3 + i / 7) % paintSet.Length]);
         }
 
         static void MakeCar(string model, Vector3 pos, float yaw, Color paint)
         {
             var car = Spawn(model, Sub("Cars"), pos, yaw, new Look { Car = paint }, "ParkedCar");
             FitBox(car, 0.2f);
-        }
-
-        // ------------------------------------------------------------------ tokens
-
-        static void BuildTokens()
-        {
-            float b = SidewalkTop;
-            var spots = new[]
-            {
-                // 4 on road intersections
-                new Vector3(-19f, 0f, -19f),
-                new Vector3(19f, 0f, 19f),
-                new Vector3(57f, 0f, -19f),
-                new Vector3(-57f, 0f, 19f),
-                // 3 along mid-block streets
-                new Vector3(-38f, 0f, 19f),
-                new Vector3(19f, 0f, -38f),
-                new Vector3(57f, 0f, 38f),
-                // 2 in the plaza
-                new Vector3(-4.5f, b, -4.5f),
-                new Vector3(4.5f, b, 4.5f),
-                // on top of the 2-high crate stack
-                new Vector3(4.5f, b + 2.2f, 10.5f),
-                // between parked cars
-                new Vector3(23.8f, 0f, -30.3f),
-                // corner alley between the four buildings of the first block
-                new Vector3(-38f, b, -38f),
-            };
-            for (int i = 0; i < spots.Length; i++) MakeToken(i, spots[i]);
-        }
-
-        static void MakeToken(int index, Vector3 pos)
-        {
-            var root = Node("Token_" + (index + 1).ToString("00"), _tokens, pos);
-
-            var trigger = root.gameObject.AddComponent<SphereCollider>();
-            trigger.isTrigger = true;
-            trigger.radius = 0.9f;
-            trigger.center = new Vector3(0f, 1f, 0f);
-            var rb = root.gameObject.AddComponent<Rigidbody>();
-            rb.isKinematic = true;
-            rb.useGravity = false;
-            var pickup = root.gameObject.AddComponent<Pickup>();
-
-            var visual = Node("Visual", root, new Vector3(0f, 1f, 0f));
-            // A thick gold coin with an embossed, slightly darker face so it reads solid from a distance.
-            Prim(PrimitiveType.Cylinder, "Coin", visual, Vector3.zero, new Vector3(0.9f, 0.08f, 0.9f), mGold, false, new Vector3(90f, 0f, 0f));
-            Prim(PrimitiveType.Cylinder, "Face", visual, Vector3.zero, new Vector3(0.62f, 0.095f, 0.62f), mTokenFace, false, new Vector3(90f, 0f, 0f));
-
-            var beacon = Prim(PrimitiveType.Cylinder, "Beacon", root, new Vector3(0f, 5f, 0f), new Vector3(0.12f, 5f, 0.12f), mBeacon, false);
-            var r = beacon.GetComponent<MeshRenderer>();
-            r.shadowCastingMode = ShadowCastingMode.Off;
-            r.receiveShadows = false;
-
-            SetRef(pickup, "visual", visual);
         }
 
         // ------------------------------------------------------------------ player
@@ -807,57 +748,61 @@ namespace Zombies55.EditorTools
             public Transform Visual, Body;
         }
 
-        // Builds the character from the Char_* meshes under root and wires it into motion.
-        // gearMat is the cap or hair color; packMat null means no backpack.
+        // Rest-pose facts about the skinned body, measured while it is rebound (character space, metres).
+        static float _handTipY;
+
+        const string RigMeshPath = ModelDir + "/Characters/Generated/Char_Body_Rig.asset";
+
+        // Builds the character under root and wires it into motion: our own pivot transforms (what CharacterMotion,
+        // AimPose and EnemyAttackPose drive), one skinned body bound to them, and rigid hair / headwear / backpack.
+        // gearMat is the cap, hair or hood color; packMat null means no backpack.
         static CharacterRig BuildCharacterRig(Transform root, CharacterMotion motion, Material top, Material pants,
             Material skin, Material shoes, HeadGear gear, Material gearMat, Material packMat, float height, float width)
         {
-            var look = new Look
+            var bodyLook = new Look
             {
                 Override = new Dictionary<string, Material>
                 {
-                    { "Top", top }, { "Pants", pants }, { "Skin", skin }, { "Shoe", shoes },
-                    { "Hair", gearMat }, { "Cap", gearMat }, { "Bag", packMat }, { "Eye", mEye },
+                    { "Top", top }, { "Pants", pants }, { "Skin", skin }, { "Shoe", shoes }, { "Eye", mEye },
+                },
+            };
+            var gearLook = new Look
+            {
+                Override = new Dictionary<string, Material>
+                {
+                    { "Hair", gearMat }, { "Cap", gearMat }, { "Hood", gearMat }, { "Bag", packMat },
                 },
             };
 
             var visual = Node("Visual", root, Vector3.zero);
             visual.localScale = new Vector3(width, height, width);
             var body = Node("Body", visual, new Vector3(0f, 0.95f, 0f));
-
-            Spawn("Char_Torso", body, Vector3.zero, 0f, look, "Torso");
-
             var legL = Node("LegL", body, new Vector3(-0.11f, 0f, 0f));
             var legR = Node("LegR", body, new Vector3(0.11f, 0f, 0f));
-            foreach (var leg in new[] { legL, legR }) Spawn("Char_Leg", leg, Vector3.zero, 0f, look, "Leg");
+            var armL = Node("ArmL", body, new Vector3(-0.21f, 0.55f, 0f));
+            var armR = Node("ArmR", body, new Vector3(0.21f, 0.55f, 0f));
+            var head = Node("Head", body, new Vector3(0f, 0.60f, 0f));
+
+            BuildSkinnedBody(visual, new Dictionary<string, Transform>
+            {
+                { "Body", body }, { "LegL", legL }, { "LegR", legR }, { "ArmL", armL }, { "ArmR", armR }, { "Head", head },
+            }, bodyLook);
 
             Transform backpack = null;
             if (packMat != null)
             {
-                backpack = Node("Backpack", body, new Vector3(0f, 0.55f, -0.13f));
-                Spawn("Char_Backpack", backpack, Vector3.zero, 0f, look, "Pack");
+                // Pivot: top centre of the pack's back face, resting on the upper back (body surface at z = -0.125).
+                backpack = Node("Backpack", body, new Vector3(0f, 0.50f, -0.10f));
+                Spawn("Char_Backpack", backpack, Vector3.zero, 0f, gearLook, "Pack");
             }
 
-            var head = Node("Head", body, new Vector3(0f, 0.60f, 0f));
-            Spawn("Char_Head", head, Vector3.zero, 0f, look, "Face");
             switch (gear)
             {
-                case HeadGear.Cap: Spawn("Char_Cap", head, Vector3.zero, 0f, look, "Cap"); break;
-                case HeadGear.ShortHair: Spawn("Char_HairShort", head, Vector3.zero, 0f, look, "Hair"); break;
-                case HeadGear.Hood:
-                    if (AssetDatabase.FindAssets("Char_Hood t:Model", new[] { ModelDir }).Length > 0)
-                    {
-                        look.Override["Hood"] = gearMat;
-                        Spawn("Char_Hood", head, Vector3.zero, 0f, look, "Hood");
-                    }
-                    else Spawn("Char_HairShort", head, Vector3.zero, 0f, look, "Hair"); // hood model not exported yet
-                    break;
-                default: Spawn("Char_HairLong", head, Vector3.zero, 0f, look, "Hair"); break;
+                case HeadGear.Cap: Spawn("Char_Cap", head, Vector3.zero, 0f, gearLook, "Cap"); break;
+                case HeadGear.ShortHair: Spawn("Char_HairShort", head, Vector3.zero, 0f, gearLook, "Hair"); break;
+                case HeadGear.Hood: Spawn("Char_Hood", head, Vector3.zero, 0f, gearLook, "Hood"); break;
+                default: Spawn("Char_HairLong", head, Vector3.zero, 0f, gearLook, "Hair"); break;
             }
-
-            var armL = Node("ArmL", body, new Vector3(-0.21f, 0.55f, 0f));
-            var armR = Node("ArmR", body, new Vector3(0.21f, 0.55f, 0f));
-            foreach (var arm in new[] { armL, armR }) Spawn("Char_Arm", arm, Vector3.zero, 0f, look, "Arm");
 
             SetRef(motion, "visualRoot", visual);
             SetRef(motion, "body", body);
@@ -871,116 +816,81 @@ namespace Zombies55.EditorTools
             return new CharacterRig { Visual = visual, Body = body };
         }
 
-        // ------------------------------------------------------------------ pedestrians
-
-        const int PedestrianCount = 16;
-        const float InnerLane = 10.8f;      // block inner lane half-extent: buildings end at 10.25 (+0.3 radius); trunk edge 11.425 (-0.3)
-        const float OuterLane = 12.3f;      // block outer lane: trunk edge 11.775 + 0.3 < 12.0; curb inner edge 12.7
-        const float PlazaInnerLane = 8f;    // clears benches (6.8), crates (z from 8.85), fountain (radius 4), trees at (+-9,+-9)
-        const float PlazaOuterLane = 12.4f; // clears the loose crate at (11,-3) (edge 11.7) and the z=10.5 crates (edge 11.4)
-        const float LaneChamfer = 1.4f;     // outer lane cuts corners, keeping 0.85 m from the corner lamps at (+-12.2, +-12.2)
-
-        // Counter-clockwise loop (seen from above) around a square of half-extent h; chamfer > 0 gives 8 points.
-        static Vector3[] LoopPoints(float cx, float cz, float h, float chamfer, bool clockwise)
+        // Copies Char_Body's mesh, rebinds it to our pivots (matched by name, mirrored when the FBX bone sits on the
+        // other side of the body than our pivot of the same name) and saves the rebound mesh as an asset.
+        static SkinnedMeshRenderer BuildSkinnedBody(Transform visual, Dictionary<string, Transform> pivots, Look look)
         {
-            float a = h - chamfer;
-            var list = new List<Vector2>();
-            if (chamfer > 0f)
+            var model = Model("Char_Body");
+            var src = model.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (src == null || src.sharedMesh == null) throw new InvalidOperationException("Char_Body.fbx has no skinned mesh.");
+
+            var srcBones = src.bones;
+            var bones = new Transform[srcBones.Length];
+            for (int i = 0; i < srcBones.Length; i++)
             {
-                list.Add(new Vector2(h, -a)); list.Add(new Vector2(h, a));
-                list.Add(new Vector2(a, h)); list.Add(new Vector2(-a, h));
-                list.Add(new Vector2(-h, a)); list.Add(new Vector2(-h, -a));
-                list.Add(new Vector2(-a, -h)); list.Add(new Vector2(a, -h));
+                string n = srcBones[i].name;
+                if (!pivots.TryGetValue(n, out var pivot)) throw new InvalidOperationException("Char_Body bone '" + n + "' has no matching pivot.");
+                float srcX = model.transform.InverseTransformPoint(srcBones[i].position).x;
+                float pivotX = visual.InverseTransformPoint(pivot.position).x;
+                if (Mathf.Abs(srcX) > 0.05f && Mathf.Sign(srcX) != Mathf.Sign(pivotX))
+                    pivot = pivots[n.Substring(0, n.Length - 1) + (n.EndsWith("L") ? "R" : "L")];
+                bones[i] = pivot;
             }
-            else
+
+            // The FBX stores vertices already in Y-up character space (the 270 degree armature rotation lives only in the
+            // bone hierarchy), so the rest-pose bind matrices are just bone-inverse times the renderer's matrix.
+            var go = new GameObject("Char_Body");
+            go.transform.SetParent(visual, false);
+            var smr = go.AddComponent<SkinnedMeshRenderer>();
+
+            var mesh = Object.Instantiate(src.sharedMesh);
+            mesh.name = "Char_Body_Rig";
+            var bind = new Matrix4x4[bones.Length];
+            for (int i = 0; i < bones.Length; i++) bind[i] = bones[i].worldToLocalMatrix * go.transform.localToWorldMatrix;
+            mesh.bindposes = bind;
+
+            // Right-hand tip, for the weapon holder: lowest vertex mostly weighted to the arm that ends up as our ArmR.
+            int armRIndex = Array.IndexOf(bones, pivots["ArmR"]);
+            var verts = mesh.vertices;
+            var perVertex = mesh.GetBonesPerVertex();
+            var weights = mesh.GetAllBoneWeights();
+            float tip = float.MaxValue;
+            int off = 0;
+            for (int v = 0; v < verts.Length; v++)
             {
-                list.Add(new Vector2(h, -h)); list.Add(new Vector2(h, h));
-                list.Add(new Vector2(-h, h)); list.Add(new Vector2(-h, -h));
+                int n = perVertex[v];
+                int best = -1;
+                float bw = -1f;
+                for (int k = 0; k < n; k++)
+                    if (weights[off + k].weight > bw) { bw = weights[off + k].weight; best = weights[off + k].boneIndex; }
+                off += n;
+                if (best == armRIndex) tip = Mathf.Min(tip, verts[v].y);
             }
-            if (clockwise) list.Reverse();
-            var pts = new Vector3[list.Count];
-            for (int i = 0; i < pts.Length; i++) pts[i] = new Vector3(cx + list[i].x, SidewalkTop, cz + list[i].y);
-            return pts;
-        }
+            _handTipY = tip;
 
-        static void BuildPedestrians()
-        {
-            var peds = Root("Pedestrians");
-
-            // Block loop centers in grid order; index 4 is the plaza.
-            var centers = new List<Vector2>();
-            for (int i = 0; i < 3; i++)
-                for (int j = 0; j < 3; j++)
-                    centers.Add(new Vector2(BlockCenters[i], BlockCenters[j]));
-
-            // First pass: one walker per loop (alternating lanes). Second pass: the other lane on seven loops,
-            // so every lane holds at most one walker and nobody has to overtake.
-            int[] secondPass = { 4, 0, 2, 6, 8, 1, 7 };
-
-            var skins = new[] { mSecondary, Mat("SkinTan", Palette.SkinTan), Mat("SkinDeep", Palette.SkinDeep), Mat("SkinRich", Palette.SkinRich) };
-            var hairs = new[] { Mat("HairDark", Palette.HairDark), Mat("HairAuburn", Palette.HairAuburn), mTrunk };
-            var tops = new[] { mSand, mDustyBlue, mTerracotta, mSage, mTrim, mWindow, mLeaf };
-            var legsMats = new[] { mPants, mWindow, mTrunk, mShadow };
-            var hats = new[] { mDustyBlue, mSand, mSage, mTrim };
-            var packs = new[] { mTrunk, mWindow, mSage, mSand };
-
-            for (int n = 0; n < PedestrianCount; n++)
+            EnsureFolder(ModelDir + "/Characters/Generated");
+            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(RigMeshPath);
+            if (existing != null)
             {
-                int loop = n < 9 ? n : secondPass[n - 9];
-                bool plaza = loop == 4;
-                bool inner = n < 9 ? (loop % 2 == 0) : (loop % 2 != 0);
-                float h = plaza ? (inner ? PlazaInnerLane : PlazaOuterLane) : (inner ? InnerLane : OuterLane);
-                // Inner lane walks clockwise, outer lane counter-clockwise, so lane-mates never meet head-on.
-                var pts = LoopPoints(centers[loop].x, centers[loop].y, h, inner ? 0f : LaneChamfer, inner);
-
-                int seg = _rng.Next(pts.Length);
-                float t = Rf(0f, 1f);
-                Vector3 a = pts[seg], b = pts[(seg + 1) % pts.Length];
-                Vector3 pos = Vector3.Lerp(a, b, t);
-                Vector3 dir = (b - a).normalized;
-
-                var go = new GameObject("Pedestrian_" + (n + 1).ToString("00"));
-                go.transform.SetParent(peds, false);
-                go.transform.position = pos;
-                go.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
-
-                var capsule = go.AddComponent<CapsuleCollider>();
-                capsule.radius = 0.3f;
-                capsule.height = 1.8f;
-                capsule.center = new Vector3(0f, 0.9f, 0f);
-                var rb = go.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
-
-                var ped = go.AddComponent<Pedestrian>();
-                var motion = go.AddComponent<CharacterMotion>();
-
-                var skin = skins[_rng.Next(skins.Length)];
-                var top = tops[_rng.Next(tops.Length)];
-                var pants = legsMats[_rng.Next(legsMats.Length)];
-                var gear = (HeadGear)_rng.Next(3);
-                Material gearMat = gear == HeadGear.Cap ? hats[_rng.Next(hats.Length)] : hairs[_rng.Next(hairs.Length)];
-                Material pack = _rng.NextDouble() < 0.3 ? packs[_rng.Next(packs.Length)] : null;
-                float height = Rf(0.94f, 1.06f);
-                float width = Rf(0.92f, 1.08f);
-                BuildCharacterRig(go.transform, motion, top, pants, skin, mShadow, gear, gearMat, pack, height, width);
-
-                // Slower, shorter strides than the sprinting player.
-                SetFloat(motion, "stepFrequency", 1.15f);
-                SetFloat(motion, "legSwing", 26f);
-                SetFloat(motion, "armSwing", 20f);
-                SetFloat(motion, "bobAmplitude", 0.04f);
-
-                var so = new SerializedObject(ped);
-                var wp = so.FindProperty("waypoints");
-                wp.arraySize = pts.Length;
-                for (int i = 0; i < pts.Length; i++) wp.GetArrayElementAtIndex(i).vector3Value = pts[i];
-                so.FindProperty("startIndex").intValue = seg;
-                so.FindProperty("speed").floatValue = Rf(1.1f, 1.7f);
-                so.ApplyModifiedPropertiesWithoutUndo();
-
-                SetLayerRecursive(go, 2); // Ignore Raycast: keeps Cinemachine obstacle avoidance (Default layer) off them
+                EditorUtility.CopySerialized(mesh, existing);
+                Object.DestroyImmediate(mesh);
+                mesh = existing;
             }
+            else AssetDatabase.CreateAsset(mesh, RigMeshPath);
+            EditorUtility.SetDirty(mesh);
+
+            smr.sharedMesh = mesh;
+            smr.bones = bones;
+            smr.rootBone = pivots["Body"];
+            smr.updateWhenOffscreen = false;
+            smr.localBounds = new Bounds(new Vector3(0f, 0f, 0.05f), new Vector3(1.4f, 2.2f, 1.2f)); // relative to the Body pivot
+            smr.quality = SkinQuality.Bone4;
+
+            var srcMats = src.sharedMaterials;
+            var mats = new Material[srcMats.Length];
+            for (int i = 0; i < mats.Length; i++) mats[i] = SlotMat(srcMats[i] != null ? srcMats[i].name : "", look);
+            smr.sharedMaterials = mats;
+            return smr;
         }
 
         static void SetFloat(Object target, string field, float value)
@@ -1060,50 +970,6 @@ namespace Zombies55.EditorTools
             var fx = gameGo.AddComponent<FeelFX>();
             var impulse = gameGo.AddComponent<CinemachineImpulseSource>();
 
-            // Pickup burst
-            var burst = MakeSystem("PickupBurst", gameGo.transform, 1f, false, false, 64);
-            {
-                var main = burst.main;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.7f);
-                main.startSpeed = new ParticleSystem.MinMaxCurve(2f, 3f);
-                main.startSize = new ParticleSystem.MinMaxCurve(0.15f, 0.25f);
-                main.gravityModifier = 0.5f;
-                main.startColor = new ParticleSystem.MinMaxGradient(Palette.Accent, Palette.Trim);
-                var shape = burst.shape;
-                shape.enabled = true;
-                shape.shapeType = ParticleSystemShapeType.Sphere;
-                shape.radius = 0.2f;
-            }
-
-            // Confetti
-            var confetti = MakeSystem("Confetti", gameGo.transform, 1f, false, false, 128);
-            {
-                var main = confetti.main;
-                main.startLifetime = 1.2f;
-                main.startSpeed = new ParticleSystem.MinMaxCurve(6f, 9f);
-                main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.2f);
-                main.gravityModifier = 1f;
-                var gradient = new Gradient();
-                gradient.mode = GradientMode.Fixed;
-                gradient.SetKeys(
-                    new[]
-                    {
-                        new GradientColorKey(Palette.Accent, 0.34f),
-                        new GradientColorKey(Palette.CharacterPrimary, 0.67f),
-                        new GradientColorKey(Palette.Terracotta, 1f),
-                    },
-                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
-                var mmg = new ParticleSystem.MinMaxGradient(gradient);
-                mmg.mode = ParticleSystemGradientMode.RandomColor;
-                main.startColor = mmg;
-                var shape = confetti.shape;
-                shape.enabled = true;
-                shape.shapeType = ParticleSystemShapeType.Cone;
-                shape.angle = 25f;
-                shape.radius = 0.3f;
-                shape.rotation = new Vector3(-90f, 0f, 0f); // cone axis is +Z; rotate so it emits +Y
-            }
-
             // Landing puff
             var puff = MakeSystem("LandingPuff", gameGo.transform, 1f, false, false, 32);
             {
@@ -1142,25 +1008,8 @@ namespace Zombies55.EditorTools
                 vol.z = new ParticleSystem.MinMaxCurve(-0.08f, 0.08f);
             }
 
-            // Floating text template
-            var textGo = new GameObject("FloatingText");
-            textGo.transform.SetParent(gameGo.transform, false);
-            var text = textGo.AddComponent<TextMeshPro>();
-            text.font = TMP_Settings.defaultFontAsset;
-            text.fontSharedMaterial = ShellBuilder.GetOrCreateOutlineMaterial();
-            text.fontSize = 6f;
-            text.fontStyle = FontStyles.Bold;
-            text.color = Palette.Accent;
-            text.alignment = TextAlignmentOptions.Center;
-            text.text = "+1";
-            textGo.SetActive(false);
-
             SetRef(fx, "player", _playerController);
-            SetRef(fx, "popTarget", _bodyPivot);
-            SetRef(fx, "pickupBurst", burst);
-            SetRef(fx, "confetti", confetti);
             SetRef(fx, "landingPuff", puff);
-            SetRef(fx, "floatingTextTemplate", text);
             SetRef(fx, "impulse", impulse);
         }
 

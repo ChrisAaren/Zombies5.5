@@ -51,7 +51,9 @@ namespace Zombies55.EditorTools
                 if (mi.importCameras) { mi.importCameras = false; dirty = true; }
                 if (mi.importLights) { mi.importLights = false; dirty = true; }
                 if (mi.importVisibility) { mi.importVisibility = false; dirty = true; }
-                if (mi.animationType != ModelImporterAnimationType.None) { mi.animationType = ModelImporterAnimationType.None; dirty = true; }
+                // Only the skinned body keeps its bones; with animation type None the importer drops the SkinnedMeshRenderer.
+                var animType = path.EndsWith("/Char_Body.fbx") ? ModelImporterAnimationType.Generic : ModelImporterAnimationType.None;
+                if (mi.animationType != animType) { mi.animationType = animType; dirty = true; }
                 if (mi.importAnimation) { mi.importAnimation = false; dirty = true; }
                 if (mi.isReadable) { mi.isReadable = false; dirty = true; }
                 if (mi.materialImportMode != ModelImporterMaterialImportMode.ImportStandard) { mi.materialImportMode = ModelImporterMaterialImportMode.ImportStandard; dirty = true; }

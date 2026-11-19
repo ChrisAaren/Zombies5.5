@@ -103,24 +103,25 @@ namespace Zombies55.EditorTools
             SetFloat(motion, "armSwing", 14f);
             SetFloat(motion, "accelLean", 14f);
 
+            // Body: head y 1.56-1.79, torso and upper arms y 0.87-1.55 (x +-0.33), legs y 0-0.99 (x +-0.2).
             AddHitbox(go.transform, "Hit_Head", HitZone.Head, c =>
             {
                 var s = c.AddComponent<SphereCollider>();
-                s.center = new Vector3(0f, 1.57f, 0f);
-                s.radius = 0.2f;
+                s.center = new Vector3(0f, 1.67f, 0.01f);
+                s.radius = 0.15f;
             });
             AddHitbox(go.transform, "Hit_Torso", HitZone.Body, c =>
             {
                 var b = c.AddComponent<BoxCollider>();
-                b.center = new Vector3(0f, 1.15f, 0f);
-                b.size = new Vector3(0.55f, 0.65f, 0.35f);
+                b.center = new Vector3(0f, 1.2f, 0f);
+                b.size = new Vector3(0.64f, 0.68f, 0.32f);
             });
             AddHitbox(go.transform, "Hit_Legs", HitZone.Body, c =>
             {
                 var k = c.AddComponent<CapsuleCollider>();
-                k.center = new Vector3(0f, 0.42f, 0f);
+                k.center = new Vector3(0f, 0.5f, 0f);
                 k.radius = 0.2f;
-                k.height = 0.84f;
+                k.height = 1.0f;
             });
 
             SetLayerRecursive(go, GameLayers.Enemy);

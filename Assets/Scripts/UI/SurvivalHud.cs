@@ -294,7 +294,7 @@ namespace Zombies55
                 float beat = 0.5f + 0.5f * Mathf.Sin(t * Mathf.Lerp(7f, 3.5f, k));
                 lowPulse = Mathf.Lerp(0.55f, 0.2f, k) * (0.55f + 0.45f * beat);
             }
-            vignette.color = Palette.WithAlpha(Palette.Danger, Mathf.Max(_damageFlash * 0.85f, lowPulse));
+            vignette.color = Palette.WithAlpha(Palette.Danger, Mathf.Max(_damageFlash * 0.55f, lowPulse));
         }
 
         void UpdatePoints(float dt)

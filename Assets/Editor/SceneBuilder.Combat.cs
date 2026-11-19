@@ -135,8 +135,8 @@ namespace Zombies55.EditorTools
             var armR = _bodyPivot.Find("ArmR");
 
             // Hand holder at the end of the right arm; +Z of the holder is along the arm.
-            float handY = -0.52f;
-            if (CombatBounds(armR.gameObject, null, out var ab) && ab.size.sqrMagnitude > 0.01f) handY = ab.min.y + 0.06f;
+            // The palm sits a little above the lowest hand vertex of the skinned body (shoulder pivot is at y = 1.5).
+            float handY = _handTipY + 0.08f - 1.5f;
             var holder = Node("HandHolder", armR, new Vector3(0f, handY, 0f));
             holder.localRotation = Quaternion.Euler(90f, 0f, 0f);
 
@@ -305,6 +305,15 @@ namespace Zombies55.EditorTools
                 Box("Screen", root.transform, new Vector3(0f, 2.0f, 0.21f), new Vector3(1.1f, 0.3f, 0.04f), Mat("KioskScreenStandIn", Palette.Accent, 1.5f), false);
             }
 
+            // The cabinet glass is see-through so the gun on sale shows.
+            foreach (var r in root.GetComponentsInChildren<Renderer>())
+            {
+                var ms = r.sharedMaterials;
+                for (int i = 0; i < ms.Length; i++)
+                    if (ms[i] != null && ms[i].name.StartsWith("S_Glass")) ms[i] = KioskGlassMat();
+                r.sharedMaterials = ms;
+            }
+
             var display = FindDeep(root.transform, "Display");
             if (display == null) display = Node("Display", root.transform, new Vector3(0f, 1.1f, 0.05f));
 
@@ -323,7 +332,7 @@ namespace Zombies55.EditorTools
             }
 
             // Price label on the screen panel (or a guessed spot), readable from the front (+Z).
-            Vector3 labelPos = new Vector3(0f, 2.0f, 0.3f);
+            Vector3 labelPos = new Vector3(0f, 2.03f, 0.3f);
             Vector2 labelSize = new Vector2(1.1f, 0.34f);
             if (CombatBounds(root, r => r.sharedMaterial != null && r.sharedMaterial.name.Contains("KioskScreen"), out var sb)
                 && sb.size.x > 0.2f)
@@ -342,14 +351,46 @@ namespace Zombies55.EditorTools
             label.fontSizeMin = 0.5f;
             label.fontSizeMax = 3f;
             label.fontStyle = FontStyles.Bold;
-            label.color = Palette.Accent;
+            label.color = Palette.Shadow; // dark on the bright emissive panel
             label.alignment = TextAlignmentOptions.Center;
             label.text = def.DisplayName.ToUpperInvariant() + "\n" + def.Cost;
-            label.rectTransform.sizeDelta = labelSize;
+            label.rectTransform.sizeDelta = new Vector2(Mathf.Min(labelSize.x, 0.95f), Mathf.Min(labelSize.y, 0.19f));
+
+            // A small warm light keeps the gun readable in shade.
+            var lightGo = new GameObject("DisplayLight");
+            lightGo.transform.SetParent(display, false);
+            lightGo.transform.localPosition = new Vector3(0f, 0.25f, 0.45f);
+            var light = lightGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.92f, 0.78f);
+            light.intensity = 1.2f;
+            light.range = 2.2f;
+            light.shadows = LightShadows.None;
 
             FitBox(root);
             var kiosk = root.AddComponent<WeaponKiosk>();
             kiosk.Configure(def.Id, display, label);
+        }
+
+        static Material KioskGlassMat()
+        {
+            var m = LoadOrCreateMat("KioskGlassClear", _litShader);
+            m.SetFloat("_Surface", 1f);
+            m.SetFloat("_Blend", 0f);
+            m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            m.SetFloat("_ZWrite", 0f);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.SetOverrideTag("RenderType", "Transparent");
+            m.SetShaderPassEnabled("ShadowCaster", false);
+            m.renderQueue = 3000;
+            var c = new Color(0.6f, 0.78f, 0.85f, 0.14f);
+            m.SetColor("_BaseColor", c);
+            m.color = c;
+            m.SetFloat("_Smoothness", 0.95f);
+            m.SetFloat("_Metallic", 0f);
+            EditorUtility.SetDirty(m);
+            return m;
         }
 
         // ------------------------------------------------------------------ barrels

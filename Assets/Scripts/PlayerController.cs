@@ -8,7 +8,7 @@ namespace Zombies55
     // Keyboard: WASD / arrows to move, Shift to sprint, Space to jump.
     // Gamepad: left stick to move, left stick press or right trigger to sprint, South button to jump.
     [RequireComponent(typeof(CharacterController))]
-    public class PlayerController : MonoBehaviour
+    public class PlayerController : MonoBehaviour, ICharacterMover
     {
         [Header("Movement")]
         [SerializeField] float walkSpeed = 5f;

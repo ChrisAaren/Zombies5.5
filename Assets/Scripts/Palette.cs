@@ -35,6 +35,13 @@ namespace Zombies55
         public static readonly Color CharacterSecondary = Hex("#FFE3C8");
         public static readonly Color Pants = Hex("#33415C");
 
+        // Pedestrians (the player's own skin is CharacterSecondary)
+        public static readonly Color SkinTan = Hex("#E0AC82");     // warm tan skin tone for NPC faces and hands
+        public static readonly Color SkinDeep = Hex("#A9704A");    // deeper golden-brown skin tone for NPCs
+        public static readonly Color SkinRich = Hex("#7B4A2E");    // rich dark-brown skin tone for NPCs
+        public static readonly Color HairDark = Hex("#3B2A24");    // near-black warm brown NPC hair
+        public static readonly Color HairAuburn = Hex("#8C4A2F");  // auburn NPC hair that catches golden light
+
         // Nature and props
         public static readonly Color Leaf = Hex("#5E9C6E");
         public static readonly Color Trunk = Hex("#7A5236");

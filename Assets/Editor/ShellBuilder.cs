@@ -126,10 +126,10 @@ namespace Zombies55.EditorTools
         {
             var root = CreateStretched("TitleScreen", parent);
 
-            var shadow = CreateText(root, "TitleShadow", "ZOMBIES 5.5", 210, Palette.WithAlpha(Palette.UiDark, 0.6f), 10f, true);
+            var shadow = CreateText(root, "TitleShadow", "ZOMBIES 5.5", 165, Palette.WithAlpha(Palette.UiDark, 0.6f), 10f, true);
             Place(shadow.rectTransform, new Vector2(0.5f, 0.6f), new Vector2(8f, -8f), new Vector2(1500f, 260f));
 
-            var title = CreateText(root, "Title", "ZOMBIES 5.5", 210, Palette.Accent, 10f, true);
+            var title = CreateText(root, "Title", "ZOMBIES 5.5", 165, Palette.Accent, 10f, true);
             Place(title.rectTransform, new Vector2(0.5f, 0.6f), Vector2.zero, new Vector2(1500f, 260f));
 
             prompt = CreateText(root, "Prompt", "PRESS ANY KEY", 40, Palette.UiLight, 14f, true);

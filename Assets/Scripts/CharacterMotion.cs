@@ -7,8 +7,6 @@ namespace Zombies55
     // head look, and an idle breathe so the character never freezes.
     public class CharacterMotion : MonoBehaviour
     {
-        [SerializeField] PlayerController controller;
-
         [Header("Rig (pivots)")]
         [SerializeField] Transform visualRoot;   // at the feet: squash, stretch, lean
         [SerializeField] Transform body;         // hips: bob and roll
@@ -33,9 +31,20 @@ namespace Zombies55
         [SerializeField] float landSquash = 0.82f;
         [SerializeField] float squashRecover = 10f;
 
+        [Header("Look (only when LookTarget is set; the player never sets it)")]
+        [SerializeField] float lookRange = 4f;
+        [SerializeField] float lookMaxYaw = 60f;
+        [SerializeField] float lookDamping = 6f;
+
         [Header("Idle")]
         [SerializeField] float breatheAmplitude = 0.012f;
         [SerializeField] float breatheFrequency = 0.55f;
+
+        ICharacterMover _mover;
+        float _lookYaw;
+
+        // Optional: the head turns toward this transform when it is within lookRange.
+        public Transform LookTarget { get; set; }
 
         Vector3 _bodyRest, _visualScaleRest, _backpackRestEuler;
         Quaternion _armLRest, _armRRest, _legLRest, _legRRest, _headRest;
@@ -49,7 +58,7 @@ namespace Zombies55
 
         void Awake()
         {
-            if (controller == null) controller = GetComponentInParent<PlayerController>();
+            _mover = GetComponentInParent<ICharacterMover>();
             _bodyRest = body.localPosition;
             _visualScaleRest = visualRoot.localScale;
             _armLRest = armL.localRotation;
@@ -63,15 +72,16 @@ namespace Zombies55
 
         void OnEnable()
         {
-            if (controller == null) controller = GetComponentInParent<PlayerController>();
-            controller.Jumped += OnJumped;
-            controller.Landed += OnLanded;
+            if (_mover == null) return;
+            _mover.Jumped += OnJumped;
+            _mover.Landed += OnLanded;
         }
 
         void OnDisable()
         {
-            controller.Jumped -= OnJumped;
-            controller.Landed -= OnLanded;
+            if (_mover == null) return;
+            _mover.Jumped -= OnJumped;
+            _mover.Landed -= OnLanded;
         }
 
         void OnJumped()
@@ -89,12 +99,12 @@ namespace Zombies55
         void LateUpdate()
         {
             float dt = Time.deltaTime;
-            if (dt <= 0f) return;
+            if (dt <= 0f || _mover == null) return;
 
-            Vector3 vel = controller.Velocity;
+            Vector3 vel = _mover.Velocity;
             Vector3 planar = new Vector3(vel.x, 0f, vel.z);
-            float speedN = Mathf.Clamp01(planar.magnitude / Mathf.Max(0.01f, controller.MaxSpeed));
-            bool grounded = controller.IsGrounded;
+            float speedN = Mathf.Clamp01(planar.magnitude / Mathf.Max(0.01f, _mover.MaxSpeed));
+            bool grounded = _mover.IsGrounded;
 
             // Gait weight blends in with speed and out over ~0.3 s when stopping or airborne.
             float targetWeight = grounded ? Mathf.Clamp01(speedN * 1.6f) : 0f;
@@ -134,7 +144,24 @@ namespace Zombies55
             visualRoot.localScale = Vector3.Scale(_visualScaleRest, Vector3.one + _scaleOffset);
 
             // Head counter-rotates the bank a little and nods with the gait.
-            head.localRotation = _headRest * Quaternion.Euler(-s * 2f * _gaitWeight - _pitch * 0.4f, 0f, -(_bank + roll) * 0.5f);
+            Quaternion nod = Quaternion.Euler(-s * 2f * _gaitWeight - _pitch * 0.4f, 0f, -(_bank + roll) * 0.5f);
+            if (LookTarget != null)
+            {
+                float targetYaw = 0f;
+                Vector3 d = LookTarget.position - transform.position;
+                d.y = 0f;
+                if (d.sqrMagnitude < lookRange * lookRange && d.sqrMagnitude > 0.01f)
+                {
+                    float a = Mathf.DeltaAngle(transform.eulerAngles.y, Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg);
+                    if (Mathf.Abs(a) < 120f) targetYaw = Mathf.Clamp(a, -lookMaxYaw, lookMaxYaw);
+                }
+                _lookYaw = Mathf.Lerp(_lookYaw, targetYaw, 1f - Mathf.Exp(-lookDamping * dt));
+                head.localRotation = _headRest * Quaternion.Euler(0f, _lookYaw, 0f) * nod;
+            }
+            else
+            {
+                head.localRotation = _headRest * nod;
+            }
 
             // Backpack lags behind the body's motion (secondary motion).
             if (backpack != null)

@@ -82,6 +82,7 @@ namespace Zombies55.EditorTools
             BuildProps();
             BuildTokens();
             BuildPlayer();
+            BuildPedestrians();
             BuildCamera();
             BuildGame();
 
@@ -659,27 +660,62 @@ namespace Zombies55.EditorTools
             _playerController = pc;
             var motion = root.AddComponent<CharacterMotion>();
 
-            var visual = Node("Visual", root.transform, Vector3.zero);
+            var rig = BuildCharacterRig(root.transform, motion, mPrimary, mPants, mSecondary, mShadow,
+                HeadGear.Cap, mTerracotta, mTerracotta, 1f, 1f);
+            _bodyPivot = rig.Body;
+        }
+
+        // ------------------------------------------------------------------ character rig
+
+        enum HeadGear { Cap, ShortHair, LongHair }
+
+        struct CharacterRig
+        {
+            public Transform Visual, Body;
+        }
+
+        // Builds the primitive character (about 15 primitives) under root and wires it into motion.
+        // gearMat is the cap or hair color; packMat null means no backpack.
+        static CharacterRig BuildCharacterRig(Transform root, CharacterMotion motion, Material top, Material pants,
+            Material skin, Material shoes, HeadGear gear, Material gearMat, Material packMat, float height, float width)
+        {
+            var visual = Node("Visual", root, Vector3.zero);
+            visual.localScale = new Vector3(width, height, width);
             var body = Node("Body", visual, new Vector3(0f, 0.95f, 0f));
-            _bodyPivot = body;
 
             var legL = Node("LegL", body, new Vector3(-0.14f, 0f, 0f));
             var legR = Node("LegR", body, new Vector3(0.14f, 0f, 0f));
             foreach (var leg in new[] { legL, legR })
             {
-                Prim(PrimitiveType.Capsule, "Pants", leg, new Vector3(0f, -0.45f, 0f), new Vector3(0.2f, 0.42f, 0.2f), mPants, false);
-                Prim(PrimitiveType.Cube, "Shoe", leg, new Vector3(0f, -0.88f, 0.05f), new Vector3(0.2f, 0.12f, 0.32f), mShadow, false);
+                Prim(PrimitiveType.Capsule, "Pants", leg, new Vector3(0f, -0.45f, 0f), new Vector3(0.2f, 0.42f, 0.2f), pants, false);
+                Prim(PrimitiveType.Cube, "Shoe", leg, new Vector3(0f, -0.88f, 0.05f), new Vector3(0.2f, 0.12f, 0.32f), shoes, false);
             }
 
-            Prim(PrimitiveType.Capsule, "Torso", body, new Vector3(0f, 0.38f, 0f), new Vector3(0.5f, 0.36f, 0.36f), mPrimary, false);
+            Prim(PrimitiveType.Capsule, "Torso", body, new Vector3(0f, 0.38f, 0f), new Vector3(0.5f, 0.36f, 0.36f), top, false);
 
-            var backpack = Node("Backpack", body, new Vector3(0f, 0.55f, -0.2f));
-            Prim(PrimitiveType.Cube, "Pack", backpack, new Vector3(0f, -0.15f, -0.06f), new Vector3(0.38f, 0.42f, 0.2f), mTerracotta, false);
+            Transform backpack = null;
+            if (packMat != null)
+            {
+                backpack = Node("Backpack", body, new Vector3(0f, 0.55f, -0.2f));
+                Prim(PrimitiveType.Cube, "Pack", backpack, new Vector3(0f, -0.15f, -0.06f), new Vector3(0.38f, 0.42f, 0.2f), packMat, false);
+            }
 
             var head = Node("Head", body, new Vector3(0f, 0.72f, 0f));
-            Prim(PrimitiveType.Sphere, "Face", head, new Vector3(0f, 0.12f, 0f), Vector3.one * 0.42f, mSecondary, false);
-            Prim(PrimitiveType.Sphere, "Cap", head, new Vector3(0f, 0.25f, 0f), new Vector3(0.45f, 0.24f, 0.45f), mTerracotta, false);
-            Prim(PrimitiveType.Cube, "Brim", head, new Vector3(0f, 0.2f, 0.24f), new Vector3(0.36f, 0.04f, 0.26f), mTerracotta, false);
+            Prim(PrimitiveType.Sphere, "Face", head, new Vector3(0f, 0.12f, 0f), Vector3.one * 0.42f, skin, false);
+            switch (gear)
+            {
+                case HeadGear.Cap:
+                    Prim(PrimitiveType.Sphere, "Cap", head, new Vector3(0f, 0.25f, 0f), new Vector3(0.45f, 0.24f, 0.45f), gearMat, false);
+                    Prim(PrimitiveType.Cube, "Brim", head, new Vector3(0f, 0.2f, 0.24f), new Vector3(0.36f, 0.04f, 0.26f), gearMat, false);
+                    break;
+                case HeadGear.ShortHair:
+                    Prim(PrimitiveType.Sphere, "Hair", head, new Vector3(0f, 0.24f, -0.02f), new Vector3(0.45f, 0.26f, 0.46f), gearMat, false);
+                    break;
+                default:
+                    Prim(PrimitiveType.Sphere, "Hair", head, new Vector3(0f, 0.24f, -0.02f), new Vector3(0.45f, 0.26f, 0.46f), gearMat, false);
+                    Prim(PrimitiveType.Sphere, "HairBack", head, new Vector3(0f, 0.04f, -0.12f), new Vector3(0.4f, 0.46f, 0.26f), gearMat, false);
+                    break;
+            }
             Prim(PrimitiveType.Sphere, "EyeL", head, new Vector3(-0.08f, 0.14f, 0.19f), Vector3.one * 0.06f, mShadow, false);
             Prim(PrimitiveType.Sphere, "EyeR", head, new Vector3(0.08f, 0.14f, 0.19f), Vector3.one * 0.06f, mShadow, false);
 
@@ -689,11 +725,10 @@ namespace Zombies55.EditorTools
             armR.localRotation = Quaternion.Euler(0f, 0f, 8f);
             foreach (var arm in new[] { armL, armR })
             {
-                Prim(PrimitiveType.Capsule, "Sleeve", arm, new Vector3(0f, -0.28f, 0f), new Vector3(0.15f, 0.28f, 0.15f), mPrimary, false);
-                Prim(PrimitiveType.Sphere, "Hand", arm, new Vector3(0f, -0.58f, 0f), Vector3.one * 0.13f, mSecondary, false);
+                Prim(PrimitiveType.Capsule, "Sleeve", arm, new Vector3(0f, -0.28f, 0f), new Vector3(0.15f, 0.28f, 0.15f), top, false);
+                Prim(PrimitiveType.Sphere, "Hand", arm, new Vector3(0f, -0.58f, 0f), Vector3.one * 0.13f, skin, false);
             }
 
-            SetRef(motion, "controller", pc);
             SetRef(motion, "visualRoot", visual);
             SetRef(motion, "body", body);
             SetRef(motion, "legL", legL);
@@ -701,7 +736,136 @@ namespace Zombies55.EditorTools
             SetRef(motion, "armL", armL);
             SetRef(motion, "armR", armR);
             SetRef(motion, "head", head);
-            SetRef(motion, "backpack", backpack);
+            if (backpack != null) SetRef(motion, "backpack", backpack);
+
+            return new CharacterRig { Visual = visual, Body = body };
+        }
+
+        // ------------------------------------------------------------------ pedestrians
+
+        const int PedestrianCount = 16;
+        const float InnerLane = 10.8f;      // block inner lane half-extent: buildings end at 10.25 (+0.3 radius); trunk edge 11.425 (-0.3)
+        const float OuterLane = 12.3f;      // block outer lane: trunk edge 11.775 + 0.3 < 12.0; curb inner edge 12.7
+        const float PlazaInnerLane = 8f;    // clears benches (6.8), crates (z from 8.85), fountain (radius 4), trees at (+-9,+-9)
+        const float PlazaOuterLane = 12.4f; // clears the loose crate at (11,-3) (edge 11.7) and the z=10.5 crates (edge 11.4)
+        const float LaneChamfer = 1.4f;     // outer lane cuts corners, keeping 0.85 m from the corner lamps at (+-12.2, +-12.2)
+
+        // Counter-clockwise loop (seen from above) around a square of half-extent h; chamfer > 0 gives 8 points.
+        static Vector3[] LoopPoints(float cx, float cz, float h, float chamfer, bool clockwise)
+        {
+            float a = h - chamfer;
+            var list = new List<Vector2>();
+            if (chamfer > 0f)
+            {
+                list.Add(new Vector2(h, -a)); list.Add(new Vector2(h, a));
+                list.Add(new Vector2(a, h)); list.Add(new Vector2(-a, h));
+                list.Add(new Vector2(-h, a)); list.Add(new Vector2(-h, -a));
+                list.Add(new Vector2(-a, -h)); list.Add(new Vector2(a, -h));
+            }
+            else
+            {
+                list.Add(new Vector2(h, -h)); list.Add(new Vector2(h, h));
+                list.Add(new Vector2(-h, h)); list.Add(new Vector2(-h, -h));
+            }
+            if (clockwise) list.Reverse();
+            var pts = new Vector3[list.Count];
+            for (int i = 0; i < pts.Length; i++) pts[i] = new Vector3(cx + list[i].x, SidewalkTop, cz + list[i].y);
+            return pts;
+        }
+
+        static void BuildPedestrians()
+        {
+            var peds = Root("Pedestrians");
+
+            // Block loop centers in grid order; index 4 is the plaza.
+            var centers = new List<Vector2>();
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    centers.Add(new Vector2(BlockCenters[i], BlockCenters[j]));
+
+            // First pass: one walker per loop (alternating lanes). Second pass: the other lane on seven loops,
+            // so every lane holds at most one walker and nobody has to overtake.
+            int[] secondPass = { 4, 0, 2, 6, 8, 1, 7 };
+
+            var skins = new[] { mSecondary, Mat("SkinTan", Palette.SkinTan), Mat("SkinDeep", Palette.SkinDeep), Mat("SkinRich", Palette.SkinRich) };
+            var hairs = new[] { Mat("HairDark", Palette.HairDark), Mat("HairAuburn", Palette.HairAuburn), mTrunk };
+            var tops = new[] { mSand, mDustyBlue, mTerracotta, mSage, mTrim, mWindow, mLeaf };
+            var legsMats = new[] { mPants, mWindow, mTrunk, mShadow };
+            var hats = new[] { mDustyBlue, mSand, mSage, mTrim };
+            var packs = new[] { mTrunk, mWindow, mSage, mSand };
+
+            for (int n = 0; n < PedestrianCount; n++)
+            {
+                int loop = n < 9 ? n : secondPass[n - 9];
+                bool plaza = loop == 4;
+                bool inner = n < 9 ? (loop % 2 == 0) : (loop % 2 != 0);
+                float h = plaza ? (inner ? PlazaInnerLane : PlazaOuterLane) : (inner ? InnerLane : OuterLane);
+                // Inner lane walks clockwise, outer lane counter-clockwise, so lane-mates never meet head-on.
+                var pts = LoopPoints(centers[loop].x, centers[loop].y, h, inner ? 0f : LaneChamfer, inner);
+
+                int seg = _rng.Next(pts.Length);
+                float t = Rf(0f, 1f);
+                Vector3 a = pts[seg], b = pts[(seg + 1) % pts.Length];
+                Vector3 pos = Vector3.Lerp(a, b, t);
+                Vector3 dir = (b - a).normalized;
+
+                var go = new GameObject("Pedestrian_" + (n + 1).ToString("00"));
+                go.transform.SetParent(peds, false);
+                go.transform.position = pos;
+                go.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
+
+                var capsule = go.AddComponent<CapsuleCollider>();
+                capsule.radius = 0.3f;
+                capsule.height = 1.8f;
+                capsule.center = new Vector3(0f, 0.9f, 0f);
+                var rb = go.AddComponent<Rigidbody>();
+                rb.isKinematic = true;
+                rb.useGravity = false;
+
+                var ped = go.AddComponent<Pedestrian>();
+                var motion = go.AddComponent<CharacterMotion>();
+
+                var skin = skins[_rng.Next(skins.Length)];
+                var top = tops[_rng.Next(tops.Length)];
+                var pants = legsMats[_rng.Next(legsMats.Length)];
+                var gear = (HeadGear)_rng.Next(3);
+                Material gearMat = gear == HeadGear.Cap ? hats[_rng.Next(hats.Length)] : hairs[_rng.Next(hairs.Length)];
+                Material pack = _rng.NextDouble() < 0.3 ? packs[_rng.Next(packs.Length)] : null;
+                float height = Rf(0.94f, 1.06f);
+                float width = Rf(0.92f, 1.08f);
+                BuildCharacterRig(go.transform, motion, top, pants, skin, mShadow, gear, gearMat, pack, height, width);
+
+                // Slower, shorter strides than the sprinting player.
+                SetFloat(motion, "stepFrequency", 1.15f);
+                SetFloat(motion, "legSwing", 26f);
+                SetFloat(motion, "armSwing", 20f);
+                SetFloat(motion, "bobAmplitude", 0.04f);
+
+                var so = new SerializedObject(ped);
+                var wp = so.FindProperty("waypoints");
+                wp.arraySize = pts.Length;
+                for (int i = 0; i < pts.Length; i++) wp.GetArrayElementAtIndex(i).vector3Value = pts[i];
+                so.FindProperty("startIndex").intValue = seg;
+                so.FindProperty("speed").floatValue = Rf(1.1f, 1.7f);
+                so.ApplyModifiedPropertiesWithoutUndo();
+
+                SetLayerRecursive(go, 2); // Ignore Raycast: keeps Cinemachine obstacle avoidance (Default layer) off them
+            }
+        }
+
+        static void SetFloat(Object target, string field, float value)
+        {
+            var so = new SerializedObject(target);
+            var prop = so.FindProperty(field);
+            if (prop == null)
+                throw new InvalidOperationException("Field '" + field + "' not found on " + target.GetType().Name);
+            prop.floatValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void SetLayerRecursive(GameObject go, int layer)
+        {
+            foreach (var t in go.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
         }
 
         // ------------------------------------------------------------------ camera

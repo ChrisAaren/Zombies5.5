@@ -177,6 +177,17 @@ namespace Zombies55.EditorTools
         static void Weather(PixCanvas cv, int ox, int oy, int x0, int y0, int x1, int y1)
         {
             int foldY = y0 + 100 + (ox / 256) * 9 % 40, foldX = (x0 + x1) / 2 + (oy / 256) * 7 % 30 - 15;
+            // a few irregular pin-holes per flyer (corners are likelier), never a regular pattern
+            var holes = new List<Vector3>();
+            var hr = new System.Random(ox * 7919 + oy * 104729 + x0 * 31 + y0);
+            int nHoles = hr.Next(2, 5);
+            for (int k = 0; k < nHoles; k++)
+            {
+                bool corner = hr.NextDouble() < 0.6;
+                float hx = corner ? (hr.NextDouble() < 0.5 ? x0 + 3 + hr.Next(0, 10) : x1 - 3 - hr.Next(0, 10)) : hr.Next(x0, x1);
+                float hy = corner ? (hr.NextDouble() < 0.5 ? y0 + 3 + hr.Next(0, 10) : y1 - 3 - hr.Next(0, 10)) : hr.Next(y0, y1);
+                holes.Add(new Vector3(hx, hy, 1.2f + (float)hr.NextDouble() * 1.6f));
+            }
             for (int y = y0; y < y1; y++)
                 for (int x = Mathf.Max(x0, ox); x < Mathf.Min(x1, ox + 256); x++)
                 {
@@ -200,8 +211,11 @@ namespace Zombies55.EditorTools
                     if (scuff > 0.74f) rgb = Color.Lerp(rgb, new Color(0.8f, 0.77f, 0.7f), 0.55f);
                     float a = c.a;
                     // pin-holes and rips
-                    float hole = Mathf.PerlinNoise(x * 0.16f + oy * 0.3f, y * 0.16f + ox * 0.3f);
-                    if (hole > 0.83f) a *= 0f;
+                    foreach (var h in holes)
+                    {
+                        float dx = x - h.x, dy = y - h.y;
+                        if (dx * dx + dy * dy < h.z * h.z) a *= 0f;
+                    }
                     cv.P[y * cv.W + x] = new Color(Mathf.Clamp01(rgb.r), Mathf.Clamp01(rgb.g), Mathf.Clamp01(rgb.b), a);
                 }
         }

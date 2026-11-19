@@ -40,47 +40,48 @@ def srgb(hexs):
 
 COURIER = dict(
     name="Courier",
-    macro=dict(gender=1.0, age=0.54, muscle=0.62, weight=0.50, proportions=0.52, height=0.5,
+    macro=dict(gender=1.0, age=0.54, muscle=0.62, weight=0.52, proportions=0.50, height=0.5,
                cupsize=0.5, firmness=0.5, race=dict(asian=0.0, caucasian=1.0, african=0.0)),
     target_height=1.80,
     # (target name, value). "-incr/-decr" names carry the sign already; values are 0..1
     face=[
-        # jaw and chin: strong, slightly square, with a hint of cleft
-        ("head-rectangular", 0.30), ("chin-width-incr", 0.35), ("chin-bones-incr", 0.35),
-        ("chin-prominent-incr", 0.25), ("chin-cleft-incr", 0.25), ("chin-height-incr", 0.10),
-        # cheekbones and lean cheeks
-        ("l-cheek-bones-incr", 0.45), ("r-cheek-bones-incr", 0.45),
-        ("l-cheek-volume-decr", 0.35), ("r-cheek-volume-decr", 0.35),
-        ("l-cheek-inner-decr", 0.15), ("r-cheek-inner-decr", 0.15),
-        # nose: a slight bump, narrower nostrils
-        ("nose-hump-incr", 0.40), ("nose-curve-convex", 0.25), ("nose-nostrils-width-decr", 0.25),
-        ("nose-scale-vert-incr", 0.15), ("nose-width1-decr", 0.15), ("nose-point-down", 0.15),
-        # brow and forehead: heavy brow, temples in
-        ("eyebrows-trans-down", 0.15), ("eyebrows-angle-down", 0.05), ("forehead-temple-decr", 0.20),
-        ("forehead-trans-forward", 0.10),
-        # eyes: narrower, slightly hooded, tired
-        ("l-eye-scale-decr", 0.15), ("r-eye-scale-decr", 0.15),
-        ("l-eye-height1-decr", 0.05), ("r-eye-height1-decr", 0.05),
+        # round 12: a grounded ~30 year old, wider and shorter through the face (round 11 read long and narrow)
+        # skull: wider, a touch shorter, squarer
+        ("head-scale-horiz-incr", 0.30), ("head-scale-vert-decr", 0.22), ("head-square", 0.25), ("head-fat-incr", 0.0),
+        # jaw and chin: wide, square, a little shorter, jaw closed
+        ("chin-width-incr", 0.45), ("chin-bones-incr", 0.45), ("chin-prominent-incr", 0.15),
+        ("chin-cleft-incr", 0.12), ("chin-height-decr", 0.20), ("chin-jaw-drop-decr", 0.45),
+        # cheeks: fuller, not hollow
+        ("l-cheek-bones-incr", 0.30), ("r-cheek-bones-incr", 0.30),
+        ("l-cheek-volume-incr", 0.10), ("r-cheek-volume-incr", 0.10),
+        ("l-cheek-inner-incr", 0.10), ("r-cheek-inner-incr", 0.10),
+        # nose: shorter, a little broader, soft bump
+        ("nose-scale-vert-decr", 0.35), ("nose-width1-incr", 0.15), ("nose-width3-incr", 0.10),
+        ("nose-hump-incr", 0.20), ("nose-scale-depth-decr", 0.10), ("nose-point-down", 0.05),
+        # brow ridge and forehead: fuller brow, shorter forehead, heavier brows
+        ("forehead-nubian-incr", 0.40), ("forehead-scale-vert-decr", 0.25), ("eyebrows-trans-down", 0.25),
+        ("eyebrows-angle-down", 0.08), ("forehead-temple-incr", 0.10), ("forehead-trans-forward", 0.10),
+        # eyes: a little narrower and hooded, tired
+        ("l-eye-scale-decr", 0.10), ("r-eye-scale-decr", 0.10),
         ("l-eye-eyefold-down", 0.12), ("r-eye-eyefold-down", 0.12),
-        ("l-eye-bag-incr", 0.20), ("r-eye-bag-incr", 0.20),
-        ("l-eye-corner2-down", 0.15), ("r-eye-corner2-down", 0.15),
-        # mouth: wide, fuller lower lip, slightly down-turned
-        ("mouth-scale-horiz-incr", 0.15), ("mouth-lowerlip-volume-incr", 0.25),
-        ("mouth-upperlip-volume-decr", 0.10), ("mouth-angles-down", 0.15),
-        ("mouth-laugh-lines-in", 0.20),
-        # ears and neck
-        ("l-ear-scale-incr", 0.15), ("r-ear-scale-incr", 0.10), ("l-ear-wing-incr", 0.30),
-        ("neck-scale-horiz-incr", 0.20),
+        ("l-eye-bag-incr", 0.15), ("r-eye-bag-incr", 0.15),
+        # mouth: closed and relaxed, shorter mid-face (mouth sits higher), flat corners
+        ("mouth-scale-vert-decr", 0.35), ("mouth-trans-up", 0.30), ("mouth-scale-horiz-incr", 0.10),
+        ("mouth-lowerlip-volume-incr", 0.05), ("mouth-upperlip-height-decr", 0.20), ("mouth-lowerlip-height-decr", 0.15),
+        ("mouth-lowerlip-middle-up", 0.20),
+        # ears and neck: thicker neck
+        ("l-ear-scale-incr", 0.10), ("r-ear-scale-incr", 0.05), ("l-ear-wing-incr", 0.25),
+        ("neck-scale-horiz-incr", 0.30),
         # slight asymmetry so the face reads as a real person
-        ("asym-jaw-1-l", 0.40), ("asym-nose-1-r", 0.35), ("asym-eye-2-l", 0.30),
-        ("asym-brown-1-r", 0.30), ("asym-mouth-1-l", 0.30), ("asym-cheek-1-r", 0.25),
+        ("asym-jaw-1-l", 0.35), ("asym-nose-1-r", 0.30), ("asym-eye-2-l", 0.25),
+        ("asym-brown-1-r", 0.30), ("asym-mouth-1-l", 0.20), ("asym-cheek-1-r", 0.20),
         ("asym-ear-1-l", 0.30),
     ],
     skin=("young_caucasian_male", "young_lightskinned_male_diffuse.png"),
     skin_grade=dict(mul=(0.93, 0.84, 0.76), sat=1.1, gain=1.0),
     eyes=("brownlight", "brownlight_eye.png"),
     body_proxy=None,
-    brows=("eyebrow004", "eyebrow004.png"),
+    brows=("eyebrow001", "eyebrow001.png"),
     lashes=("eyelashes02", "eyelashes02.png"),
     hair=("short02", "short02_diffuse.png"),
     hair_tint=dict(mul=(0.62, 0.42, 0.30), gain=0.95),
@@ -501,7 +502,7 @@ def make_materials(spec, objs):
     # ---- brows / lashes (alpha) : brow colour follows the hair colour
     b = load_np(D("eyebrows", spec["brows"][0], spec["brows"][1]))
     hairmul = spec["hair_tint"]["mul"]
-    b = grade(b, mul=tuple(min(1.0, x * 1.1) for x in hairmul), gain=1.0)
+    b = grade(b, mul=tuple(min(1.0, x * 0.85) for x in hairmul), gain=1.0)
     save_np(b, name + "_Brows_Albedo.png")
     set_single_material(objs["brows"], new_material(name + "_Brows", os.path.join(TEX_DIR, name + "_Brows_Albedo.png"), alpha=True, rough=0.7, spec=0.1))
     if "lashes" in objs:

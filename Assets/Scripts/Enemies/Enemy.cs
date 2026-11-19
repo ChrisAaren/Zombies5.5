@@ -121,7 +121,10 @@ namespace Zombies55
             face.y = 0f;
             if (face.sqrMagnitude < 0.01f) face = Vector3.forward;
             transform.SetPositionAndRotation(position, Quaternion.LookRotation(face));
-            transform.localScale = _baseScale == Vector3.zero ? Vector3.one : _baseScale;
+            // a crowd of different builds instead of identical clones
+            var baseScale = _baseScale == Vector3.zero ? Vector3.one : _baseScale;
+            float build = UnityEngine.Random.Range(0.95f, 1.08f), height = UnityEngine.Random.Range(0.95f, 1.06f);
+            transform.localScale = new Vector3(baseScale.x * build, baseScale.y * height, baseScale.z * build);
             gameObject.SetActive(true);
         }
 

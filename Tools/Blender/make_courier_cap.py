@@ -17,12 +17,15 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SRC = os.path.join(ROOT, "Assets", "Art", "Models", "Characters", "MPFB_Courier.fbx")
 OUT = os.path.join(ROOT, "Assets", "Art", "Models", "Characters", "Char2_Cap_V2.fbx")
 
-NT, NJ = 64, 18                  # azimuth samples, rings from band to crown top
+NT, NJ = 96, 24                  # azimuth samples, rings from band to crown top
 CENTER = Vector((0.0, -0.062, 1.700))
-EDGE_FRONT, EDGE_BACK = 1.716, 1.688   # world Z of the band lower edge, front and back (sides interpolate)
-OVER = 0.007                     # crown sits this far outside the outermost hair / skin
+EDGE_FRONT, EDGE_BACK = 1.742, 1.704   # world Z of the band lower edge, front and back (sides interpolate)
+OVER = 0.0045                    # crown sits this far outside the outermost hair / skin
 BAND_H = 0.014
-BILL_LEN, BILL_HALF_ANGLE = 0.108, math.radians(46)
+BILL_LEN, BILL_HALF_ANGLE = 0.112, math.radians(54)
+SEAM_DEPTH = 0.0032
+GAP_HALF = 5                      # back strap gap: samples either side of the rear centre
+GAP_ROWS = 3
 
 
 def build_bvh():
@@ -67,6 +70,9 @@ def main():
         w = (1 - math.cos(2 * math.pi * i / NT)) * 0.5
         return EDGE_FRONT + (EDGE_BACK - EDGE_FRONT) * w
 
+    def in_gap(i):
+        return abs(i - NT // 2) <= GAP_HALF
+
     def dir_at(i, phi):
         c, s = math.cos(phi), math.sin(phi)
         return Vector((dh[i].x * c, dh[i].y * c, s))
@@ -94,10 +100,13 @@ def main():
             rad[i][j] = max(rad[i][j], floor[i][j])
     smooth_grid(rad, 2)
     for i in range(NT):
+        # six panels: a groove at every 60 degrees (vertex columns i % 16 == 0), narrowing to the button
+        d = min(i % (NT // 6), NT // 6 - i % (NT // 6))
         for j in range(NJ):
-            # a structured front panel: the crown stands a little proud of the head over the forehead
-            lift = 0.011 * max(0.0, math.cos(2 * math.pi * i / NT)) ** 2 * math.sin(math.pi * min(1.0, j / (NJ - 1) * 1.4)) 
-            rad[i][j] = max(rad[i][j], floor[i][j] - 0.002) + lift
+            tj = j / (NJ - 1)
+            lift = 0.005 * max(0.0, math.cos(2 * math.pi * i / NT)) ** 2 * math.sin(math.pi * min(1.0, tj * 1.4))
+            groove = SEAM_DEPTH * (1.0 if d == 0 else (0.28 if d == 1 else 0.0)) * (0.35 + 0.65 * min(1.0, tj * 3))
+            rad[i][j] = max(rad[i][j] - groove + lift, floor[i][j] + 0.0008)
 
     bm = bmesh.new()
     uv = bm.loops.layers.uv.new("UVMap")
@@ -130,6 +139,8 @@ def main():
     for i in range(NT):
         i2 = (i + 1) % NT
         for j in range(NJ - 1):
+            if in_gap(i) and in_gap(i2) and j < GAP_ROWS:
+                continue
             face([grid[i][j], grid[i2][j], grid[i2][j + 1], grid[i][j + 1]], [(i / NT, j * 0.04)], outward_from=CENTER)
 
     # button on the crown top
@@ -153,8 +164,30 @@ def main():
         band_i.append(bm.verts.new(p2))
     for i in range(NT):
         i2 = (i + 1) % NT
+        if in_gap(i) and in_gap(i2):
+            continue
         face([grid[i][0], grid[i2][0], band_o[i2], band_o[i]], [(i / NT, 0.0)], outward_from=CENTER)
         face([band_o[i], band_o[i2], band_i[i2], band_i[i]], [(i / NT, 0.0)], outward_from=CENTER)
+
+    # back strap: a thin band bridging the gap, sitting just inside the crown, with a buckle tab at each end
+    zc = grid[NT // 2][GAP_ROWS].co.z
+    srow = []
+    for i in range(NT // 2 - GAP_HALF - 1, NT // 2 + GAP_HALF + 2):
+        p = grid[i][GAP_ROWS].co
+        outward = Vector((dh[i].x, dh[i].y, 0))
+        srow.append((p - outward * 0.003, p - outward * 0.0055))
+    for z0, z1 in ((zc - 0.020, zc - 0.002),):
+        top_o = [bm.verts.new(Vector((o.x, o.y, z1))) for o, _ in srow]
+        bot_o = [bm.verts.new(Vector((o.x, o.y, z0))) for o, _ in srow]
+        top_i = [bm.verts.new(Vector((q.x, q.y, z1))) for _, q in srow]
+        bot_i = [bm.verts.new(Vector((q.x, q.y, z0))) for _, q in srow]
+        for k in range(len(srow) - 1):
+            face([top_o[k], top_o[k + 1], bot_o[k + 1], bot_o[k]], [(0, 0)], outward_from=CENTER)
+            face([top_i[k], top_i[k + 1], bot_i[k + 1], bot_i[k]], [(0, 0)], outward_from=CENTER + Vector((0, 0, 5)))
+            face([top_o[k], top_o[k + 1], top_i[k + 1], top_i[k]], [(0, 0)], up=1)
+            face([bot_o[k], bot_o[k + 1], bot_i[k + 1], bot_i[k]], [(0, 0)], up=-1)
+        for e in (0, -1):
+            face([top_o[e], top_i[e], bot_i[e], bot_o[e]], [(0, 0)], outward_from=CENTER + Vector((0, 0, 5)))
 
     # bill: a curved plate with thickness along the front arc of the band
     ntb, nvb = 21, 7
@@ -171,7 +204,7 @@ def main():
         length = BILL_LEN * max(0.0, math.cos(ang * (math.pi / 2) / BILL_HALF_ANGLE)) ** 0.6 + 0.004
         for v in range(nvb):
             s = v / (nvb - 1)
-            drop = length * s * 0.24 + 0.05 * (ang / BILL_HALF_ANGLE) ** 2 * length * s
+            drop = length * s * 0.36 + 0.16 * (ang / BILL_HALF_ANGLE) ** 2 * length * s
             p = pb + out * (length * s) - Vector((0, 0, drop))
             top[a][v] = bm.verts.new(p + Vector((0, 0, 0.0025)))
             bot[a][v] = bm.verts.new(p - Vector((0, 0, 0.0025)))

@@ -251,6 +251,10 @@ void LitPassFragment(
     surfaceData.albedo = lerp(surfaceData.albedo, _DirtColor.rgb, dirt * 0.8h);
     surfaceData.smoothness *= (1.0h - dirt * 0.75h);
     surfaceData.metallic *= (1.0h - dirt * 0.7h);
+    // sun-weathered horizontal panels (roof, bonnet, boot): less mirror, so the roof keeps the body colour instead of reflecting the sky
+    half sunWorn = smoothstep(0.04h, 0.5h, input.normalWS.y);
+    surfaceData.smoothness *= (1.0h - sunWorn * 0.75h);
+    surfaceData.metallic *= (1.0h - sunWorn * 0.6h);
 
 #ifdef LOD_FADE_CROSSFADE
     LODFadeCrossFade(input.positionCS);
@@ -272,8 +276,8 @@ void LitPassFragment(
         half NoV = saturate(dot(inputData.normalWS, inputData.viewDirectionWS));
         half3 Rc = reflect(-inputData.viewDirectionWS, inputData.normalWS);
         half3 envc = GlossyEnvironmentReflection(Rc, inputData.positionWS, 0.04h, 1.0h, inputData.normalizedScreenSpaceUV);
-        half fresc = 0.04h + 0.96h * pow(1.0h - NoV, 5.0h);
-        color.rgb += envc * fresc * _CoatStrength * (1.0h - dirt) * surfaceData.occlusion * 2.2h;
+        half fresc = 0.04h + 0.42h * pow(1.0h - NoV, 5.0h);
+        color.rgb += envc * fresc * _CoatStrength * (1.0h - dirt) * (1.0h - sunWorn * 0.97h) * surfaceData.occlusion * 2.2h;
     }
     color.rgb = MixFog(color.rgb, inputData.fogCoord);
     color.a = OutputAlpha(color.a, IsSurfaceTypeTransparent());

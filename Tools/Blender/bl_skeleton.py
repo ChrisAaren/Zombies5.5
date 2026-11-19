@@ -115,3 +115,73 @@ def build_armature(name="CharacterRig"):
         eb.use_deform = True
     bpy.ops.object.mode_set(mode="OBJECT")
     return obj
+
+
+# ---------------------------------------------------------------------------------------------
+# Joint-driven variant (Tools/CharacterPipeline). Same bone names, parenting and roll rules as
+# bone_table(); only the head/tail positions come from a joints dict instead of the fixed T-pose.
+#
+# joints: {joint_name: (x, y, z)}. A joint is named like the bone that STARTS there. The tail of a
+# bone is the next joint in its chain (see TAIL_JOINT). Extra end joints: HeadTop, <Side>HandEnd,
+# <Side>ThumbTip ... <Side>LittleTip, <Side>ToesEnd.
+# ---------------------------------------------------------------------------------------------
+
+FINGERS = ("Thumb", "Index", "Middle", "Ring", "Little")
+PHALANGES = ("Proximal", "Intermediate", "Distal")
+
+
+def _tail_joint_map():
+    m = {"Hips": "Spine", "Spine": "Chest", "Chest": "Neck", "Neck": "Head", "Head": "HeadTop"}
+    for s in ("Left", "Right"):
+        m[s + "Shoulder"] = s + "UpperArm"
+        m[s + "UpperArm"] = s + "LowerArm"
+        m[s + "LowerArm"] = s + "Hand"
+        m[s + "Hand"] = s + "HandEnd"
+        m[s + "UpperLeg"] = s + "LowerLeg"
+        m[s + "LowerLeg"] = s + "Foot"
+        m[s + "Foot"] = s + "Toes"
+        m[s + "Toes"] = s + "ToesEnd"
+        for f in FINGERS:
+            m[s + f + "Proximal"] = s + f + "Intermediate"
+            m[s + f + "Intermediate"] = s + f + "Distal"
+            m[s + f + "Distal"] = s + f + "Tip"
+    return m
+
+
+TAIL_JOINT = _tail_joint_map()
+
+
+def required_joints():
+    """Every joint name a joints dict must contain."""
+    names = set(BONE_NAMES) | set(TAIL_JOINT.values())
+    return sorted(names)
+
+
+def bone_table_from_joints(joints):
+    """Like bone_table(), but head/tail come from `joints` ({name: (x,y,z)})."""
+    out = []
+    for name, _h, _t, parent, roll in bone_table():
+        out.append((name, tuple(joints[name]), tuple(joints[TAIL_JOINT[name]]), parent, roll))
+    return out
+
+
+def build_armature_from_joints(joints, name="CharacterRig"):
+    """Deform-only armature with the standard names/parenting/rolls, placed from `joints`."""
+    data = bpy.data.armatures.new(name)
+    obj = bpy.data.objects.new(name, data)
+    bpy.context.scene.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit = data.edit_bones
+    for bname, head, tail, parent, roll_axis in bone_table_from_joints(joints):
+        eb = edit.new(bname)
+        eb.head = Vector(head)
+        eb.tail = Vector(tail)
+        eb.align_roll(Vector(roll_axis))
+        if parent:
+            eb.parent = edit[parent]
+            eb.use_connect = (Vector(edit[parent].tail) - Vector(head)).length < 1e-4
+        eb.use_deform = True
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return obj

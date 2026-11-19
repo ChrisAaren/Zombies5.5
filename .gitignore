@@ -146,3 +146,6 @@ crashlytics-build.properties
 
 # Third-party reference photos (internal use only, not shipped)
 /Tools/Blender/references/real/
+
+# Character pipeline version folders (regenerable; each character keeps its log.md in git)
+/Tools/CharacterPipeline/work/*/v*/

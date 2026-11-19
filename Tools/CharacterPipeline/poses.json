@@ -1,0 +1,40 @@
+{
+  "_doc": "Fixed stress poses. World axes: character faces -Y, its left is +X, up is +Z. Ops are applied in order about each bone head, on top of the poses of its parents. aim = swing the bone so it points along a world direction. flex = rotate the bone `deg` degrees about cross(bone_dir, toward), i.e. toward that direction. rot = rotate `deg` degrees about a world axis. Ops with sides + mirror_x are written for Left and mirrored (x -> -x) for Right.",
+  "poses": [
+    {"id": "arms_raised", "label": "ARMS RAISED", "view": "front", "ops": [
+      {"bone": "{S}UpperArm", "aim": [0.2, 0.0, 1.0], "sides": ["Left", "Right"], "mirror_x": true}]},
+    {"id": "arms_forward", "label": "ARMS FORWARD", "view": "side", "ops": [
+      {"bone": "{S}UpperArm", "aim": [0.12, -1.0, 0.0], "sides": ["Left", "Right"], "mirror_x": true}]},
+    {"id": "elbows_bent_140", "label": "ELBOWS 140", "view": "side", "ops": [
+      {"bone": "{S}LowerArm", "flex": {"toward": [0.0, -1.0, 0.0], "deg": 140}, "sides": ["Left", "Right"], "mirror_x": true}]},
+    {"id": "squat", "label": "SQUAT 100", "view": "side", "ops": [
+      {"bone": "{S}UpperLeg", "flex": {"toward": [0.0, -1.0, 0.0], "deg": 100}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}LowerLeg", "flex": {"toward": [0.0, 0.0, -1.0], "deg": 100}, "sides": ["Left", "Right"], "mirror_x": true}]},
+    {"id": "torso_twist_45", "label": "TWIST 45", "view": "front", "ops": [
+      {"bone": "Spine", "rot": {"axis": [0, 0, 1], "deg": 20}},
+      {"bone": "Chest", "rot": {"axis": [0, 0, 1], "deg": 25}}]},
+    {"id": "head_turn_70", "label": "HEAD TURN 70", "view": "front", "ops": [
+      {"bone": "Neck", "rot": {"axis": [0, 0, 1], "deg": 25}},
+      {"bone": "Head", "rot": {"axis": [0, 0, 1], "deg": 45}}]},
+    {"id": "fist", "label": "FIST 90", "view": "hand_left", "ops": [
+      {"bone": "{S}IndexProximal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}IndexIntermediate", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}IndexDistal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 60}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}MiddleProximal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}MiddleIntermediate", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}MiddleDistal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 60}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}RingProximal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}RingIntermediate", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}RingDistal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 60}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}LittleProximal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}LittleIntermediate", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 90}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}LittleDistal", "flex": {"toward": [-0.57, 0.0, -0.82], "deg": 60}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}ThumbProximal", "flex": {"toward": [-0.57, -0.3, -0.82], "deg": 40}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}ThumbIntermediate", "flex": {"toward": [-0.57, -0.3, -0.82], "deg": 40}, "sides": ["Left", "Right"], "mirror_x": true},
+      {"bone": "{S}ThumbDistal", "flex": {"toward": [-0.57, -0.3, -0.82], "deg": 40}, "sides": ["Left", "Right"], "mirror_x": true}]},
+    {"id": "front_kick_90", "label": "FRONT KICK 90", "view": "side", "ops": [
+      {"bone": "LeftUpperLeg", "flex": {"toward": [0.0, -1.0, 0.0], "deg": 90}}]},
+    {"id": "leg_out_45", "label": "LEG OUT 45", "view": "front", "ops": [
+      {"bone": "LeftUpperLeg", "flex": {"toward": [1.0, 0.0, 0.0], "deg": 45}}]}
+  ]
+}

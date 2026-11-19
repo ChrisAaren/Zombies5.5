@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Zombies55
 {
-    // What CharacterMotion needs to animate a rig: implemented by the player and by pedestrians.
+    // What the animation components (PlayerAnimation, EnemyAnimation) read from a mover: implemented by the player and the enemies.
     public interface ICharacterMover
     {
         Vector3 Velocity { get; }

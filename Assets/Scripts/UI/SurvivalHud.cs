@@ -17,6 +17,7 @@ namespace Zombies55
         [SerializeField] TMP_Text roundNumberText;
         [SerializeField] RectTransform roundNumberRect;
         [SerializeField] TMP_Text enemiesText;
+        [SerializeField] TMP_Text districtText;
 
         [Header("Health")]
         [SerializeField] Image[] healthPips;
@@ -39,7 +40,7 @@ namespace Zombies55
 
         [Header("Crosshair")]
         [SerializeField] GameObject crosshairRoot;
-        [SerializeField] RectTransform[] crosshairTicks; // up, down, left, right
+        [SerializeField] CrosshairView crosshairView;
         [SerializeField] CanvasGroup hitMarkerGroup;
         [SerializeField] RectTransform hitMarkerRect;
         [SerializeField] Image[] hitMarkerImages;
@@ -53,11 +54,14 @@ namespace Zombies55
         [SerializeField] TMP_Text bannerText;
         [SerializeField] TMP_Text bannerSubText;
 
+        [Header("District banner")]
+        [SerializeField] RectTransform districtBannerRect;
+        [SerializeField] CanvasGroup districtBannerGroup;
+        [SerializeField] TMP_Text districtBannerText;
+
         // Asks the shell to flash the full-screen overlay: (color, peak alpha).
         public event Action<Color, float> FlashRequested;
 
-        const float CrosshairBaseGap = 7f;
-        const float CrosshairTickLength = 16f;
         const float LowHealth = 0.4f;
         const int MaxFloats = 8;
 
@@ -65,6 +69,7 @@ namespace Zombies55
         PlayerHealth _hp;
         PlayerWeapons _pw;
         PlayerWallet _wallet;
+        ZoneManager _zones;
         Canvas _rootCanvas;
         Camera _cam;
 
@@ -75,7 +80,7 @@ namespace Zombies55
         int _enemiesShown = -1;
         bool _breakShown;
         Vector2 _bannerHome;
-        Coroutine _bannerCo, _numberPop, _pointsPop, _subPop, _hitCo;
+        Coroutine _districtCo, _bannerCo, _numberPop, _pointsPop, _subPop, _hitCo;
 
         // health
         float _damageFlash;
@@ -90,7 +95,7 @@ namespace Zombies55
 
         // weapon / crosshair
         bool _weaponDirty = true;
-        float _gap = CrosshairBaseGap;
+        float _spreadExtra;
         bool _crosshairShown, _promptShown;
 
         void Awake()
@@ -114,12 +119,13 @@ namespace Zombies55
             HudPrompt.Changed -= OnPromptChanged;
             foreach (var f in _floats) if (f != null) Destroy(f);
             _floats.Clear();
-            _bannerCo = _numberPop = _pointsPop = _subPop = _hitCo = null; // coroutines die with the object
+            _districtCo = _bannerCo = _numberPop = _pointsPop = _subPop = _hitCo = null; // coroutines die with the object
         }
 
         void ResetVisuals()
         {
             bannerRect.gameObject.SetActive(false);
+            districtBannerRect.gameObject.SetActive(false);
             bannerGroup.alpha = 1f;
             hitMarkerGroup.alpha = 0f;
             roundNumberRect.localScale = Vector3.one;
@@ -147,6 +153,18 @@ namespace Zombies55
                 if (_rm != null) { _rm.RoundStarted -= OnRoundStarted; _rm.RoundCompleted -= OnRoundCompleted; }
                 _rm = RoundManager.Instance;
                 if (_rm != null) { _rm.RoundStarted += OnRoundStarted; _rm.RoundCompleted += OnRoundCompleted; }
+            }
+
+            if (!ReferenceEquals(_zones, ZoneManager.Instance))
+            {
+                if (_zones != null) { _zones.ZoneUnlocked -= OnZoneUnlocked; _zones.CurrentZoneChanged -= OnZoneChanged; }
+                _zones = ZoneManager.Instance;
+                if (_zones != null)
+                {
+                    _zones.ZoneUnlocked += OnZoneUnlocked;
+                    _zones.CurrentZoneChanged += OnZoneChanged;
+                }
+                ShowDistrict(_zones != null ? _zones.CurrentZone : -1);
             }
 
             if (!ReferenceEquals(_hp, PlayerHealth.Instance))
@@ -198,6 +216,8 @@ namespace Zombies55
                 _pw.HitConfirmed -= OnHitConfirmed;
             }
             if (_wallet != null) _wallet.Changed -= OnWalletChanged;
+            if (_zones != null) { _zones.ZoneUnlocked -= OnZoneUnlocked; _zones.CurrentZoneChanged -= OnZoneChanged; }
+            _zones = null;
             _rm = null; _hp = null; _pw = null; _wallet = null;
         }
 
@@ -360,22 +380,16 @@ namespace Zombies55
             }
             if (!show) return;
 
-            float target = CrosshairBaseGap;
-            if (_pw != null)
+            // Dynamic spread widens the gap with weapon spread and tightens it while aiming.
+            float target = 0f;
+            if (_pw != null && GameSettings.CrosshairDynamic)
             {
-                target += SpreadToCanvasUnits(_pw.CurrentSpreadDegrees);
-                if (_pw.IsAiming) target = 3f + (target - CrosshairBaseGap) * 0.6f;
+                target = SpreadToCanvasUnits(_pw.CurrentSpreadDegrees);
+                if (_pw.IsAiming) target = target * 0.6f - GameSettings.CrosshairGap * GameSettings.CrosshairSize * 0.4f;
             }
 
-            _gap = Mathf.Lerp(_gap, target, 1f - Mathf.Exp(-18f * dt));
-            float d = _gap + CrosshairTickLength * 0.5f;
-            if (crosshairTicks.Length >= 4)
-            {
-                crosshairTicks[0].anchoredPosition = new Vector2(0f, d);
-                crosshairTicks[1].anchoredPosition = new Vector2(0f, -d);
-                crosshairTicks[2].anchoredPosition = new Vector2(-d, 0f);
-                crosshairTicks[3].anchoredPosition = new Vector2(d, 0f);
-            }
+            _spreadExtra = Mathf.Lerp(_spreadExtra, target, 1f - Mathf.Exp(-18f * dt));
+            if (crosshairView != null) crosshairView.SetSpread(_spreadExtra);
         }
 
         // Cone half-angle in degrees to canvas units, using the camera's vertical FOV and the screen height.
@@ -428,6 +442,29 @@ namespace Zombies55
             foreach (var img in hitMarkerImages) img.color = c;
             if (_hitCo != null) StopCoroutine(_hitCo);
             if (isActiveAndEnabled) _hitCo = StartCoroutine(HitMarkerRoutine(killed ? 0.35f : 0.2f, killed ? 1.7f : 1.35f));
+        }
+
+        void OnZoneChanged(int zone) => ShowDistrict(zone);
+
+        void ShowDistrict(int zone)
+        {
+            string name = ZoneName(zone);
+            districtText.text = name;
+            districtText.gameObject.SetActive(name.Length > 0);
+        }
+
+        string ZoneName(int zone)
+        {
+            var info = _zones != null && zone >= 0 ? _zones.GetZone(zone) : null;
+            return info != null && !string.IsNullOrEmpty(info.Name) ? info.Name.ToUpperInvariant() : string.Empty;
+        }
+
+        void OnZoneUnlocked(int zone)
+        {
+            string name = ZoneName(zone);
+            if (name.Length == 0 || !isActiveAndEnabled) return;
+            if (_districtCo != null) StopCoroutine(_districtCo);
+            _districtCo = StartCoroutine(DistrictBannerRoutine(name));
         }
 
         void OnRoundStarted(int round)
@@ -484,6 +521,22 @@ namespace Zombies55
             bannerRect.anchoredPosition = _bannerHome;
             SetRoundNumber(round, true);
             _bannerCo = null;
+        }
+
+        IEnumerator DistrictBannerRoutine(string name)
+        {
+            districtBannerRect.gameObject.SetActive(true);
+            districtBannerRect.localScale = Vector3.zero;
+            districtBannerGroup.alpha = 1f;
+            districtBannerText.text = "DISTRICT UNLOCKED · " + name;
+
+            FlashRequested?.Invoke(Palette.Accent, 0.25f);
+            yield return Ease.Tween(0.4f, t => districtBannerRect.localScale = Vector3.one * t, Ease.OutBack);
+            yield return new WaitForSecondsRealtime(1.8f);
+            yield return Ease.Tween(0.45f, t => districtBannerGroup.alpha = 1f - t, Ease.OutCubic);
+
+            districtBannerRect.gameObject.SetActive(false);
+            _districtCo = null;
         }
 
         IEnumerator ClearedRoutine(int round)

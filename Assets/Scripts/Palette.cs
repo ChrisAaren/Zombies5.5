@@ -35,6 +35,7 @@ namespace Zombies55
         public static readonly Color CharacterPrimary = Hex("#2A9D8F");
         public static readonly Color CharacterSecondary = Hex("#F2D2B6");
         public static readonly Color Pants = Hex("#3F4B66");
+        public static readonly Color Sneaker = Hex("#D9D4C7");    // light canvas sneakers on the courier
 
         // Pedestrians (the player's own skin is CharacterSecondary)
         public static readonly Color SkinTan = Hex("#E0AC82");     // warm tan skin tone for NPC faces and hands
@@ -118,6 +119,43 @@ namespace Zombies55
         public static readonly Color EnemyPants = Hex("#23262D");    // near-black trousers for the hostile NPCs
         public static readonly Color EnemySkin = Hex("#A99C93");     // ashen, desaturated skin so enemies read as unwell
         public static readonly Color EnemyEyeRed = Hex("#FF2A1F");   // emissive red eyes, the enemies' signature read at distance
+
+        // Crosshair options (settings menu)
+        public static readonly Color CrosshairGreen = Hex("#5CE08A");
+        public static readonly Color CrosshairCyan = Hex("#4FD6E8");
+        public static readonly Color CrosshairMagenta = Hex("#E85FD0");
+
+        // Districts (barriers and gates)
+        public static readonly Color FenceGalv = Hex("#9BA1A6");      // galvanized posts and chain link
+
+        // Gritty urban pass: weathered walls (multiplied with near-neutral worn textures), hazy warm-gray air.
+        public static readonly Color BrickSoot = Hex("#A5604A");       // dull sooty red brick
+        public static readonly Color BrickBrown = Hex("#8E6A55");      // brown brick
+        public static readonly Color PlasterGrey = Hex("#B3ADA0");     // dirty grey render
+        public static readonly Color PlasterOcher = Hex("#C2AE82");    // faded ochre render
+        public static readonly Color PlasterBlue = Hex("#8E9AA6");     // faded blue-grey render
+        public static readonly Color PlasterSage = Hex("#97A394");     // grimy sage render
+        public static readonly Color AsphaltWorn = Hex("#B2ACA4");     // tint for the worn asphalt texture
+        public static readonly Color SidewalkWorn = Hex("#C4BDAF");
+        public static readonly Color CurbWorn = Hex("#A8A194");
+        public static readonly Color HazeFog = Hex("#9E968A");         // warm-gray distance haze
+        public static readonly Color SkyZenithGritty = Hex("#4F6E9A"); // muted deep blue overhead
+        public static readonly Color SkyHorizonGritty = Hex("#C9B9A2"); // warm-gray, dusty horizon
+        public static readonly Color SunHaze = Hex("#FFC98F");         // low warm sun
+        public static readonly Color PoleWood = Hex("#6B5A48");
+        public static readonly Color DumpsterGreen = Hex("#4E7B62");
+        public static readonly Color DumpsterBlue = Hex("#41699A");
+        public static readonly Color NewsBoxBlue = Hex("#2E4F8A");
+        public static readonly Color NewsBoxRed = Hex("#9E3B34");
+        public static readonly Color TrashBagBlack = Hex("#1B1D20");
+        public static readonly Color SignCream = Hex("#E8DBB0");
+        public static readonly Color SignRed = Hex("#8A2F28");
+        public static readonly Color SignGreen = Hex("#2F5B47");
+        public static readonly Color SignNavy = Hex("#26395C");
+        public static readonly Color SignBrown = Hex("#5A3F2E");
+        public static readonly Color SignTeal = Hex("#2E6B6F");
+        public static readonly Color GrimeTint = Hex("#3A322B");
+        public static readonly Color PaintWorn = Hex("#E6E0D2");
 
         public static Color WithAlpha(Color c, float a)
         {

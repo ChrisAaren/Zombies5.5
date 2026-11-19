@@ -15,6 +15,7 @@ namespace Zombies55
         [Header("Title")]
         [SerializeField] GameObject titleRoot;
         [SerializeField] TMP_Text promptText;
+        [SerializeField] UnityEngine.UI.Button titleSettingsButton;
 
         [Header("HUD")]
         [SerializeField] GameObject hudRoot;
@@ -25,8 +26,10 @@ namespace Zombies55
         [SerializeField] UnityEngine.UI.Button resumeButton;
         [SerializeField] UnityEngine.UI.Button pauseRestartButton;
         [SerializeField] UnityEngine.UI.Button pauseTitleButton;
-        [SerializeField] UnityEngine.UI.Slider musicSlider;
-        [SerializeField] UnityEngine.UI.Slider sfxSlider;
+        [SerializeField] UnityEngine.UI.Button pauseSettingsButton;
+
+        [Header("Settings")]
+        [SerializeField] SettingsMenu settingsMenu;
 
         [Header("Ended")]
         [SerializeField] GameObject endRoot;
@@ -51,6 +54,10 @@ namespace Zombies55
         bool _leaving;
         float _fadeAlpha;
 
+        bool _settingsOpen;
+        RunState _settingsFrom;
+        float _ignoreStartUntil;
+
         Coroutine _transition, _flash, _banner;
 
         void Start()
@@ -70,10 +77,9 @@ namespace Zombies55
             endRestartButton.onClick.AddListener(() => Click(Restart));
             endTitleButton.onClick.AddListener(() => Click(ToTitle));
 
-            musicSlider.SetValueWithoutNotify(GameAudio.MusicVolume);
-            sfxSlider.SetValueWithoutNotify(GameAudio.SfxVolume);
-            musicSlider.onValueChanged.AddListener(v => GameAudio.MusicVolume = v);
-            sfxSlider.onValueChanged.AddListener(v => GameAudio.SfxVolume = v);
+            titleSettingsButton.onClick.AddListener(() => Click(OpenSettings));
+            pauseSettingsButton.onClick.AddListener(() => Click(OpenSettings));
+            settingsMenu.BackRequested += CloseSettings;
 
             SetFade(0f);
             flashOverlay.color = Palette.WithAlpha(flashOverlay.color, 0f);
@@ -87,6 +93,7 @@ namespace Zombies55
             if (_loop == null) return;
             _loop.StateChanged -= OnStateChanged;
             if (survivalHud != null) survivalHud.FlashRequested -= OnFlashRequested;
+            if (settingsMenu != null) settingsMenu.BackRequested -= CloseSettings;
         }
 
         // A later step (for example a leaderboard) can show an extra line under the stats.
@@ -103,11 +110,23 @@ namespace Zombies55
         {
             if (_loop == null || _leaving) return;
 
+            if (_settingsOpen)
+            {
+                // The settings screen swallows input; Esc, B and Start go back.
+                if (BackPressed()) CloseSettings();
+                return;
+            }
+
             switch (_loop.State)
             {
                 case RunState.Ready:
                     PulsePrompt();
-                    if (Time.unscaledTime - _startTime >= InputGrace && AnyStartInput())
+                    if (SettingsKeyPressed())
+                    {
+                        OpenSettings();
+                        break;
+                    }
+                    if (Time.unscaledTime >= _ignoreStartUntil && Time.unscaledTime - _startTime >= InputGrace && AnyStartInput())
                         _loop.StartRun();
                     break;
 
@@ -130,9 +149,27 @@ namespace Zombies55
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
             var pad = Gamepad.current;
-            return (keyboard != null && keyboard.anyKey.wasPressedThisFrame)
-                || (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            // The S key and clicks on UI (the settings button) open settings instead of starting the run.
+            bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+            return (keyboard != null && keyboard.anyKey.wasPressedThisFrame && !keyboard.sKey.wasPressedThisFrame)
+                || (mouse != null && mouse.leftButton.wasPressedThisFrame && !overUi)
                 || (pad != null && (pad.buttonSouth.wasPressedThisFrame || pad.startButton.wasPressedThisFrame));
+        }
+
+        static bool SettingsKeyPressed()
+        {
+            var keyboard = Keyboard.current;
+            var pad = Gamepad.current;
+            return (keyboard != null && keyboard.sKey.wasPressedThisFrame)
+                || (pad != null && pad.buttonNorth.wasPressedThisFrame);
+        }
+
+        static bool BackPressed()
+        {
+            var keyboard = Keyboard.current;
+            var pad = Gamepad.current;
+            return (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+                || (pad != null && (pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame));
         }
 
         static bool PausePressed()
@@ -201,6 +238,8 @@ namespace Zombies55
         // Shows the right panels for a state and prepares them.
         void ApplyState(RunState state)
         {
+            _settingsOpen = false;
+            settingsMenu.Close();
             titleRoot.SetActive(state == RunState.Ready);
             hudRoot.SetActive(state == RunState.Running || state == RunState.Paused);
             pauseRoot.SetActive(state == RunState.Paused);
@@ -278,6 +317,30 @@ namespace Zombies55
         {
             GameAudio.Instance?.PlayClick();
             action();
+        }
+
+        // ---------------------------------------------------------------- settings
+
+        // Opens the settings screen over the title or pause menu and remembers where to return to.
+        void OpenSettings()
+        {
+            if (_settingsOpen || _loop == null) return;
+            if (_loop.State != RunState.Ready && _loop.State != RunState.Paused) return;
+            _settingsOpen = true;
+            _settingsFrom = _loop.State;
+            titleRoot.SetActive(false);
+            pauseRoot.SetActive(false);
+            settingsMenu.Open();
+        }
+
+        void CloseSettings()
+        {
+            if (!_settingsOpen) return;
+            ApplyState(_loop.State); // restores the screen we came from and saves settings
+
+            // Keep the key or click that closed the menu from starting a run or reopening it.
+            _ignoreStartUntil = Time.unscaledTime + 0.25f;
+            if (_settingsFrom == RunState.Paused && _loop.State == RunState.Paused) Select(pauseSettingsButton);
         }
 
         void Restart()

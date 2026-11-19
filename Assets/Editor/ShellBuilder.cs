@@ -49,12 +49,13 @@ namespace Zombies55.EditorTools
             var shell = canvasGo.AddComponent<GameShell>();
             var root = (RectTransform)canvasGo.transform;
 
-            var title = BuildTitle(root, out var promptText);
+            var title = BuildTitle(root, out var promptText, out var titleSettings);
             var hud = BuildHud(root, out var survivalHud);
-            var pause = BuildPause(root, out var resume, out var pauseRestart, out var pauseTitle,
-                out var musicSlider, out var sfxSlider);
+            var pause = BuildPause(root, out var resume, out var pauseSettings, out var pauseRestart, out var pauseTitle);
             var end = BuildEnded(root, out var bannerText, out var bannerRect, out var statsText,
                 out var extraText, out var endRestart, out var endTitle);
+
+            var settings = BuildSettings(root);
 
             // Overlays go last so they draw above everything.
             var flash = CreateOverlay(root, "FlashOverlay", Palette.WithAlpha(Palette.Accent, 0f));
@@ -63,14 +64,15 @@ namespace Zombies55.EditorTools
             var so = new SerializedObject(shell);
             Wire(so, "titleRoot", title);
             Wire(so, "promptText", promptText);
+            Wire(so, "titleSettingsButton", titleSettings);
             Wire(so, "hudRoot", hud);
             Wire(so, "survivalHud", survivalHud);
             Wire(so, "pauseRoot", pause);
             Wire(so, "resumeButton", resume);
             Wire(so, "pauseRestartButton", pauseRestart);
             Wire(so, "pauseTitleButton", pauseTitle);
-            Wire(so, "musicSlider", musicSlider);
-            Wire(so, "sfxSlider", sfxSlider);
+            Wire(so, "pauseSettingsButton", pauseSettings);
+            Wire(so, "settingsMenu", settings);
             Wire(so, "endRoot", end);
             Wire(so, "bannerText", bannerText);
             Wire(so, "bannerRect", bannerRect);
@@ -84,6 +86,7 @@ namespace Zombies55.EditorTools
 
             // Start with only the title visible; GameShell fixes the rest at runtime.
             pause.SetActive(false);
+            settings.gameObject.SetActive(false);
             end.SetActive(false);
             hud.SetActive(false);
             extraText.gameObject.SetActive(false);
@@ -117,7 +120,7 @@ namespace Zombies55.EditorTools
 
         // ------------------------------------------------------------------ screens
 
-        static GameObject BuildTitle(RectTransform parent, out TMP_Text prompt)
+        static GameObject BuildTitle(RectTransform parent, out TMP_Text prompt, out UnityEngine.UI.Button settingsButton)
         {
             var root = CreateStretched("TitleScreen", parent);
 
@@ -137,6 +140,10 @@ namespace Zombies55.EditorTools
                 "WASD MOVE · SHIFT SPRINT · SPACE JUMP · LMB FIRE · RMB AIM · R RELOAD · 1/2 SWAP · E BUY · ESC PAUSE",
                 24, Palette.WithAlpha(Palette.UiLight, 0.85f), 2f, true);
             Place(controls.rectTransform, new Vector2(0.5f, 0.18f), Vector2.zero, new Vector2(1850f, 50f));
+
+            // Small settings button; the S key and gamepad Y open it too.
+            settingsButton = CreateButton(root, "SettingsButton", "SETTINGS  (S)", new Vector2(0f, -440f),
+                new Vector2(340f, 64f), 30);
 
             return root.gameObject;
         }
@@ -166,6 +173,11 @@ namespace Zombies55.EditorTools
             var enemies = CreateText(root, "EnemiesLeft", "0 ENEMIES LEFT", 34, Palette.UiLight, 4f, true);
             enemies.alignment = TextAlignmentOptions.MidlineLeft;
             PlaceCorner(enemies.rectTransform, new Vector2(0f, 1f), new Vector2(56f, -240f), new Vector2(520f, 44f));
+
+            var district = CreateText(root, "DistrictLabel", string.Empty, 28, Palette.Accent, 8f, true);
+            district.alignment = TextAlignmentOptions.MidlineLeft;
+            PlaceCorner(district.rectTransform, new Vector2(0f, 1f), new Vector2(56f, -290f), new Vector2(620f, 36f));
+            district.gameObject.SetActive(false);
 
             // Health pips, bottom-left.
             var healthPanel = CreateImage(root, "HealthPanel", s_RoundedRect, panelColor, true);
@@ -246,22 +258,10 @@ namespace Zombies55.EditorTools
                 chipLabels[i] = label;
             }
 
-            // Crosshair: four ticks around the center; SurvivalHud sets their positions every frame.
+            // Crosshair: CrosshairView builds the ticks, dot and ring from GameSettings at runtime.
             var crosshair = NewRect("Crosshair", root);
             Place(crosshair, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-            var ticks = new RectTransform[4];
-            string[] tickNames = { "TickUp", "TickDown", "TickLeft", "TickRight" };
-            for (int i = 0; i < 4; i++)
-            {
-                var tick = CreateImage(crosshair, tickNames[i], null, Palette.UiLight, false);
-                bool vertical = i < 2;
-                Place(tick.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero,
-                    vertical ? new Vector2(4f, 16f) : new Vector2(16f, 4f));
-                var outline = tick.gameObject.AddComponent<UnityEngine.UI.Outline>();
-                outline.effectColor = Palette.WithAlpha(Palette.UiDark, 0.85f);
-                outline.effectDistance = new Vector2(1.5f, -1.5f);
-                ticks[i] = tick.rectTransform;
-            }
+            var crosshairView = crosshair.gameObject.AddComponent<CrosshairView>();
 
             // Hit marker: four short diagonal ticks that flash and fade.
             var hitRect = NewRect("HitMarker", crosshair);
@@ -283,6 +283,15 @@ namespace Zombies55.EditorTools
             var prompt = CreateText(root, "Prompt", string.Empty, 40, Palette.UiLight, 4f, true);
             Place(prompt.rectTransform, new Vector2(0.5f, 0.27f), Vector2.zero, new Vector2(1400f, 60f));
 
+            // District unlock banner: same look as the round banner, higher up.
+            var districtBanner = NewRect("DistrictBanner", root);
+            Place(districtBanner, new Vector2(0.5f, 0.83f), Vector2.zero, new Vector2(1700f, 120f));
+            var districtGroup = districtBanner.gameObject.AddComponent<CanvasGroup>();
+            districtGroup.interactable = false;
+            districtGroup.blocksRaycasts = false;
+            var districtBannerText = CreateText(districtBanner, "DistrictBannerText", "DISTRICT UNLOCKED", 78, Palette.Accent, 8f, true);
+            Stretch(districtBannerText.rectTransform);
+
             // Round banner last so it draws above the HUD.
             var banner = NewRect("RoundBanner", root);
             Place(banner, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(1700f, 230f));
@@ -298,6 +307,7 @@ namespace Zombies55.EditorTools
             Wire(so, "roundNumberText", roundNumber);
             Wire(so, "roundNumberRect", roundNumber.rectTransform);
             Wire(so, "enemiesText", enemies);
+            Wire(so, "districtText", district);
             WireArray(so, "healthPips", pips);
             Wire(so, "vignette", vignette);
             Wire(so, "pointsText", points);
@@ -312,7 +322,7 @@ namespace Zombies55.EditorTools
             Wire(so, "reloadBar", reloadBack.gameObject);
             Wire(so, "reloadFill", reloadFill);
             Wire(so, "crosshairRoot", crosshair.gameObject);
-            WireArray(so, "crosshairTicks", ticks);
+            Wire(so, "crosshairView", crosshairView);
             Wire(so, "hitMarkerGroup", hitGroup);
             Wire(so, "hitMarkerRect", hitRect);
             WireArray(so, "hitMarkerImages", hitImages);
@@ -321,15 +331,18 @@ namespace Zombies55.EditorTools
             Wire(so, "bannerGroup", bannerGroup);
             Wire(so, "bannerText", bannerText);
             Wire(so, "bannerSubText", bannerSub);
+            Wire(so, "districtBannerRect", districtBanner);
+            Wire(so, "districtBannerGroup", districtGroup);
+            Wire(so, "districtBannerText", districtBannerText);
             so.ApplyModifiedPropertiesWithoutUndo();
 
             banner.gameObject.SetActive(false);
+            districtBanner.gameObject.SetActive(false);
             return root.gameObject;
         }
 
         static GameObject BuildPause(RectTransform parent, out UnityEngine.UI.Button resume,
-            out UnityEngine.UI.Button restart, out UnityEngine.UI.Button toTitle,
-            out UnityEngine.UI.Slider music, out UnityEngine.UI.Slider sfx)
+            out UnityEngine.UI.Button settings, out UnityEngine.UI.Button restart, out UnityEngine.UI.Button toTitle)
         {
             var root = CreateStretched("PauseScreen", parent);
 
@@ -338,24 +351,226 @@ namespace Zombies55.EditorTools
             Stretch(scrim.rectTransform);
 
             var card = CreateImage(root, "Card", s_RoundedRect, Palette.WithAlpha(Palette.UiDark, 0.8f), true);
-            Place(card.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760f, 900f));
+            Place(card.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760f, 700f));
 
             var heading = CreateText(card.rectTransform, "Heading", "PAUSED", 110, Palette.Accent, 8f, true);
-            Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 350f), new Vector2(700f, 140f));
+            Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 250f), new Vector2(700f, 140f));
 
-            resume = CreateButton(card.rectTransform, "ResumeButton", "RESUME", new Vector2(0f, 200f));
-            restart = CreateButton(card.rectTransform, "RestartButton", "RESTART", new Vector2(0f, 90f));
-            toTitle = CreateButton(card.rectTransform, "TitleButton", "TITLE", new Vector2(0f, -20f));
-
-            var musicLabel = CreateText(card.rectTransform, "MusicLabel", "MUSIC", 34, Palette.UiLight, 6f, true);
-            Place(musicLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -140f), new Vector2(600f, 50f));
-            music = CreateSlider(card.rectTransform, "MusicSlider", new Vector2(0f, -195f));
-
-            var sfxLabel = CreateText(card.rectTransform, "SfxLabel", "SFX", 34, Palette.UiLight, 6f, true);
-            Place(sfxLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -285f), new Vector2(600f, 50f));
-            sfx = CreateSlider(card.rectTransform, "SfxSlider", new Vector2(0f, -340f));
+            resume = CreateButton(card.rectTransform, "ResumeButton", "RESUME", new Vector2(0f, 100f));
+            settings = CreateButton(card.rectTransform, "SettingsButton", "SETTINGS", new Vector2(0f, -10f));
+            restart = CreateButton(card.rectTransform, "RestartButton", "RESTART", new Vector2(0f, -120f));
+            toTitle = CreateButton(card.rectTransform, "TitleButton", "TITLE", new Vector2(0f, -230f));
 
             return root.gameObject;
+        }
+
+        // ------------------------------------------------------------------ settings screen
+
+        static SettingsMenu BuildSettings(RectTransform parent)
+        {
+            var root = CreateStretched("SettingsScreen", parent);
+            var menu = root.gameObject.AddComponent<SettingsMenu>();
+
+            var scrim = CreateImage(root, "Scrim", null, Palette.WithAlpha(Palette.UiDark, 0.85f), true);
+            scrim.raycastTarget = true;
+            Stretch(scrim.rectTransform);
+
+            var card = CreateImage(root, "Card", s_RoundedRect, Palette.WithAlpha(Palette.UiDark, 0.92f), true);
+            card.raycastTarget = true;
+            var cardRt = card.rectTransform;
+            Place(cardRt, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1560f, 940f));
+
+            var heading = CreateText(cardRt, "Heading", "SETTINGS", 90, Palette.Accent, 8f, true);
+            Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 395f), new Vector2(700f, 110f));
+
+            string[] tabNames = { "CONTROLS", "CROSSHAIR", "AUDIO" };
+            var tabButtons = new UnityEngine.UI.Button[3];
+            var tabPanels = new GameObject[3];
+            var firsts = new UnityEngine.UI.Selectable[3];
+            for (int i = 0; i < 3; i++)
+            {
+                tabButtons[i] = CreateButton(cardRt, tabNames[i] + "Tab", tabNames[i],
+                    new Vector2(-340f + i * 340f, 300f), new Vector2(320f, 66f), 34f);
+                tabPanels[i] = CreateStretched(tabNames[i] + "Panel", cardRt).gameObject;
+            }
+
+            // Controls
+            var controls = (RectTransform)tabPanels[0].transform;
+            firsts[0] = AddSliderRow(controls, SettingId.MouseSensitivity, "MOUSE SENSITIVITY", new Vector2(0f, 160f), 1200f, 70f);
+            AddSliderRow(controls, SettingId.AimSensitivity, "AIM SENSITIVITY", new Vector2(0f, 70f), 1200f, 70f);
+            AddSliderRow(controls, SettingId.ControllerSensitivity, "CONTROLLER LOOK", new Vector2(0f, -20f), 1200f, 70f);
+            AddToggleRow(controls, SettingId.InvertY, "INVERT Y AXIS", new Vector2(0f, -110f), 1200f, 70f);
+
+            // Crosshair: preview on the left, options on the right
+            var cross = (RectTransform)tabPanels[1].transform;
+            var previewPanel = CreateImage(cross, "PreviewPanel", s_RoundedRect, Palette.Asphalt, true);
+            Place(previewPanel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(-520f, -10f), new Vector2(480f, 460f));
+            var patch = CreateImage(previewPanel.rectTransform, "PreviewPatch", null, Palette.Sand, false);
+            SetAnchors(patch.rectTransform, new Vector2(0.5f, 0f), new Vector2(1f, 1f));
+            patch.rectTransform.offsetMin = new Vector2(0f, 16f);
+            patch.rectTransform.offsetMax = new Vector2(-16f, -16f);
+            var previewLabel = CreateText(previewPanel.rectTransform, "PreviewLabel", "PREVIEW", 24,
+                Palette.WithAlpha(Palette.UiLight, 0.9f), 8f, true);
+            PlaceCorner(previewLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -24f), new Vector2(300f, 30f));
+            var previewRoot = NewRect("PreviewCrosshair", previewPanel.rectTransform);
+            Place(previewRoot, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var previewView = previewRoot.gameObject.AddComponent<CrosshairView>();
+            var pso = new SerializedObject(previewView);
+            pso.FindProperty("previewPulse").boolValue = true;
+            pso.ApplyModifiedPropertiesWithoutUndo();
+
+            float rx = 300f, rw = 860f, rh = 52f, y = 215f, dy = 56f;
+            firsts[1] = AddStepperRow(cross, SettingId.CrosshairStyle, "STYLE", new Vector2(rx, y), rw, rh, false);
+            AddStepperRow(cross, SettingId.CrosshairColor, "COLOR", new Vector2(rx, y - dy), rw, rh, true);
+            AddSliderRow(cross, SettingId.CrosshairSize, "SIZE", new Vector2(rx, y - dy * 2), rw, rh);
+            AddSliderRow(cross, SettingId.CrosshairGap, "GAP", new Vector2(rx, y - dy * 3), rw, rh);
+            AddSliderRow(cross, SettingId.CrosshairLength, "LINE LENGTH", new Vector2(rx, y - dy * 4), rw, rh);
+            AddSliderRow(cross, SettingId.CrosshairThickness, "THICKNESS", new Vector2(rx, y - dy * 5), rw, rh);
+            AddSliderRow(cross, SettingId.CrosshairOpacity, "OPACITY", new Vector2(rx, y - dy * 6), rw, rh);
+            AddToggleRow(cross, SettingId.CrosshairOutline, "OUTLINE", new Vector2(rx, y - dy * 7), rw, rh);
+            AddToggleRow(cross, SettingId.CrosshairDot, "CENTER DOT", new Vector2(rx, y - dy * 8), rw, rh);
+            AddToggleRow(cross, SettingId.CrosshairDynamic, "DYNAMIC SPREAD", new Vector2(rx, y - dy * 9), rw, rh);
+
+            // Audio
+            var audio = (RectTransform)tabPanels[2].transform;
+            firsts[2] = AddSliderRow(audio, SettingId.MusicVolume, "MUSIC VOLUME", new Vector2(0f, 90f), 1200f, 70f);
+            AddSliderRow(audio, SettingId.SfxVolume, "SFX VOLUME", new Vector2(0f, 0f), 1200f, 70f);
+
+            var reset = CreateButton(cardRt, "ResetButton", "RESET TO DEFAULTS", new Vector2(-250f, -385f), new Vector2(440f, 80f), 34f);
+            var back = CreateButton(cardRt, "BackButton", "BACK", new Vector2(250f, -385f), new Vector2(440f, 80f), 38f);
+
+            var hint = CreateText(cardRt, "Hint", "LB / RB  TABS        ESC / B  BACK", 22,
+                Palette.WithAlpha(Palette.UiLight, 0.7f), 6f, true);
+            Place(hint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -447f), new Vector2(900f, 30f));
+
+            var so = new SerializedObject(menu);
+            WireArray(so, "tabButtons", tabButtons);
+            WireArray(so, "tabPanels", tabPanels);
+            WireArray(so, "firstSelectable", firsts);
+            Wire(so, "resetButton", reset);
+            Wire(so, "backButton", back);
+            Wire(so, "card", cardRt);
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            for (int i = 1; i < 3; i++) tabPanels[i].SetActive(false);
+            return menu;
+        }
+
+        static UnityEngine.UI.Image CreateRowBase(RectTransform parent, string name, string label, Vector2 pos,
+            float width, float height, bool raycast)
+        {
+            var bg = CreateImage(parent, name, s_RoundedRect, default, true);
+            bg.raycastTarget = raycast;
+            Place(bg.rectTransform, new Vector2(0.5f, 0.5f), pos, new Vector2(width, height));
+
+            var text = CreateText(bg.rectTransform, "Label", label, 28, Palette.UiLight, 4f, true);
+            text.alignment = TextAlignmentOptions.MidlineLeft;
+            PlaceCorner(text.rectTransform, new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(width * 0.34f, height));
+            return bg;
+        }
+
+        // A row that is itself selectable: faint panel, accent tint when selected.
+        static void StyleRowSelectable(UnityEngine.UI.Selectable sel, UnityEngine.UI.Image bg)
+        {
+            bg.color = Color.white;
+            sel.targetGraphic = bg;
+            sel.transition = UnityEngine.UI.Selectable.Transition.ColorTint;
+            var colors = sel.colors;
+            colors.normalColor = Palette.WithAlpha(Palette.Shadow, 0.4f);
+            colors.highlightedColor = Palette.WithAlpha(Palette.UiLight, 0.18f);
+            colors.selectedColor = Palette.WithAlpha(Palette.Accent, 0.4f);
+            colors.pressedColor = Palette.WithAlpha(Palette.Accent, 0.55f);
+            colors.colorMultiplier = 1f;
+            colors.fadeDuration = 0.08f;
+            sel.colors = colors;
+        }
+
+        static UnityEngine.UI.Selectable AddSliderRow(RectTransform parent, SettingId id, string label, Vector2 pos,
+            float width, float height)
+        {
+            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, false);
+            bg.color = Palette.WithAlpha(Palette.Shadow, 0.4f);
+            var row = bg.rectTransform;
+
+            const float valueW = 130f;
+            var slider = CreateSlider(row, "Slider", Vector2.zero);
+            float sx = 22f + width * 0.34f + 14f;
+            PlaceCorner((RectTransform)slider.transform, new Vector2(0f, 0.5f), new Vector2(sx, 0f),
+                new Vector2(width - sx - valueW - 34f, 40f));
+
+            var value = CreateText(row, "Value", "0", 28, Palette.Accent, 2f, true);
+            value.alignment = TextAlignmentOptions.MidlineRight;
+            PlaceCorner(value.rectTransform, new Vector2(1f, 0.5f), new Vector2(-20f, 0f), new Vector2(valueW, height));
+
+            var comp = bg.gameObject.AddComponent<SettingsSliderRow>();
+            var so = new SerializedObject(comp);
+            so.FindProperty("id").enumValueIndex = (int)id;
+            Wire(so, "slider", slider);
+            Wire(so, "valueText", value);
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return slider;
+        }
+
+        static UnityEngine.UI.Selectable AddStepperRow(RectTransform parent, SettingId id, string label, Vector2 pos,
+            float width, float height, bool withSwatch)
+        {
+            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true);
+            var row = bg.rectTransform;
+            var comp = bg.gameObject.AddComponent<SettingsStepperRow>();
+            StyleRowSelectable(comp, bg);
+
+            var next = CreateArrowButton(row, "Next", ">", new Vector2(-20f, 0f));
+            var value = CreateText(row, "Value", "-", 30, Palette.UiLight, 4f, true);
+            PlaceCorner(value.rectTransform, new Vector2(1f, 0.5f), new Vector2(-84f, 0f), new Vector2(260f, height));
+            var prev = CreateArrowButton(row, "Prev", "<", new Vector2(-352f, 0f));
+
+            UnityEngine.UI.Image swatch = null;
+            if (withSwatch)
+            {
+                swatch = CreateImage(row, "Swatch", s_RoundedRect, Palette.UiLight, true);
+                PlaceCorner(swatch.rectTransform, new Vector2(1f, 0.5f), new Vector2(-418f, 0f), new Vector2(36f, 36f));
+            }
+
+            var so = new SerializedObject(comp);
+            so.FindProperty("id").enumValueIndex = (int)id;
+            Wire(so, "valueText", value);
+            Wire(so, "swatch", swatch);
+            Wire(so, "prevButton", prev);
+            Wire(so, "nextButton", next);
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return comp;
+        }
+
+        static UnityEngine.UI.Selectable AddToggleRow(RectTransform parent, SettingId id, string label, Vector2 pos,
+            float width, float height)
+        {
+            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true);
+            var row = bg.rectTransform;
+            var comp = bg.gameObject.AddComponent<SettingsToggleRow>();
+            StyleRowSelectable(comp, bg);
+
+            var pill = CreateImage(row, "Pill", s_RoundedRect, Palette.Accent, true);
+            PlaceCorner(pill.rectTransform, new Vector2(1f, 0.5f), new Vector2(-20f, 0f), new Vector2(120f, Mathf.Min(44f, height - 8f)));
+            var value = CreateText(pill.rectTransform, "Value", "ON", 26, Palette.UiDark, 4f, false);
+            Stretch(value.rectTransform);
+
+            var so = new SerializedObject(comp);
+            so.FindProperty("id").enumValueIndex = (int)id;
+            Wire(so, "valueText", value);
+            Wire(so, "pill", pill);
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return comp;
+        }
+
+        // Small mouse-clickable arrow; skipped by gamepad navigation (the row handles left and right).
+        static UnityEngine.UI.Button CreateArrowButton(RectTransform parent, string name, string glyph, Vector2 pos)
+        {
+            var button = CreateButton(parent, name, glyph, Vector2.zero, new Vector2(56f, 44f), 32f);
+            PlaceCorner((RectTransform)button.transform, new Vector2(1f, 0.5f), pos, new Vector2(56f, 44f));
+            var nav = button.navigation;
+            nav.mode = UnityEngine.UI.Navigation.Mode.None;
+            button.navigation = nav;
+            return button;
         }
 
         static GameObject BuildEnded(RectTransform parent, out TMP_Text banner, out RectTransform bannerRect,
@@ -389,7 +604,7 @@ namespace Zombies55.EditorTools
         // ------------------------------------------------------------------ widgets
 
         static UnityEngine.UI.Button CreateButton(RectTransform parent, string name, string label,
-            Vector2 pos, Vector2? size = null)
+            Vector2 pos, Vector2? size = null, float fontSize = 44f)
         {
             var image = CreateImage(parent, name, s_RoundedRect, default, true);
             image.raycastTarget = true;
@@ -411,7 +626,7 @@ namespace Zombies55.EditorTools
             button.colors = colors;
 
             // Dark label on a light button: keeps the default material (no outline).
-            var text = CreateText(image.rectTransform, "Label", label, 44, Palette.UiDark, 4f, false);
+            var text = CreateText(image.rectTransform, "Label", label, fontSize, Palette.UiDark, 4f, false);
             Stretch(text.rectTransform);
             return button;
         }

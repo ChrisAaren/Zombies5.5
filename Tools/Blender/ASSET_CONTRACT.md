@@ -229,3 +229,204 @@ and no landmarks from any existing game. New texture sets (tileable, same rules 
 New props: `FireEscape_Floor` (one 3.2 m-tall floor segment, mounts on a facade bay), `UtilityPole` +
 `Wire` (a sag curve, 1 m along X, to be scaled), `Dumpster`, `TrashBags`, `NewsBox`, `Manhole`, `StormGrate`,
 `Storefront_Sign_<1..6>` (original fictional shop names), `AC_WindowUnit`.
+
+### Gritty pass: as built
+- Textures (`Tools/Blender/make_textures_gritty.py`): `BrickWorn`, `ConcreteStained`, `AsphaltWorn`, `PlasterDirty`, `MetalPainted`
+  (Albedo + Normal + `_Mask` R = smoothness + `_MS` packed R = metallic, A = smoothness for URP Lit's metallic map),
+  `Grime` and `RoadMarkings` (Albedo with alpha as an overlay + Normal). Albedo mean ~0.55-0.6, Unity tints it.
+- Props (`make_props_gritty.py`): `FireEscape_Floor` (pivot = bottom centre of the facade wall plane, deck at y 0.9, protrudes 1.56 m),
+  `UtilityPole` (9.15 m, crossarm along X, wires run along local Z, attach points (-0.9/0/0.9, 8.62) and (0, 9.18)),
+  `Wire` (1 m along +X, sag 2% of span, scale UNIFORMLY by the span), `Dumpster`, `TrashBags`, `NewsBox`, `Manhole`, `StormGrate`,
+  `AC_WindowUnit` (pivot at the wall plane, sits on the sill at y 0.87), `Storefront_Sign_1..6` (2.6 x 0.6, back at the wall plane,
+  mount at y 3.3 over a storefront bay).
+- New slots: `SignPanel` (painted metal, tinted per sign), `SignText` (cream lettering), `TrashBag` (black plastic).
+
+
+## V2 architecture (`Architecture/V2/`, script `Tools/Blender/make_architecture_v2.py`)
+Run: `blender --background --factory-startup --python make_architecture_v2.py [-- tex|pieces|preview|street]`
+(helpers `bl_v2_textures.py`, `bl_v2_render.py`). Same conventions as v1: pivot = bottom centre of the outer wall plane,
+facade bays span x in [-1.5, 1.5], upper floors 3.2 m, ground floor 4.0 m, outward = Unity +Z, 1 UV unit = 1 m. New names only
+(`V2_*`), v1 files are untouched, so v1 and v2 can be mixed in one building.
+
+Differences from v1 the builder must know:
+- **Wall slab depth.** Upper-floor window bays carry a 0.47 m deep slab (z down to -0.47) because the interior card sits 0.15 m
+  behind the glass and the reveal is 0.25 m. Ground-floor pieces keep -0.30. Nothing needs to be placed behind them.
+- **Brick UVs.** `Wall` faces use u = x + 1.5, v = y (piece origin at the floor line). The three brick sets are 1.5 m wide x 1.6 m
+  tall (6 bricks x 20 courses, course = 0.08 m), so a 3 m bay is exactly 2 tiles and floors of 3.2 / 4.0 m are whole courses: bond lines
+  line up between bays and floors. Unity tiling for `BrickRed/Brown/Tan` = (1/1.5, 1/1.6). `StoneTrim` 2 m, `MetalShutter` 1 m.
+- **Z-fight rule.** All trim on the wall starts at z = 0 (never overlaps the wall slab); stack pieces without nudging them.
+- Left/right pieces (`_L`/`_R`) exist for corners: the building interior is toward +x for `_L` (a building's left corner) and toward -x for `_R`.
+
+### New material slots
+| Slot | Used for | Unity surface |
+|---|---|---|
+| `WindowInterior` | the interior card 0.15 m behind each window's glass: one quad whose UVs select one cell of `WindowInteriors_Albedo.png` | Lit/Unlit, albedo = atlas, **emission = `WindowInteriors_Emission.png`** (only the lamp and TV cells glow; scale it by time of day); no tiling, no tint. Glass in front is reflective with low opacity (alpha ~0.4-0.55, smoothness ~0.95) so the cards show through |
+| `Shutter` | roll-down shop shutter curtain | `MetalShutter` texture set, tinted, mildly metallic; mask R = smoothness |
+| `SideAd` | faded painted-ad patch on side walls (extra to the two requested) | `SideAds_Albedo.png` with **alpha** (transparent / cutout, no tint); non-tiling, one quad per piece |
+Existing slots reused: `Wall`, `Trim`, `Frame`, `Glass`, `Interior`, `Door`, `Awning`, `Roof`, `Metal`, `Concrete`, `Wood`, `SignPanel`.
+Frames are meant to read dark green, `Metal` black iron, `SignPanel` a tinted painted board (v1 `Storefront_Sign_*` can be hung on it).
+
+### Textures (`Assets/Art/Textures/`)
+| Set | Files | Size / real size | Notes |
+|---|---|---|---|
+| `BrickRed`, `BrickBrown`, `BrickTan` | `_Albedo`, `_Normal`, `_Mask` (R = smoothness) | 1536 x 1600 / 1.5 x 1.6 m | **Real hue** (mean value 0.39 / 0.31 / 0.56), do not tint strongly; per-brick colour variation, burnt and pale bricks, rough mortar with real depth in the normal, soot streaks, efflorescence |
+| `StoneTrim` | `_Albedo`, `_Normal`, `_Mask` | 1024 / 2 m | limestone, near-neutral warm, bedding, pits, rain streaks, grime |
+| `MetalShutter` | `_Albedo`, `_Normal`, `_Mask` | 1024 / 1 m | 16 corrugations per metre (horizontal), rust streaks and blotches, dents; tint grey-green |
+| `WindowInteriors` | `_Albedo`, `_Emission` | 2048 x 2048 | atlas below |
+| `SideAds` | `_Albedo` (alpha) | 2048 x 1536 | 2 x 2 cells of 1024 x 768 |
+
+**Window atlas layout** (4 columns x 3 rows, cell 512 x 680 px, row 0 at the top; UV rect inset 0.002):
+| idx | col,row | content | emissive |
+|---|---|---|---|
+| 0 | 0,0 | blinds half-drawn | |
+| 1 | 1,0 | red curtains | |
+| 2 | 2,0 | blue curtains | |
+| 3 | 3,0 | cream curtains, sofa | |
+| 4 | 0,1 | dark room, bookshelf + sofa + floor lamp silhouettes | |
+| 5 | 1,1 | window AC unit | |
+| 6 | 2,1 | plant behind a sheer | |
+| 7 | 3,1 | warm lamp-lit room | yes (lamp + wall glow) |
+| 8 | 0,2 | empty dark room | |
+| 9 | 1,2 | blinds fully drawn | |
+| 10 | 2,2 | TV-lit dark room | yes (cool blue) |
+| 11 | 3,2 | green curtains + plant | |
+Side-ad cells: 0 STERLING THREAD CO., 1 KESTREL BOOT & SHOE, 2 MERIDIAN TONIC, 3 HOTEL ARDEN (all invented).
+
+### Pieces (size = x width x y height; z = projection from the wall plane, - = into the wall)
+Triangle counts are the exported counts.
+
+**Upper-floor bays** (3 x 3.2, pivot bottom centre of the outer plane, slab z -0.47..0). Every window has a 0.25 m deep reveal, a two-over-two
+double-hung sash (frame, meeting rail, both sashes with a muntin, one glass pane), a projecting stone sill with corbels (z to +0.13),
+and a lintel. Slots `Wall, Trim, Frame, Glass, Interior, WindowInterior` (+ `Metal` for guards).
+| Name | Lintel | Guard | Atlas cell | Tris |
+|---|---|---|---|---|
+| `V2_Window_Flat_BlindsHalf` | flat stone | | 0 | 392 |
+| `V2_Window_Seg_CurtainsRed` | segmental stone arch (curved head) + keystone | | 1 | 933 |
+| `V2_Window_Key_CurtainsBlue` | flat arch with keystone | | 2 | 408 |
+| `V2_Window_Hood_CurtainsCream` | pedimented hood on consoles (z to +0.17) | | 3 | 564 |
+| `V2_Window_Flat_DarkFurniture` | flat | bars on lower sash | 4 | 524 |
+| `V2_Window_Seg_ACUnit` | segmental | | 5 | 933 |
+| `V2_Window_Hood_PlantGuard` | hood | bars | 6 | 696 |
+| `V2_Window_Key_LampLit` | keystone | | 7 | 408 |
+| `V2_Window_Flat_EmptyDark` | flat | | 8 | 392 |
+| `V2_Window_Seg_BlindsClosedGuard` | segmental | bars | 9 | 1065 |
+| `V2_Window_Hood_TVRoom` | hood | | 10 | 564 |
+| `V2_Window_Key_GreenPlantGuard` | keystone | bars | 11 | 540 |
+| `V2_Facade_Juliet` | flat, tall sash window with an iron Juliet balcony (z to +0.40, slab on brackets reaching y -0.10) | | 1 | 1016 |
+| `V2_Facade_BeltCourse` | blank wall, stone string + two stepped brick belt-course bands at the top (z to +0.06) | | | 64 |
+| `V2_Facade_BrickedUp` | window bricked up 5 cm proud of the reveal, stone sill + lintel stay | | | 184 |
+Windows with `Seg` heads reach z -0.47..+0.13; `Hood` to +0.17.
+
+**Corners**: `V2_Corner_Quoin_L` / `_R` (0.74 x 3.2, x -0.22..0.44 or mirrored, z -0.44..0.05, pivot bottom centre of the corner, 8 alternating
+stones per floor, 352 tris) and `V2_Corner_Quoin_Ground_L` / `_R` (4.0 tall, 440 tris). Slot `Trim`.
+
+**Side walls** (3 x 3.2, `Wall`, z -0.33..0): `V2_Side_Blank` (12), `V2_Side_Blank_Ground` (3 x 4.0, 12), `V2_Side_Ad_Sterling|Kestrel|Meridian|Arden`
+(blank bay + one 2.5 x 1.98 m faded ad quad at z +0.015, slot `SideAd`, 14 tris each). Rotate -90 deg about Y to face -x, etc.
+
+**Wall furniture** (pivot bottom centre of the wall plane x = the pipe axis; stack per floor): `V2_Pipe_Downspout` (3.2 tall, 0.16 x 0.14, wall brackets every 0.8 m, 76 tris),
+`V2_Pipe_Downspout_Foot` (4.0, with a kicked-out shoe at the bottom, 112), `V2_Conduit_3_2` (electrical conduit with clamps, a junction box and a short branch run, x -0.62..0.11, 160). Slot `Metal`.
+
+**Ground floor** (3 x 4.0, wall to z -0.30):
+| Name | Content | Slots | Tris |
+|---|---|---|---|
+| `V2_Facade_Stoop` | rowhouse entrance: **5 stone steps** (4 risers + landing at y = 1.0) projecting to z = +1.6, stone cheek walls with sloped tops, newel piers, **iron handrails + balusters on both sides**, recessed door (0.25 m) with panels, glazed upper light and a **transom**, pilasters + entablature + hood, two narrow parlor windows, barred basement windows in the stone base | Trim, Wall, Frame, Door, Interior, Glass, Metal | 1804 |
+| `V2_Facade_ShutterShop_Half` | storefront: shop window behind a **roll-down `Shutter` half down** (bottom edge y = 1.55), roller housing, guide rails, **tiled bulkhead** (tile joints), **sign band** y 3.2..3.92 | Trim, Wall, Interior, Frame, Glass, Metal, Shutter, SignPanel | 622 |
+| `V2_Facade_ShutterShop_Down` | same, shutter fully down (bottom edge y = 0.68) | same | 622 |
+| `V2_Facade_ShopDoorway` | recessed glazed door with transom between two splayed display-window wings, two flush display windows, tiled/stone bulkhead, entry step (z to +0.45), sign band | Trim, Wall, Frame, Glass, Interior, Door, Metal, Concrete, SignPanel | 672 |
+| `V2_Facade_ServiceDoor` | steel-framed service door in a 0.25 m reveal (kick plate, louvres, push bar, lock), stone lintel, step (z to +0.55), caged lamp, number plate | Trim, Wall, Metal, Door, Concrete | 436 |
+The awning mount height is y = 3.2 as before (below the sign band).
+
+**Roofline** (pivot bottom centre of the outer plane at the top of the wall):
+| Name | Size | Notes | Tris |
+|---|---|---|---|
+| `V2_Cornice_Bracketed` | 3 x 0.86, z -0.30..+0.50 | frieze, **modillion brackets every 0.5 m** (6 per bay, seamless across bays), crown moulding, fascia; slot Trim | 252 |
+| `V2_Cornice_Bracketed_Corner_L` / `_R` | 0.8 x 0.87 x 0.8 | mitred outer corner + diagonal corner bracket; pivot at the wall corner | 88 each |
+| `V2_Cornice_Corbel` | 3 x 0.56, z -0.34..+0.24 | simple brick corbel table (4 stepped courses), dentil band every 0.25 m, stone cap; Wall + Trim | 244 |
+| `V2_Parapet_Coped` | 3 x 0.9, z -0.36..+0.07 | brick parapet with raised panel and **stone coping** overhang; Wall + Trim | 80 |
+| `V2_Roof_Chimney_A` | 1.18 x 2.66 x 0.88 | brick shaft, corbelled cap, stone cap, flue pot; pivot bottom centre | 164 |
+| `V2_Roof_Chimney_B` | 1.88 x 2.66 x 0.88 | twin-flue version | 236 |
+| `V2_Roof_Bulkhead` | 2.56 x 2.64 x 2.75 (z -1.15..+1.6) | roof-access bulkhead: brick box, steel-framed door with louvres (door faces +Z), concrete step, sloped `Roof` top, lamp | 348 |
+| `V2_Roof_WaterTower` | 3.0 x 7.75 x 3.0 | **steel stand** (4 legs, ring beams, X-braces on 4 faces and 2 tiers), platform, wooden tank (`Wood`) with 7 steel hoops, conical `Roof` top, riser pipe, valve box and ladder on the +Z side | 1592 |
+| `V2_Awning` | 2.8 x 0.58 x 0.9 | v1 mounting (top-back centre at y = 3.2), seam ribs; slot `Awning`, `Metal` arms | 204 |
+
+**Fire escapes (zig-zag, lines up between floors)**: pivot = bottom centre of the facade bay (like v1 `FireEscape_Floor`), protrudes 1.65 m, slot `Metal`.
+Each segment is a 2.9 x 1.0 m grated deck (top at y = 0.18, wall brackets down to y = -0.5, rails 0.95 m with 0.15 m balusters, gaps at both stair gates)
+plus one full-bay flight in a front lane (z 1.0..1.6) rising 3.2 m to the **next segment's deck**, arriving exactly where the next flight starts.
+`V2_FireEscape_ZigA` climbs toward +x, `V2_FireEscape_ZigB` toward -x: **stack A, B, A, B ... one per floor** (each 3.2 m above the last, first at the first upper floor, y = 4.0);
+finish the top floor with `V2_FireEscape_Top` (deck with full rails, no flight) and hang `V2_FireEscape_DropLadder` (pivot at the lowest deck level, hangs to y = -3.6, so place it at y = 4.0, x = +/-1.2 at the free stair end).
+Tris: ZigA/ZigB 1152 each, Top 768, DropLadder 168. A flight's rail reaches y +4.27 above its segment origin, i.e. into the next floor's space.
+
+### Triangle budget
+All 47 pieces together: 21.4k tris (one of each). Window pieces average ~620; a 3-bay, 4-floor building is roughly 10-14k tris incl. stoops, cornice and a fire escape.
+The Unity builder should GPU-instance or static-batch by piece name.
+
+## V2 street assets (trees, vehicles, street furniture)
+Scripts: `make_trees_v2.py`, `make_vehicles_v2.py`, `make_street_furniture.py` (helpers in `bl_street2.py`; proof scene
+`make_street_scene_v2.py` re-imports the FBX). New names only: nothing in the V1 set was overwritten. Same axes/pivot/export rules
+as above. Previews: `Tools/Blender/previews/V2s_*.png`.
+
+### New material slots
+`LeafCard` (alpha-cutout leaf atlas, two-sided, cutoff ~0.5), `Plate` (license-plate atlas), `SignFace` (street-sign atlas),
+`SignalRed`, `SignalAmber`, `SignalGreen` (emissive lamps, each its own slot so Unity can drive them). Other slots as in the table above.
+Preview-only Eevee materials live in `bl_street2.py`; the FBX carry plain slot names.
+
+### Trees (`Models/Nature/V2/`), pivot = trunk base on the ground, trunk on the origin
+| Name | Height | Crown | Tris | Notes |
+|---|---|---|---|---|
+| `StreetTree_A` | ~9.2 m | ~9 m | 5.8k | London-plane feel: bare trunk to 3.3 m, 5 spreading limbs, large lobed leaves (cells 1, 3) |
+| `StreetTree_B` | ~8.3 m | ~8 m | 7.8k | honey-locust feel: vase shape, airy compound sprigs (cells 2, 3) |
+| `StreetTree_C` | ~6.9 m | ~7 m | 6.6k | young maple: slim, oval, dense (cells 0, 3) |
+| `TreePitGrate` | 1.2 x 0.035 x 1.2 m | | 1.3k | cast-iron grate, 0.4 m trunk hole, `Metal`; top at y = 0.035 |
+- Slots: `Bark`, `LeafCard`. Foliage = folded 4-tri cards with **custom (crown-radial) normals** for soft volume: keep the
+  imported normals (Normals: Import), material two-sided (Cull Off), alpha clip 0.5, shadow casting alpha-tested.
+- Bark UV: u around the branch, v along it, 0.5 m per texture tile. `BarkV2_Albedo/Normal.png` (512, tileable, near-neutral: tint it).
+- `LeafCards_Albedo.png` (2048, RGBA, straight alpha, RGB bled into transparent texels) and `LeafCards_Normal.png`:
+  2 x 2 atlas, each cell 1024 px: cell 0 (top-left) maple cluster, 1 (top-right) plane-tree cluster, 2 (bottom-left) honey-locust
+  sprig, 3 (bottom-right) small broadleaf filler. Mean opaque albedo ~(0.35, 0.39, 0.14): slightly yellow-green, desaturated.
+
+### Vehicles (`Models/Vehicles/V2/`), pivot bottom center between the wheels, forward +Z, 18-20.4k tris each
+`CarV2_Sedan` 1.86 x 1.45 x 4.57, `CarV2_Coupe` 1.88 x 1.35 x 4.47, `CarV2_Hatch` 1.78 x 1.51 x 4.09, `CarV2_Wagon` 1.86 x 1.46 x 4.77,
+`CarV2_Van` 1.93 x 1.95 x 4.94, `CarV2_Pickup` 1.98 x 1.70 x 5.26 (open bed), `CarV2_Cab` 1.86 x 1.65 x 4.57 (sedan body + roof sign box),
+`CarV2_SUV` 1.94 x 1.74 x 4.67, `CarV2_Minivan` 1.94 x 1.77 x 4.94 (sizes x, y up, z forward).
+- Slots: `CarPaint`, `Glass`, `Chrome`, `Rubber`, `Interior`, `Headlight`, `Taillight`, `Metal`, `Paint`, `Plate`, and `LampGlass` (Cab sign).
+  `Metal` = steel wheels / brake discs, `Paint` = brake calipers and the Cab sign body (tint freely).
+- Greenhouse is open to the cabin: a dark lining shell (`Rubber`, normals inward: needs back-face culling ON), seats, dash and wheel
+  (`Interior`) show through `Glass`, so keep Glass transparent/tinted (alpha ~0.3-0.5), not opaque.
+- Details (all geometry): panel-gap grooves (hood, trunk/hatch, door outlines, `Rubber`), chrome belt and bumper trim, door handles,
+  mirrors, wipers, arch trim, side markers, grille slats, headlight bezel + reflector cup + bulb, taillight lens with reflectors, exhaust,
+  recessed plate frames.
+- Wheels: 24-sided tires with sidewall ridge and 4-rib tread (`Rubber`), spoked rims (5 or 6 spokes) or steel wheels with hubcaps.
+- `PlatesV2_Albedo.png` (1024 x 512): 4 x 4 cells of 256 x 128 px, fictional "ZOMBIES 5.5 / ZB 5.5-nnn". Cell index = row * 4 + col from
+  the top-left; the car with index i (Sedan 0, Coupe 1, Hatch 2, ...) uses cell 2i (front) and 2i+1 (rear) mod 16; the Cab uses cell 9
+  (yellow) both ends. Plate quads are 0.305 x 0.152 m with UVs already inside their cell.
+- Dirt: 2nd UV map **`UVDirt`** (Unity uv2) maps `CarDirt_Mask.png` (512, R = G = B = dirt amount 0..1). u = along the body remapped so
+  the rear axle = 0.2 and the front axle = 0.8 (identical for every car, so the arch blobs always line up); v = height / 2 m
+  (v = 0 is the ground, so dirt gathers at the sills and fades by ~0.6 m); nose/tail faces sample u = 0.5. Use it in a shader
+  to lerp CarPaint toward a grime color/lower smoothness. First UV map is world-meter box projection.
+
+### Street furniture (`Models/Props/V2/`), pivot bottom center on the ground, heads/signs face +Z, arms extend to +X
+| Name | Size (x, y up, z) | Slots / notes |
+|---|---|---|
+| `TrafficLight_Pole` | 5.8 x 6.45 x 0.7 | mast arm (5.6 m) with two 3-lamp heads at x = 2.3 and 4.3, plus one head on the pole at 2.7 m. `Metal`, `SignalRed`/`SignalAmber`/`SignalGreen` |
+| `TrafficLight_Post` | 0.46 x 3.88 x 0.8 | 3.7 m post, one 3-lamp head with backplate, push button |
+| `StreetSign_Post` | 0.9 x 3.37 x 0.9 | 3.35 m post, two crossed name blades (1 along +X, 1 along +Z), faces = cells 0-3 of the blade atlas; `StreetSign_Post_B` = same with cells 4-7 |
+| `StopSign` | 0.75 x 2.58 | octagon, 0.75 m across flats |
+| `NoParkingSign` | 0.45 x 2.52 | 0.45 x 0.6 m face |
+| `BusStopSign` | 0.45 x 3.12 | blue flag sign + small info plate |
+| `ParkingMeter` | 0.2 x 1.63 | `Metal`, `Glass`, `Paint`, `Chrome` |
+| `PhoneBooth` | 1.0 x 2.56 x 1.0 | frame, glass, phone unit, `TELEPHONE` header (cell below); generic, unbranded |
+| `StreetLamp_V2` | 3.4 x 9.4 | 9 m tapered pole, curved arm to +X 2.5 m, cobra head, `LampGlass` lens underneath |
+| `Bollard_V2` | 0.23 x 0.92 | `Metal` + `Paint` reflective band |
+| `CurbDrain` | 1.3 x 0.185 x 1.03 | curb throat (`Concrete`, `Interior` opening, back at z = -0.2) + gutter grate toward +Z, 0.9 x 0.45 |
+- `StreetSigns_Albedo.png` (2048 x 2048, RGB, `SignFace`). Cells in pixels, origin top-left (Unity v = 1 - y / 2048):
+  name blades 1024 x 256 each, 2 columns x 4 rows at (col * 1024, row * 256), index b = row * 2 + col: 0 MERCER AVE, 1 HALSEY ST,
+  2 ORCHARD BLVD, 3 GARNET ST, 4 PELL AVE, 5 RUSKIN ST, 6 DALTON RD, 7 FENWICK LN. Lower half: STOP octagon (0,1024)-(512,1536);
+  NO PARKING (512,1024) 384 x 512; BUS STOP (1024,1024) 384 x 512; TELEPHONE header (1536,1024) 512 x 128;
+  ONE WAY (0,1536) 512 x 160 (unused by a prop yet); PAY HERE (512,1536) 256 x 128 (unused). Sign backs are `Metal`.
+- `RoadMarkingsV2_Albedo.png` (2048 x 2048, RGBA straight alpha): 4 x 4 cells of 512 px, each cell = **2 m x 2 m** of road, index
+  i = row * 4 + col from the top-left (Unity u0 = col / 4, v0 = 1 - (row + 1) / 4). Lay it as decal quads (+0.01 m) or URP decals:
+  0 double yellow centerline (two 0.1 m lines, 0.1 m gap, vertical, tiles along v), 1 same worn, 2 same worn + cracked,
+  3 white solid line 0.12 m, 4 white dashed lane line (1.2 m dash, 0.8 m gap), 5 white solid worn, 6 white solid cracked,
+  7 yellow single line, 8 stop bar (0.5 m deep, tiles along u), 9 stop bar worn, 10 crosswalk bars (0.5 m bars, 0.5 m gaps, bars run
+  along v, tiles along u), 11 crosswalk worn, 12 straight arrow, 13 crack decal (near-black, alpha 0.75), 14 asphalt patch decal,
+  15 tire-wear bands decal. Cells 0-12 carry paint color, 13-15 are dark overlays.

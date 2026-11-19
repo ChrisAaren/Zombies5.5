@@ -14,8 +14,9 @@ namespace Zombies55
         [SerializeField] float followSharpness = 14f;
 
         [Header("Look")]
-        [SerializeField] float mouseSensitivity = 0.12f;  // degrees per pixel
-        [SerializeField] float stickSpeed = 160f;          // degrees per second
+        // Sensitivity multipliers, invert Y and the aim scale come from GameSettings.
+        [SerializeField] float mouseSensitivity = 0.12f;  // degrees per pixel at GameSettings.MouseSensitivity 1
+        [SerializeField] float stickSpeed = 160f;          // degrees per second at GameSettings.ControllerSensitivity 1
         [SerializeField] float minPitch = -5f;
         [SerializeField] float maxPitch = 55f;
         [SerializeField] float startPitch = 18f;
@@ -29,7 +30,6 @@ namespace Zombies55
         [SerializeField] float aimFov = 38f;
         [SerializeField] float aimShoulderX = 0.85f;
         [SerializeField] float aimDistance = 3.6f;
-        [SerializeField] float aimLookScale = 0.6f;
         [SerializeField] float aimBlendSharpness = 10f;
 
         [Header("Recoil")]
@@ -103,18 +103,18 @@ namespace Zombies55
             ApplyAim(dt);
             _recoilPitch = Mathf.SmoothDamp(_recoilPitch, 0f, ref _recoilVelPitch, recoilRecoverTime, float.PositiveInfinity, dt);
             _recoilYaw = Mathf.SmoothDamp(_recoilYaw, 0f, ref _recoilVelYaw, recoilRecoverTime, float.PositiveInfinity, dt);
-            float sens = Mathf.Lerp(1f, aimLookScale, _aim);
+            float sens = Mathf.Lerp(1f, GameSettings.AimSensitivity, _aim);
 
             if (state == RunState.Running)
             {
                 Vector2 look = Vector2.zero;
                 var mouse = Mouse.current;
                 // Locking the cursor produces a one-off delta spike; skip the first frames after it.
-                if (mouse != null && _ignoreMouseFrames == 0) look += mouse.delta.ReadValue() * (mouseSensitivity * sens);
+                if (mouse != null && _ignoreMouseFrames == 0) look += mouse.delta.ReadValue() * (mouseSensitivity * GameSettings.MouseSensitivity * sens);
                 var pad = Gamepad.current;
-                if (pad != null) look += pad.rightStick.ReadValue() * (stickSpeed * sens * Time.unscaledDeltaTime);
+                if (pad != null) look += pad.rightStick.ReadValue() * (stickSpeed * GameSettings.ControllerSensitivity * sens * Time.unscaledDeltaTime);
                 _yaw += look.x;
-                _pitch = Mathf.Clamp(_pitch - look.y, minPitch, maxPitch);
+                _pitch = Mathf.Clamp(_pitch - (GameSettings.InvertY ? -look.y : look.y), minPitch, maxPitch);
             }
             else if (state != RunState.Paused)
             {

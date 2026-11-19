@@ -4,8 +4,8 @@ using UnityEngine.AI;
 
 namespace Zombies55
 {
-    // A hooded chaser. NavMeshAgent steering, melee attack with a raised-arm windup, topple-and-sink death,
-    // pooled by RoundManager. CharacterMotion animates the rig through ICharacterMover.
+    // A hooded chaser. NavMeshAgent steering, melee attack on a windup that matches the attack clip's contact frame,
+    // pooled by RoundManager. EnemyAnimation plays the humanoid clips (it reads the agent velocity through ICharacterMover).
     [RequireComponent(typeof(NavMeshAgent))]
     public class Enemy : MonoBehaviour, IDamageable, ICharacterMover
     {
@@ -21,7 +21,7 @@ namespace Zombies55
         [SerializeField] float attackRange = 1.6f;
         [SerializeField] float hitRange = 2.0f;
         [SerializeField] float windupSeconds = 0.45f;
-        [SerializeField] float recoverSeconds = 0.3f;
+        [SerializeField] float recoverSeconds = 0.5f;
         [SerializeField] float attackCooldown = 1.1f;
         [SerializeField] float attackDamage = PlayerHealth.MeleeDamage;
 
@@ -31,9 +31,10 @@ namespace Zombies55
         [SerializeField] float knockbackSpeed = 4.5f;
 
         [Header("Death")]
-        [SerializeField] float toppleSeconds = 0.55f;
-        [SerializeField] float deathSeconds = 2f;
-        [SerializeField] float sinkDepth = 0.9f;
+        [Tooltip("EnemyDeath clip length; the body lies still for a moment after it, then sinks.")]
+        [SerializeField] float fallSeconds = 1.9f;
+        [SerializeField] float deathSeconds = 3f;
+        [SerializeField] float sinkDepth = 0.7f;
 
         [Header("Stuck")]
         [SerializeField] float stuckSeconds = 6f;
@@ -44,8 +45,6 @@ namespace Zombies55
         public float MaxHealth { get; private set; }
         public bool IsAlive => _state != State.Dead && Health > 0f;
         public int Round => _round;
-        // 0..1 weight for EnemyAttackPose.
-        public float AttackPose { get; private set; }
 
         // ICharacterMover
         public Vector3 Velocity => _state == State.Dead || _agent == null || !_agent.enabled ? Vector3.zero : _agent.velocity;
@@ -58,7 +57,7 @@ namespace Zombies55
 
         NavMeshAgent _agent;
         Collider[] _colliders;
-        CharacterMotion _motion;
+        EnemyAnimation _anim;
         RoundManager _owner;
 
         State _state;
@@ -76,7 +75,6 @@ namespace Zombies55
 
         float _deathTimer;
         Vector3 _deathPos;
-        Quaternion _deathStartRot, _deathEndRot;
 
         int _lastBlastFrame = -1;
         GameObject _lastBlastSource;
@@ -108,7 +106,7 @@ namespace Zombies55
             _agent = GetComponent<NavMeshAgent>();
             _agent.updateRotation = false;
             _colliders = GetComponentsInChildren<Collider>(true);
-            _motion = GetComponentInChildren<CharacterMotion>(true);
+            _anim = GetComponentInChildren<EnemyAnimation>(true);
             _baseScale = transform.localScale;
         }
 
@@ -135,7 +133,6 @@ namespace Zombies55
             MaxHealth = HealthForRound(_round);
             Health = MaxHealth;
             _state = State.Chase;
-            AttackPose = 0f;
             _knock = Vector3.zero;
             _stagger = 0f;
             _stuckTimer = 0f;
@@ -158,8 +155,6 @@ namespace Zombies55
                 _agent.Warp(hit.position);
             if (_agent.isOnNavMesh) _agent.isStopped = false;
             _stuckAnchor = transform.position;
-
-            if (_motion != null) _motion.LookTarget = PlayerTransform;
         }
 
         void Update()
@@ -172,7 +167,6 @@ namespace Zombies55
             if (loop != null && loop.State == RunState.Lost)
             {
                 if (_agent.enabled && _agent.isOnNavMesh) { _agent.isStopped = true; _agent.velocity = Vector3.zero; }
-                AttackPose = Mathf.MoveTowards(AttackPose, 0f, dt * 4f);
                 return;
             }
 
@@ -195,7 +189,6 @@ namespace Zombies55
             switch (_state)
             {
                 case State.Chase:
-                    AttackPose = Mathf.MoveTowards(AttackPose, 0f, dt * 5f);
                     _repathTimer -= dt;
                     if (_repathTimer <= 0f)
                     {
@@ -209,6 +202,7 @@ namespace Zombies55
                         _stateTimer = 0f;
                         _agent.isStopped = true;
                         _agent.velocity = Vector3.zero;
+                        if (_anim != null) _anim.PlayAttack();
                     }
                     CheckStuck(dt, dist > 3f, false);
                     break;
@@ -216,8 +210,6 @@ namespace Zombies55
                 case State.Windup:
                     _stateTimer += dt;
                     Face(toPlayer, dt);
-                    float p = Mathf.Clamp01(_stateTimer / windupSeconds);
-                    AttackPose = p * p * (3f - 2f * p);
                     if (_stateTimer >= windupSeconds)
                     {
                         if (dist <= hitRange && PlayerHealth.Instance.IsAlive) Strike(player, toPlayer);
@@ -229,7 +221,6 @@ namespace Zombies55
 
                 case State.Recover:
                     _stateTimer += dt;
-                    AttackPose = Mathf.Clamp01(1f - _stateTimer / recoverSeconds);
                     if (_stateTimer >= recoverSeconds)
                     {
                         _state = State.Chase;
@@ -329,6 +320,7 @@ namespace Zombies55
                     _knock = dir.normalized * knockbackSpeed * Mathf.Clamp(info.Amount / 60f, 0.5f, 1.5f);
             }
             else _stagger = 0.15f;
+            if (!lethal && _state == State.Chase && _anim != null) _anim.PlayHit();
 
             var wallet = PlayerWallet.Instance;
             if (info.FromPlayer && wallet != null)
@@ -349,20 +341,12 @@ namespace Zombies55
         {
             Health = 0f;
             _state = State.Dead;
-            AttackPose = 0f;
             foreach (var c in _colliders) c.enabled = false;
             if (_agent.enabled) _agent.enabled = false;
-            if (_motion != null) _motion.LookTarget = null;
-
-            Vector3 away = info.Direction;
-            away.y = 0f;
-            if (away.sqrMagnitude < 0.001f) away = -transform.forward;
-            away.Normalize();
+            if (_anim != null) _anim.PlayDeath();
 
             _deathTimer = 0f;
             _deathPos = transform.position;
-            _deathStartRot = transform.rotation;
-            _deathEndRot = Quaternion.AngleAxis(90f, Vector3.Cross(Vector3.up, away)) * _deathStartRot;
 
             EnemyEffects.Instance?.DustPuff(_deathPos);
             RoundAudio.Instance?.PlayEnemyDeath(_deathPos + Vector3.up);
@@ -373,15 +357,10 @@ namespace Zombies55
         void UpdateDeath(float dt)
         {
             _deathTimer += dt;
-            // Topple: ease in like a fall, with a short settle.
-            float f = Mathf.Clamp01(_deathTimer / toppleSeconds);
-            transform.rotation = Quaternion.Slerp(_deathStartRot, _deathEndRot, f * f);
-
-            // Sink and shrink away over the rest of the time.
-            float sinkStart = toppleSeconds + 0.3f;
+            // The EnemyDeath clip does the fall; the body lies there, then sinks away over the rest of the time.
+            float sinkStart = fallSeconds + 0.3f;
             float s = Mathf.Clamp01((_deathTimer - sinkStart) / Mathf.Max(0.01f, deathSeconds - sinkStart));
             transform.position = _deathPos + Vector3.down * (sinkDepth * s * s);
-            transform.localScale = _baseScale * (1f - 0.5f * s);
 
             if (_deathTimer >= deathSeconds)
             {

@@ -33,6 +33,7 @@ namespace Zombies55
         public const int Enemy = 8;       // enemy hitboxes and bodies
         public const int Explosive = 9;   // barrels and explosive cars
         public const int Player = 10;     // the player's CharacterController
+        public const int Barrier = 11;    // district barrier colliders; not shootable, not baked into the NavMesh
 
         // What the player's bullets can hit: world, enemies, explosives. Never the player.
         public const int ShotMask = (1 << Default) | (1 << Enemy) | (1 << Explosive);

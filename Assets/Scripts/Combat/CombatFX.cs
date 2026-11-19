@@ -24,6 +24,7 @@ namespace Zombies55
             public bool Active;
         }
 
+        Transform _pool;
         Material _soft;
         ParticleSystem _dust, _sparks, _flash, _wisp, _fireball, _blastSmoke, _blastSparks, _blastDust;
         TracerSlot[] _tracers;
@@ -32,9 +33,19 @@ namespace Zombies55
         float _flashUntil, _boomStart;
         CinemachineImpulseSource _impulse;
 
-        void Awake()
+        void Awake() => EnsureInit();
+
+        // Builds the pooled systems once. Non-serialized fields are lost on a script reload in Play mode while the
+        // child objects survive, so every entry point calls this and a reload rebuilds from a clean slate.
+        void EnsureInit()
         {
             Instance = this;
+            if (_tracers != null && _flashLight != null && _boomLight != null && _flash != null) return;
+            // Everything lives under one pool object, so a rebuild removes only what this component made.
+            var old = transform.Find("CombatFXPool");
+            if (old != null) Destroy(old.gameObject);
+            _pool = new GameObject("CombatFXPool").transform;
+            _pool.SetParent(transform, false);
             var src = particleMaterial != null ? particleMaterial : new Material(Shader.Find("Sprites/Default"));
             _soft = new Material(src) { name = "CombatSoft", mainTexture = MakeSoftTexture() };
 
@@ -52,7 +63,7 @@ namespace Zombies55
             for (int i = 0; i < _tracers.Length; i++)
             {
                 var go = new GameObject("Tracer");
-                go.transform.SetParent(transform, false);
+                go.transform.SetParent(_pool, false);
                 var lr = go.AddComponent<LineRenderer>();
                 lr.positionCount = 2;
                 lr.useWorldSpace = true;
@@ -69,16 +80,18 @@ namespace Zombies55
 
             _flashLight = MakeLight("MuzzleLight", Palette.MuzzleFlash, 7f);
             _boomLight = MakeLight("BlastLight", Palette.FireOrange, 12f);
-            _impulse = gameObject.AddComponent<CinemachineImpulseSource>();
+            _impulse = GetComponent<CinemachineImpulseSource>();
+            if (_impulse == null) _impulse = gameObject.AddComponent<CinemachineImpulseSource>();
         }
 
-        void OnEnable() => Instance = this;
+        void OnEnable() => EnsureInit();
         void OnDestroy() { if (Instance == this) Instance = null; }
 
         // ------------------------------------------------------------------ frame update
 
         void Update()
         {
+            EnsureInit();
             float now = Time.time;
             for (int i = 0; i < _tracers.Length; i++)
             {
@@ -108,6 +121,7 @@ namespace Zombies55
 
         public void Tracer(Vector3 from, Vector3 to)
         {
+            EnsureInit();
             float dist = Vector3.Distance(from, to);
             if (dist < 1f) return;
             ref var t = ref _tracers[_nextTracer];
@@ -126,6 +140,7 @@ namespace Zombies55
 
         public void MuzzleFlash(Transform muzzle, float size)
         {
+            EnsureInit();
             Vector3 p = muzzle.position;
             Vector3 f = muzzle.forward;
 
@@ -175,6 +190,7 @@ namespace Zombies55
 
         public void Impact(Vector3 point, Vector3 normal, ImpactKind kind)
         {
+            EnsureInit();
             Vector3 p = point + normal * 0.04f;
             int sparks = kind == ImpactKind.World ? 2 : kind == ImpactKind.Metal ? 8 : 6;
             for (int i = 0; i < sparks; i++)
@@ -209,6 +225,7 @@ namespace Zombies55
 
         public void Explosion(Vector3 pos, float radius)
         {
+            EnsureInit();
             float s = Mathf.Clamp(radius / 6f, 0.6f, 1.6f);
 
             // Bright core
@@ -296,6 +313,7 @@ namespace Zombies55
         // Looping smoke column (rate set by the owner through emission.rateOverTime).
         public ParticleSystem CreateSmoke(Transform parent, Vector3 localPos)
         {
+            EnsureInit();
             var ps = MakeSystem("Smoke", 60, -0.05f, Fade(0.65f, 0f), Curve(0.5f, 1.8f), false, parent);
             ps.transform.localPosition = localPos;
             ConfigureLoop(ps, 1.8f, 2.8f, 0.8f, 1.5f, 0.6f, 1.1f, Color.Lerp(Palette.SmokeGrey, Palette.SmokeDark, 0.5f), 12f);
@@ -304,6 +322,7 @@ namespace Zombies55
 
         public ParticleSystem CreateFire(Transform parent, Vector3 localPos)
         {
+            EnsureInit();
             var ps = MakeSystem("Fire", 50, -0.1f, FireGradient(), Curve(1f, 0.3f), false, parent);
             ps.transform.localPosition = localPos;
             ConfigureLoop(ps, 0.4f, 0.8f, 1.2f, 2f, 0.35f, 0.7f, Color.white, 20f);
@@ -339,7 +358,7 @@ namespace Zombies55
             bool stretch = false, Transform parent = null)
         {
             var go = new GameObject(name);
-            go.transform.SetParent(parent != null ? parent : transform, false);
+            go.transform.SetParent(parent != null ? parent : _pool, false);
             var ps = go.AddComponent<ParticleSystem>();
             ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
 
@@ -383,7 +402,7 @@ namespace Zombies55
         Light MakeLight(string name, Color color, float range)
         {
             var go = new GameObject(name);
-            go.transform.SetParent(transform, false);
+            go.transform.SetParent(_pool, false);
             var l = go.AddComponent<Light>();
             l.type = LightType.Point;
             l.color = color;

@@ -63,9 +63,16 @@ namespace Zombies55.EditorTools
         static Enemy BuildEnemyTemplate(Transform parent)
         {
             var hoodie = Mat("EnemyHoodie", Palette.EnemyHoodie);
-            var pants = Mat("EnemyPants", Palette.EnemyPants);
-            var skin = Mat("EnemySkin", Palette.EnemySkin);
-            var eye = Mat("EnemyEye", Palette.EnemyEyeRed, 3f);
+            var look = new CharacterLook
+            {
+                Skin = Surf("EnemySkinTex", Palette.EnemySkin, "Characters/Skin", Vector2.one, 0.25f),
+                Top = Surf("EnemyTop", Palette.EnemyHoodie, "Characters/Cloth", Vector2.one, 0.15f),
+                Pants = Surf("EnemyPantsTex", Palette.EnemyPants, "Characters/Denim", Vector2.one, 0.15f),
+                Shoe = Surf("EnemyShoe", Palette.EnemyPants, "Characters/Leather", Vector2.one, 0.2f),
+                EyeWhite = Mat("EnemyEyeWhite", new Color(0.55f, 0.5f, 0.48f)),
+                Iris = Mat("EnemyEye", Palette.EnemyEyeRed, 3f),   // emissive red: the signature read at distance
+                Brow = Mat("EnemyBrow", Palette.EnemyPants),
+            };
 
             var go = new GameObject("EnemyTemplate");
             go.transform.SetParent(parent, false);
@@ -88,53 +95,61 @@ namespace Zombies55.EditorTools
             rb.useGravity = false;
 
             go.AddComponent<Enemy>();
-            var motion = go.AddComponent<CharacterMotion>();
-            go.AddComponent<EnemyAttackPose>();
 
-            // The rig reads the static eye material, so swap it for the glowing one while building.
-            var prevEye = mEye;
-            mEye = eye;
-            BuildCharacterRig(go.transform, motion, hoodie, pants, skin, mShadow, HeadGear.Hood, hoodie, null, 1f, 1f);
-            mEye = prevEye;
+            var character = BuildHumanoid(go.transform, look, EnemyControllerPath, true, HeadGear.Hood, hoodie, null);
+            character.AddComponent<EnemyAnimation>();
 
-            // Lurching gait: slower, shorter strides, arms mostly limp.
-            SetFloat(motion, "stepFrequency", 1.5f);
-            SetFloat(motion, "legSwing", 30f);
-            SetFloat(motion, "armSwing", 14f);
-            SetFloat(motion, "accelLean", 14f);
-
-            // Body: head y 1.56-1.79, torso and upper arms y 0.87-1.55 (x +-0.33), legs y 0-0.99 (x +-0.2).
-            AddHitbox(go.transform, "Hit_Head", HitZone.Head, c =>
+            // Hitboxes ride the animated bones, so a headshot lands on the head wherever the clip puts it.
+            // Shapes are placed in the rest pose (upright), then parented to their bone.
+            Transform Bone(string n) { return FindDeep(character.transform, n); }
+            AddBoneHitbox(Bone("Head"), "Hit_Head", HitZone.Head, new Vector3(0f, 1.69f, 0.01f), c =>
             {
-                var s = c.AddComponent<SphereCollider>();
-                s.center = new Vector3(0f, 1.67f, 0.01f);
-                s.radius = 0.15f;
+                var sp = c.AddComponent<SphereCollider>();
+                sp.radius = 0.14f;
             });
-            AddHitbox(go.transform, "Hit_Torso", HitZone.Body, c =>
+            AddBoneHitbox(Bone("Chest"), "Hit_Torso", HitZone.Body, new Vector3(0f, 1.22f, 0f), c =>
             {
-                var b = c.AddComponent<BoxCollider>();
-                b.center = new Vector3(0f, 1.2f, 0f);
-                b.size = new Vector3(0.64f, 0.68f, 0.32f);
+                var bx = c.AddComponent<BoxCollider>();
+                bx.size = new Vector3(0.38f, 0.52f, 0.26f);
             });
-            AddHitbox(go.transform, "Hit_Legs", HitZone.Body, c =>
+            AddBoneHitbox(Bone("Hips"), "Hit_Hips", HitZone.Body, new Vector3(0f, 0.93f, 0f), c =>
             {
-                var k = c.AddComponent<CapsuleCollider>();
-                k.center = new Vector3(0f, 0.5f, 0f);
-                k.radius = 0.2f;
-                k.height = 1.0f;
+                var bx = c.AddComponent<BoxCollider>();
+                bx.size = new Vector3(0.36f, 0.2f, 0.25f);
             });
+            foreach (string side in new[] { "Left", "Right" })
+            {
+                AddLimbHitbox(Bone(side + "UpperLeg"), Bone(side + "LowerLeg"), "Hit_" + side + "UpperLeg", 0.095f);
+                AddLimbHitbox(Bone(side + "LowerLeg"), Bone(side + "Foot"), "Hit_" + side + "LowerLeg", 0.075f);
+            }
 
             SetLayerRecursive(go, GameLayers.Enemy);
             go.SetActive(false);
             return go.GetComponent<Enemy>();
         }
 
-        static void AddHitbox(Transform root, string name, HitZone zone, System.Action<GameObject> addCollider)
+        // Collider object at a rest-pose world position (template at the origin), parented to the bone.
+        static GameObject AddBoneHitbox(Transform bone, string name, HitZone zone, Vector3 worldPos, System.Action<GameObject> addCollider)
         {
             var c = new GameObject(name);
-            c.transform.SetParent(root, false);
+            c.transform.SetPositionAndRotation(worldPos, Quaternion.identity);
+            c.transform.SetParent(bone, true);
             addCollider(c);
             c.AddComponent<Hitbox>().SetZone(zone);
+            return c;
+        }
+
+        // Capsule between two bones in the rest pose (the legs hang vertically), following the upper bone.
+        static void AddLimbHitbox(Transform from, Transform to, string name, float radius)
+        {
+            Vector3 a = from.position, b = to.position;
+            AddBoneHitbox(from, name, HitZone.Body, (a + b) * 0.5f, c =>
+            {
+                var k = c.AddComponent<CapsuleCollider>();
+                k.direction = 1;
+                k.radius = radius;
+                k.height = Vector3.Distance(a, b) + radius * 1.6f;
+            });
         }
 
         // Humanoid agent type: radius 0.35, height 1.8, step 0.4, slope 45 (stored in ProjectSettings/NavMeshAreas.asset).
@@ -180,7 +195,7 @@ namespace Zombies55.EditorTools
             surface.agentTypeID = 0;
             surface.collectObjects = CollectObjects.All;
             surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
-            int excluded = (1 << GameLayers.IgnoreRaycast) | (1 << GameLayers.Enemy) | (1 << GameLayers.Explosive) | (1 << GameLayers.Player);
+            int excluded = (1 << GameLayers.IgnoreRaycast) | (1 << GameLayers.Enemy) | (1 << GameLayers.Explosive) | (1 << GameLayers.Player) | (1 << GameLayers.Barrier);
             surface.layerMask = ~excluded;
             surface.defaultArea = 0;
             surface.ignoreNavMeshAgent = true;
@@ -197,44 +212,69 @@ namespace Zombies55.EditorTools
             EditorUtility.SetDirty(surface);
         }
 
-        // About 40-50 candidates derived from the road and block grids, so a bigger city adds points by itself.
+        // Spawn points per district cell: at least 6 each (up to 14), all on the baked NavMesh, connected to the
+        // player, and 3 m or more inside their cell so none sits on a barrier line.
+        const int SpawnPointsMin = 6;
+        const int SpawnPointsMax = 14;
+
         static List<Vector3> ValidSpawnPoints()
         {
-            var candidates = new List<Vector3>();
-
-            // Intersections (the outermost ones are the ring road corners).
-            foreach (float x in RoadCenters)
-                foreach (float z in RoadCenters)
-                    candidates.Add(new Vector3(x, 0.05f, z));
-
-            // Mid-block street points: halfway between neighbouring intersections along every road.
-            foreach (float r in RoadCenters)
-            {
-                for (int i = 0; i + 1 < RoadCenters.Length; i++)
-                {
-                    float mid = (RoadCenters[i] + RoadCenters[i + 1]) * 0.5f;
-                    candidates.Add(new Vector3(r, 0.05f, mid));
-                    candidates.Add(new Vector3(mid, 0.05f, r));
-                }
-            }
-
-            // Alleys: the sidewalk lane at the south edge of every block.
-            foreach (float cx in BlockCenters)
-                foreach (float cz in BlockCenters)
-                    candidates.Add(new Vector3(cx, SidewalkTop, cz - OuterLane));
-
             var origin = _playerRoot.position;
             if (NavMesh.SamplePosition(origin, out var originHit, 3f, NavMesh.AllAreas)) origin = originHit.position;
 
             var path = new NavMeshPath();
             var valid = new List<Vector3>();
-            foreach (var c in candidates)
-            {
-                if (!NavMesh.SamplePosition(c, out var hit, 2.5f, NavMesh.AllAreas)) continue;
-                if (!NavMesh.CalculatePath(origin, hit.position, NavMesh.AllAreas, path) || path.status != NavMeshPathStatus.PathComplete) continue;
-                valid.Add(hit.position);
-            }
+            float cs = ZoneLayout.CellSize;
+            for (int ix = -ZoneLayout.Half; ix <= ZoneLayout.Half; ix++)
+                for (int iz = -ZoneLayout.Half; iz <= ZoneLayout.Half; iz++)
+                {
+                    var center = ZoneLayout.CellCenter(ix, iz);
+                    List<Vector3> chosen = null;
+                    // Strict first, then relax margin and spacing until the cell has enough points.
+                    foreach (var pass in new[] { (margin: 3f, gap: 4f), (margin: 2.5f, gap: 2.5f), (margin: 2f, gap: 1.5f) })
+                    {
+                        chosen = CellSpawnPoints(center, cs * 0.5f - pass.margin, pass.gap, origin, path);
+                        if (chosen.Count >= SpawnPointsMin) break;
+                    }
+                    if (chosen.Count < SpawnPointsMin)
+                        Debug.LogWarning("Enemies: cell (" + ix + "," + iz + ") has only " + chosen.Count + " spawn points");
+                    valid.AddRange(chosen);
+                }
             return valid;
+        }
+
+        static List<Vector3> CellSpawnPoints(Vector2 center, float reach, float gap, Vector3 origin, NavMeshPath path)
+        {
+            var found = new List<Vector3>();
+            for (float dx = -reach; dx <= reach + 0.01f; dx += 4f)
+                for (float dz = -reach; dz <= reach + 0.01f; dz += 4f)
+                {
+                    var c = new Vector3(center.x + dx, 0.05f, center.y + dz);
+                    if (!NavMesh.SamplePosition(c, out var hit, 2f, NavMesh.AllAreas)) continue;
+                    var p = hit.position;
+                    if (Mathf.Abs(p.x - center.x) > reach || Mathf.Abs(p.z - center.y) > reach) continue;
+                    if (!NavMesh.CalculatePath(origin, p, NavMesh.AllAreas, path) || path.status != NavMeshPathStatus.PathComplete) continue;
+                    found.Add(p);
+                }
+
+            // Farthest-point sampling keeps the picks spread over the cell.
+            var picked = new List<Vector3>();
+            while (found.Count > 0 && picked.Count < SpawnPointsMax)
+            {
+                int best = 0;
+                float bestD = -1f;
+                for (int i = 0; i < found.Count; i++)
+                {
+                    float d = float.MaxValue;
+                    foreach (var q in picked) d = Mathf.Min(d, (found[i] - q).magnitude);
+                    if (picked.Count == 0) d = (found[i] - new Vector3(center.x, 0f, center.y)).magnitude;
+                    if (d > bestD) { bestD = d; best = i; }
+                }
+                if (picked.Count > 0 && bestD < gap) break;
+                picked.Add(found[best]);
+                found.RemoveAt(best);
+            }
+            return picked;
         }
     }
 }

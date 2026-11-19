@@ -46,7 +46,6 @@ namespace Zombies55.EditorTools
         // Results shared between steps
         static Transform _playerRoot, _cameraPivot;
         static PlayerController _playerController;
-        static Transform _bodyPivot;
 
         [MenuItem("Tools/Zombies 5.5/Build Scene")]
         public static void BuildScene()
@@ -58,6 +57,9 @@ namespace Zombies55.EditorTools
                 throw new InvalidOperationException("No render pipeline asset is active. Zombies 5.5 needs the URP template.");
 
             _rng = new System.Random(7);
+            _grit = new System.Random(2024);
+            _signIndex = 0;
+            _quads.Clear();
             _mats.Clear();
             _buildingIndex = 0;
 
@@ -76,6 +78,7 @@ namespace Zombies55.EditorTools
             _camera = Root("Camera");
 
             ConfigureImports();
+            BuildAnimatorControllers();
             BuildMaterials();
             BuildLighting();
             BuildCity();
@@ -84,6 +87,7 @@ namespace Zombies55.EditorTools
             BuildCamera();
             BuildGame();
             BuildCombat();
+            BuildZones();
             BuildEnemies();
 
             MarkStatic(_city);
@@ -109,12 +113,13 @@ namespace Zombies55.EditorTools
             _litShader = GraphicsSettings.currentRenderPipeline.defaultMaterial.shader;
             if (_litShader == null) throw new InvalidOperationException("URP Lit shader not found.");
 
-            mAsphalt = Surf("Asphalt", Palette.Asphalt, "Asphalt", new Vector2(60f, 60f), 0.1f);
+            // Worn texture sets; the packed _MS maps carry smoothness (and metal), so the float is a multiplier.
+            mAsphalt = Surf("Asphalt", Palette.AsphaltWorn, "AsphaltWorn", new Vector2(60f, 60f), 1f);
             mRoadLine = Mat("RoadLine", Palette.RoadLine);
-            mSidewalk = Surf("Sidewalk", Palette.Sidewalk, "Concrete", new Vector2(BlockSize / 2f, BlockSize / 2f), 0.15f);
-            mCurb = Surf("Curb", Palette.Curb, "Concrete", new Vector2(BlockSize / 2f, 0.15f), 0.15f);
-            mCurbZ = Surf("CurbZ", Palette.Curb, "Concrete", new Vector2(0.15f, BlockSize / 2f), 0.15f);
-            mPlaza = Surf("Plaza", Palette.Plaza, "Concrete", new Vector2(BlockSize / 2f, BlockSize / 2f), 0.15f);
+            mSidewalk = Surf("Sidewalk", Palette.SidewalkWorn, "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
+            mCurb = Surf("Curb", Palette.CurbWorn, "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f);
+            mCurbZ = Surf("CurbZ", Palette.CurbWorn, "ConcreteStained", new Vector2(0.15f, BlockSize / 2f), 1f);
+            mPlaza = Surf("Plaza", Palette.Plaza, "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
             mEye = Mat("Eye", Palette.EyeBlack);
             mTerracotta = Mat("Terracotta", Palette.Terracotta);
             mSage = Mat("Sage", Palette.Sage);
@@ -137,17 +142,24 @@ namespace Zombies55.EditorTools
             mParticle = LoadOrCreateMat("Particle", sprites);
             EditorUtility.SetDirty(mParticle);
 
-            // Sky: Unity's physically based procedural sky (sun disc follows RenderSettings.sun).
-            var skyShader = Shader.Find("Skybox/Procedural");
-            if (skyShader == null) throw new InvalidOperationException("Shader 'Skybox/Procedural' not found.");
-            mSky = LoadOrCreateMat("SkyProcedural", skyShader);
-            mSky.SetFloat("_SunDisk", 2f);                 // high quality disc
-            mSky.SetFloat("_SunSize", 0.045f);
-            mSky.SetFloat("_SunSizeConvergence", 5f);
-            mSky.SetFloat("_AtmosphereThickness", 1.25f);  // thicker air = warmer, redder low sun
-            mSky.SetColor("_SkyTint", new Color(0.42f, 0.5f, 0.66f));
+            // Sky: our own atmospheric cloud skybox (gradient + haze + sun disc + fbm cumulus); the sun direction is set in BuildLighting.
+            var skyShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/CloudSky.shader");
+            if (skyShader == null) skyShader = Shader.Find("Zombies55/CloudSky");
+            if (skyShader == null) throw new InvalidOperationException("Shader 'Zombies55/CloudSky' not found.");
+            mSky = LoadOrCreateMat("SkyClouds", skyShader);
+            mSky.SetColor("_ZenithColor", Palette.SkyZenithGritty);
+            mSky.SetColor("_HorizonColor", Palette.SkyHorizonGritty);
             mSky.SetColor("_GroundColor", Palette.GroundAmbient);
-            mSky.SetFloat("_Exposure", 1.6f);
+            mSky.SetColor("_SunColor", Palette.SunHaze);
+            mSky.SetColor("_CloudLit", new Color(1f, 0.94f, 0.84f));
+            mSky.SetColor("_CloudShadow", new Color(0.52f, 0.58f, 0.68f));
+            mSky.SetFloat("_Exposure", 1.25f);
+            mSky.SetFloat("_HazeWidth", 0.3f);
+            mSky.SetFloat("_SunSize", 0.022f);
+            mSky.SetFloat("_SunIntensity", 8f);
+            mSky.SetFloat("_CloudCover", 0.5f);
+            mSky.SetFloat("_CloudSoft", 0.3f);
+            mSky.SetFloat("_CloudScale", 1.5f);
             EditorUtility.SetDirty(mSky);
         }
 
@@ -220,24 +232,26 @@ namespace Zombies55.EditorTools
         {
             var sunGo = new GameObject("Sun");
             sunGo.transform.SetParent(_env, false);
-            sunGo.transform.rotation = Quaternion.Euler(32f, 35f, 0f);
+            sunGo.transform.rotation = Quaternion.Euler(24f, 38f, 0f);   // low, warm sun
             var sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.color = Palette.SunKey;
-            sun.intensity = 1.6f;
+            sun.color = Palette.SunHaze;
+            sun.intensity = 2.1f;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.85f; // leave some sky fill in cast shadows so shaded streets stay readable
+            sun.shadowStrength = 0.88f; // leave some sky fill in cast shadows so shaded streets stay readable
             RenderSettings.sun = sun;
+            mSky.SetVector("_SunDir", -sunGo.transform.forward);
+            EditorUtility.SetDirty(mSky);
 
             RenderSettings.skybox = mSky;
             RenderSettings.ambientMode = AmbientMode.Skybox;
-            RenderSettings.ambientIntensity = 1.15f;
+            RenderSettings.ambientIntensity = 1.75f;
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
             RenderSettings.reflectionIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.004f;
-            RenderSettings.fogColor = new Color(0.92f, 0.78f, 0.6f);
+            RenderSettings.fogDensity = 0.0085f;                      // warm-gray distance haze
+            RenderSettings.fogColor = Palette.HazeFog;
             DynamicGI.UpdateEnvironment();
 
             ConfigureUrpAssets();
@@ -251,18 +265,28 @@ namespace Zombies55.EditorTools
                 AssetDatabase.CreateAsset(profile, VolumePath);
             }
             GetOrAdd<Tonemapping>(profile).mode.Override(TonemappingMode.ACES);
-            var bloom = GetOrAdd<Bloom>(profile);
-            bloom.intensity.Override(0.25f);
-            bloom.threshold.Override(1.2f);
-            bloom.scatter.Override(0.6f);
-            GetOrAdd<Vignette>(profile).intensity.Override(0.18f);
+            var bloom = GetOrAdd<Bloom>(profile);                      // restrained: only real highlights (muzzle flash, lamps, gold UI glow)
+            bloom.intensity.Override(0.16f);
+            bloom.threshold.Override(1.25f);
+            bloom.scatter.Override(0.55f);
+            var vig = GetOrAdd<Vignette>(profile);
+            vig.intensity.Override(0.27f);
+            vig.smoothness.Override(0.42f);
             var grade = GetOrAdd<ColorAdjustments>(profile);
-            grade.postExposure.Override(0.35f);
-            grade.saturation.Override(0f);
-            grade.contrast.Override(8f);
+            grade.postExposure.Override(0.6f);
+            grade.saturation.Override(-20f);                           // desaturated, grounded
+            grade.contrast.Override(16f);
             var wb = GetOrAdd<WhiteBalance>(profile);
-            wb.temperature.Override(8f);
+            wb.temperature.Override(9f);
             wb.tint.Override(0f);
+            var split = GetOrAdd<SplitToning>(profile);                // cool shadows, warm highlights
+            split.shadows.Override(new Color(0.47f, 0.53f, 0.62f));
+            split.highlights.Override(new Color(0.95f, 0.76f, 0.52f));
+            split.balance.Override(0f);
+            var grain = GetOrAdd<FilmGrain>(profile);
+            grain.type.Override(FilmGrainLookup.Thin1);
+            grain.intensity.Override(0.14f);
+            grain.response.Override(0.8f);
             var smh = GetOrAdd<ShadowsMidtonesHighlights>(profile);
             smh.shadows.Override(new Vector4(0.95f, 1f, 1.08f, -0.05f));
             EditorUtility.SetDirty(profile);
@@ -319,9 +343,9 @@ namespace Zombies55.EditorTools
                 if (settings != null)
                 {
                     settings.FindPropertyRelative("Source").intValue = 1; // DepthNormals
-                    settings.FindPropertyRelative("Intensity").floatValue = 0.7f;
-                    settings.FindPropertyRelative("Radius").floatValue = 0.4f;
-                    settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.25f;
+                    settings.FindPropertyRelative("Intensity").floatValue = 1.0f;
+                    settings.FindPropertyRelative("Radius").floatValue = 0.5f;
+                    settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.32f;
                 }
                 sso.ApplyModifiedPropertiesWithoutUndo();
                 ssao.SetActive(true);
@@ -391,19 +415,7 @@ namespace Zombies55.EditorTools
         static void BuildRoadLines()
         {
             var lines = Node("RoadLines", _city, Vector3.zero);
-            foreach (float road in RoadCenters)
-            {
-                for (float s = -102f; s <= 102f; s += 6f)
-                {
-                    bool nearIntersection = false;
-                    foreach (float r in RoadCenters)
-                        if (Mathf.Abs(s - r) < 7.5f) { nearIntersection = true; break; }
-                    if (nearIntersection) continue;
-                    // Road running along Z (x = road) and road running along X (z = road)
-                    Box("LineZ", lines, new Vector3(road, 0.015f, s), new Vector3(0.25f, 0.03f, 3f), mRoadLine, false);
-                    Box("LineX", lines, new Vector3(s, 0.015f, road), new Vector3(3f, 0.03f, 0.25f), mRoadLine, false);
-                }
-            }
+            BuildWornMarkings(lines);     // worn painted dashes and zebra crossings (SceneBuilder.Grit.cs)
         }
 
         static void BuildBlockBase(float cx, float cz, bool plaza)
@@ -521,6 +533,7 @@ namespace Zombies55.EditorTools
             }
 
             BuildParkedCars();
+            BuildStreetGrit();
         }
 
         static void BuildCornerLamps(float cx, float cz)
@@ -732,40 +745,78 @@ namespace Zombies55.EditorTools
 
             var pc = root.AddComponent<PlayerController>();
             _playerController = pc;
-            var motion = root.AddComponent<CharacterMotion>();
 
-            var rig = BuildCharacterRig(root.transform, motion, mPrimary, mPants, mSecondary, mShadow,
-                HeadGear.Cap, mTerracotta, mTerracotta, 1f, 1f);
-            _bodyPivot = rig.Body;
+            // The courier: teal top, dark jeans, sneakers, terracotta cap and backpack; skin straight from Skin_Albedo.
+            var look = new CharacterLook
+            {
+                Skin = Surf("CharSkin", Color.white, "Characters/Skin", Vector2.one, 0.3f),
+                Top = Surf("CharTop", Palette.CharacterPrimary, "Characters/Cloth", Vector2.one, 0.2f),
+                Pants = Surf("CharPants", Palette.Pants, "Characters/Denim", Vector2.one, 0.2f),
+                Shoe = Surf("CharShoe", Palette.Sneaker, "Characters/Leather", Vector2.one, 0.3f),
+                EyeWhite = EyeWhiteMat(),
+                Iris = IrisMat(),
+                Brow = Mat("CharBrow", Palette.HairDark),
+            };
+            var character = BuildHumanoid(root.transform, look, PlayerControllerPath, false, HeadGear.Cap, mTerracotta, mTerracotta);
+            _playerCharacter = character.transform;
+            character.AddComponent<PlayerAnimation>();
         }
 
-        // ------------------------------------------------------------------ character rig
+        // ------------------------------------------------------------------ humanoid character
 
         enum HeadGear { Cap, ShortHair, LongHair, Hood }
 
-        struct CharacterRig
+        class CharacterLook
         {
-            public Transform Visual, Body;
+            public Material Skin, Top, Pants, Shoe, EyeWhite, Iris, Brow;
         }
 
-        // Rest-pose facts about the skinned body, measured while it is rebound (character space, metres).
-        static float _handTipY;
+        static Transform _playerCharacter;
 
-        const string RigMeshPath = ModelDir + "/Characters/Generated/Char_Body_Rig.asset";
+        static Material EyeWhiteMat() { return Surf("CharEyeWhite", new Color(0.93f, 0.91f, 0.88f), null, Vector2.one, 0.8f); }
 
-        // Builds the character under root and wires it into motion: our own pivot transforms (what CharacterMotion,
-        // AimPose and EnemyAttackPose drive), one skinned body bound to them, and rigid hair / headwear / backpack.
-        // gearMat is the cap, hair or hood color; packMat null means no backpack.
-        static CharacterRig BuildCharacterRig(Transform root, CharacterMotion motion, Material top, Material pants,
-            Material skin, Material shoes, HeadGear gear, Material gearMat, Material packMat, float height, float width)
+        static Material IrisMat()
         {
+            var m = Surf("CharIris", Color.white, null, Vector2.one, 0.85f);
+            m.SetTexture("_BaseMap", Tex("Characters/Eye_Albedo"));
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        // Char_Human with an Animator (humanoid avatar + controller), slot materials, and the accessories fitted to the
+        // Head / Chest bones. Returns the Char_Human root, which is where the animation components go.
+        static GameObject BuildHumanoid(Transform parent, CharacterLook look, string controllerPath, bool cullTransforms,
+            HeadGear gear, Material gearMat, Material packMat)
+        {
+            var go = (GameObject)Object.Instantiate(Model("Char_Human"));
+            go.name = "Char_Human";
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+
+            var animator = go.GetComponent<Animator>();
+            if (animator == null) animator = go.AddComponent<Animator>();
+            animator.avatar = HumanAvatar();
+            animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(controllerPath);
+            animator.applyRootMotion = false;
+            animator.cullingMode = cullTransforms ? AnimatorCullingMode.CullUpdateTransforms : AnimatorCullingMode.AlwaysAnimate;
+
             var bodyLook = new Look
             {
                 Override = new Dictionary<string, Material>
                 {
-                    { "Top", top }, { "Pants", pants }, { "Skin", skin }, { "Shoe", shoes }, { "Eye", mEye },
+                    { "Skin", look.Skin }, { "Top", look.Top }, { "Pants", look.Pants }, { "Shoe", look.Shoe },
+                    { "EyeWhite", look.EyeWhite }, { "Iris", look.Iris }, { "Brow", look.Brow },
                 },
             };
+            ApplyLook(go, bodyLook);
+            foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                smr.updateWhenOffscreen = false;
+                smr.quality = SkinQuality.Bone4;
+            }
+
             var gearLook = new Look
             {
                 Override = new Dictionary<string, Material>
@@ -773,124 +824,63 @@ namespace Zombies55.EditorTools
                     { "Hair", gearMat }, { "Cap", gearMat }, { "Hood", gearMat }, { "Bag", packMat },
                 },
             };
-
-            var visual = Node("Visual", root, Vector3.zero);
-            visual.localScale = new Vector3(width, height, width);
-            var body = Node("Body", visual, new Vector3(0f, 0.95f, 0f));
-            var legL = Node("LegL", body, new Vector3(-0.11f, 0f, 0f));
-            var legR = Node("LegR", body, new Vector3(0.11f, 0f, 0f));
-            var armL = Node("ArmL", body, new Vector3(-0.21f, 0.55f, 0f));
-            var armR = Node("ArmR", body, new Vector3(0.21f, 0.55f, 0f));
-            var head = Node("Head", body, new Vector3(0f, 0.60f, 0f));
-
-            BuildSkinnedBody(visual, new Dictionary<string, Transform>
-            {
-                { "Body", body }, { "LegL", legL }, { "LegR", legR }, { "ArmL", armL }, { "ArmR", armR }, { "Head", head },
-            }, bodyLook);
-
-            Transform backpack = null;
-            if (packMat != null)
-            {
-                // Pivot: top centre of the pack's back face, resting on the upper back (body surface at z = -0.125).
-                backpack = Node("Backpack", body, new Vector3(0f, 0.50f, -0.10f));
-                Spawn("Char_Backpack", backpack, Vector3.zero, 0f, gearLook, "Pack");
-            }
-
+            var head = FindDeep(go.transform, "Head");
+            var chest = FindDeep(go.transform, "Chest");
             switch (gear)
             {
-                case HeadGear.Cap: Spawn("Char_Cap", head, Vector3.zero, 0f, gearLook, "Cap"); break;
-                case HeadGear.ShortHair: Spawn("Char_HairShort", head, Vector3.zero, 0f, gearLook, "Hair"); break;
-                case HeadGear.Hood: Spawn("Char_Hood", head, Vector3.zero, 0f, gearLook, "Hood"); break;
-                default: Spawn("Char_HairLong", head, Vector3.zero, 0f, gearLook, "Hair"); break;
+                case HeadGear.Cap: AttachAccessory("Char2_Cap", head, go.transform, gearLook); break;
+                case HeadGear.ShortHair: AttachAccessory("Char2_HairShort", head, go.transform, gearLook); break;
+                case HeadGear.Hood: AttachAccessory("Char2_Hood", head, go.transform, gearLook); break;
+                default: AttachAccessory("Char2_HairLong", head, go.transform, gearLook); break;
             }
-
-            SetRef(motion, "visualRoot", visual);
-            SetRef(motion, "body", body);
-            SetRef(motion, "legL", legL);
-            SetRef(motion, "legR", legR);
-            SetRef(motion, "armL", armL);
-            SetRef(motion, "armR", armR);
-            SetRef(motion, "head", head);
-            if (backpack != null) SetRef(motion, "backpack", backpack);
-
-            return new CharacterRig { Visual = visual, Body = body };
+            if (packMat != null) AttachAccessory("Char2_Backpack", chest, go.transform, gearLook);
+            return go;
         }
 
-        // Copies Char_Body's mesh, rebinds it to our pivots (matched by name, mirrored when the FBX bone sits on the
-        // other side of the body than our pivot of the same name) and saves the rebound mesh as an asset.
-        static SkinnedMeshRenderer BuildSkinnedBody(Transform visual, Dictionary<string, Transform> pivots, Look look)
+        // The accessory meshes are authored in the T-pose with their pivot at the bone head, so they go on in the rest
+        // pose with world axes and then follow the bone.
+        static void AttachAccessory(string model, Transform bone, Transform character, Look look)
         {
-            var model = Model("Char_Body");
-            var src = model.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (src == null || src.sharedMesh == null) throw new InvalidOperationException("Char_Body.fbx has no skinned mesh.");
+            var acc = Spawn(model, bone, Vector3.zero, 0f, look, model);
+            acc.transform.SetPositionAndRotation(bone.position, character.rotation);
+            foreach (var c in acc.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+            if (model == "Char2_Hood") FitHoodMantle(acc);
+        }
 
-            var srcBones = src.bones;
-            var bones = new Transform[srcBones.Length];
-            for (int i = 0; i < srcBones.Length; i++)
+        const string HoodFitPath = ModelDir + "/Characters/Generated/Char2_Hood_Fit.asset";
+
+        // Char2_Hood is authored for the T-pose: its shoulder mantle runs out along the arms (to 0.57 m from the centre line).
+        // The hood is rigid on the head, so with the arms down those tips stick out sideways. The mantle vertices are bent
+        // down and in, as if draped over the shoulder, and the result is saved as a mesh asset.
+        static void FitHoodMantle(GameObject hood)
+        {
+            var mf = hood.GetComponentInChildren<MeshFilter>();
+            var src = mf.sharedMesh;
+            var mesh = Object.Instantiate(src);
+            mesh.name = "Char2_Hood_Fit";
+            var v = mesh.vertices;
+            const float shoulder = 0.15f;
+            for (int i = 0; i < v.Length; i++)
             {
-                string n = srcBones[i].name;
-                if (!pivots.TryGetValue(n, out var pivot)) throw new InvalidOperationException("Char_Body bone '" + n + "' has no matching pivot.");
-                float srcX = model.transform.InverseTransformPoint(srcBones[i].position).x;
-                float pivotX = visual.InverseTransformPoint(pivot.position).x;
-                if (Mathf.Abs(srcX) > 0.05f && Mathf.Sign(srcX) != Mathf.Sign(pivotX))
-                    pivot = pivots[n.Substring(0, n.Length - 1) + (n.EndsWith("L") ? "R" : "L")];
-                bones[i] = pivot;
+                float ax = Mathf.Abs(v[i].x);
+                if (ax <= shoulder) continue;
+                float d = ax - shoulder;
+                v[i].x = Mathf.Sign(v[i].x) * (shoulder + d * 0.25f);
+                v[i].y -= d * 0.6f;
             }
-
-            // The FBX stores vertices already in Y-up character space (the 270 degree armature rotation lives only in the
-            // bone hierarchy), so the rest-pose bind matrices are just bone-inverse times the renderer's matrix.
-            var go = new GameObject("Char_Body");
-            go.transform.SetParent(visual, false);
-            var smr = go.AddComponent<SkinnedMeshRenderer>();
-
-            var mesh = Object.Instantiate(src.sharedMesh);
-            mesh.name = "Char_Body_Rig";
-            var bind = new Matrix4x4[bones.Length];
-            for (int i = 0; i < bones.Length; i++) bind[i] = bones[i].worldToLocalMatrix * go.transform.localToWorldMatrix;
-            mesh.bindposes = bind;
-
-            // Right-hand tip, for the weapon holder: lowest vertex mostly weighted to the arm that ends up as our ArmR.
-            int armRIndex = Array.IndexOf(bones, pivots["ArmR"]);
-            var verts = mesh.vertices;
-            var perVertex = mesh.GetBonesPerVertex();
-            var weights = mesh.GetAllBoneWeights();
-            float tip = float.MaxValue;
-            int off = 0;
-            for (int v = 0; v < verts.Length; v++)
-            {
-                int n = perVertex[v];
-                int best = -1;
-                float bw = -1f;
-                for (int k = 0; k < n; k++)
-                    if (weights[off + k].weight > bw) { bw = weights[off + k].weight; best = weights[off + k].boneIndex; }
-                off += n;
-                if (best == armRIndex) tip = Mathf.Min(tip, verts[v].y);
-            }
-            _handTipY = tip;
-
+            mesh.vertices = v;
+            mesh.RecalculateBounds();
+            mesh.RecalculateNormals();
             EnsureFolder(ModelDir + "/Characters/Generated");
-            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(RigMeshPath);
+            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(HoodFitPath);
             if (existing != null)
             {
                 EditorUtility.CopySerialized(mesh, existing);
                 Object.DestroyImmediate(mesh);
                 mesh = existing;
             }
-            else AssetDatabase.CreateAsset(mesh, RigMeshPath);
-            EditorUtility.SetDirty(mesh);
-
-            smr.sharedMesh = mesh;
-            smr.bones = bones;
-            smr.rootBone = pivots["Body"];
-            smr.updateWhenOffscreen = false;
-            smr.localBounds = new Bounds(new Vector3(0f, 0f, 0.05f), new Vector3(1.4f, 2.2f, 1.2f)); // relative to the Body pivot
-            smr.quality = SkinQuality.Bone4;
-
-            var srcMats = src.sharedMaterials;
-            var mats = new Material[srcMats.Length];
-            for (int i = 0; i < mats.Length; i++) mats[i] = SlotMat(srcMats[i] != null ? srcMats[i].name : "", look);
-            smr.sharedMaterials = mats;
-            return smr;
+            else AssetDatabase.CreateAsset(mesh, HoodFitPath);
+            mf.sharedMesh = mesh;
         }
 
         static void SetFloat(Object target, string field, float value)

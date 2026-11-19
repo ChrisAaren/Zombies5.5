@@ -121,6 +121,16 @@ namespace Zombies55.EditorTools
 
         // ------------------------------------------------------------------ player
 
+        // Gun grip origin and orientation in the RightHand bone frame (metres; bone Y runs along the hand, Z is dorsal).
+        // Starting point from the clip report (pistol grip (-0.015, 0.050, -0.031), rifle butt (0.042, -0.224, -0.015) in the
+        // Blender bone frame), then fitted against the clips: the rotations turn the gun so its barrel points along the
+        // character's forward in the AimPistol / AimRifle frame 0 poses (the hand axes sit about 25 degrees off the barrel),
+        // and the positions put each gun's pistol grip in the palm.
+        static readonly Quaternion PistolGripRot = new Quaternion(0.2472f, -0.6990f, -0.6683f, 0.0609f);
+        static readonly Vector3 PistolGripPos = new Vector3(-0.016f, 0.109f, 0.009f);
+        static readonly Quaternion LongGripRot = new Quaternion(0.5864f, -0.3276f, -0.5537f, 0.4922f);
+        static readonly Vector3 LongGripPos = new Vector3(0.014f, 0.089f, 0.007f);
+
         static void BuildCombatPlayer()
         {
             var root = _playerRoot.gameObject;
@@ -129,30 +139,36 @@ namespace Zombies55.EditorTools
             root.AddComponent<CombatAudio>();
             var fx = root.AddComponent<CombatFX>();
             SetRef(fx, "particleMaterial", mParticle);
-            var pose = root.AddComponent<AimPose>();
 
-            var armL = _bodyPivot.Find("ArmL");
-            var armR = _bodyPivot.Find("ArmR");
+            var anim = _playerCharacter.GetComponent<PlayerAnimation>();
+            var hand = FindDeep(_playerCharacter, "RightHand");
 
-            // Hand holder at the end of the right arm; +Z of the holder is along the arm.
-            // The palm sits a little above the lowest hand vertex of the skinned body (shoulder pivot is at y = 1.5).
-            float handY = _handTipY + 0.08f - 1.5f;
-            var holder = Node("HandHolder", armR, new Vector3(0f, handY, 0f));
-            holder.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            var mount = Node("GunMount", hand, Vector3.zero);
 
             foreach (var def in WeaponCatalog.All)
             {
                 var model = TryModel(def.ModelName);
                 GameObject gun = model != null
-                    ? SpawnCombat(model, holder, Vector3.zero, 0f, DefaultLook, def.ModelName)
-                    : StandInGun(def.ModelName, holder);
+                    ? SpawnCombat(model, mount, Vector3.zero, 0f, DefaultLook, def.ModelName)
+                    : StandInGun(def.ModelName, mount);
                 foreach (var c in gun.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
-                gun.SetActive(def.Id == WeaponCatalog.StarterId);
+                bool pistol = def.Id == WeaponCatalog.StarterId;
+                gun.transform.localPosition = pistol ? PistolGripPos : LongGripPos;
+                gun.transform.localRotation = pistol ? PistolGripRot : LongGripRot;
+
+                // Foregrip: where the left wrist goes on a long gun (under the handguard, palm up, fingers along the barrel).
+                if (!pistol)
+                {
+                    var muzzle = FindDeep(gun.transform, "Muzzle");
+                    float z = muzzle != null ? muzzle.localPosition.z * 0.45f : 0.3f;
+                    var grip = Node("Foregrip", gun.transform, new Vector3(0f, 0.09f, Mathf.Max(0.2f, z)));
+                    grip.localRotation = Quaternion.LookRotation(Vector3.down, Vector3.forward);
+                }
+                SetLayerRecursive(gun, GameLayers.Player);
+                gun.SetActive(pistol);
             }
 
-            SetRef(pose, "armL", armL);
-            SetRef(pose, "armR", armR);
-            SetRef(pose, "holder", holder);
+            SetRef(anim, "gunMount", mount);
         }
 
         static float StandInLength(string modelName)
@@ -226,58 +242,50 @@ namespace Zombies55.EditorTools
 
         static void BuildKiosks()
         {
-            var blocks = CombatBlocks(false);
-            if (blocks.Count == 0) return;
-
-            // Farthest-point sampling spreads five kiosks over the map, seeded at the block nearest the plaza.
-            var chosen = new List<Vector2>();
-            Vector2 seed = blocks[0];
-            foreach (var b in blocks) if (b.magnitude < seed.magnitude) seed = b;
-            chosen.Add(seed);
-            while (chosen.Count < 5)
-            {
-                Vector2 best = blocks[0];
-                float bestD = -1f;
-                foreach (var b in blocks)
-                {
-                    float d = float.MaxValue;
-                    foreach (var c in chosen) d = Mathf.Min(d, (b - c).sqrMagnitude);
-                    if (d > bestD) { bestD = d; best = b; }
-                }
-                if (bestD <= 0f && chosen.Count >= blocks.Count) { chosen.Add(blocks[chosen.Count % blocks.Count]); continue; }
-                chosen.Add(best);
-            }
-            chosen.Sort((a, b) => a.magnitude.CompareTo(b.magnitude));
-
+            // One kiosk per gun, placed by district tier. Each entry lists candidate cells (ix, iz) in order of
+            // preference; the first cell with a free sidewalk spot wins. Spots sit 10.75 m from the block center,
+            // so they never touch the barrier lines on the cell edges (19 m out).
             var kiosks = Node("Kiosks", _combatRoot, Vector3.zero);
-            string[] ids = { "wasp", "breaker", "kestrel", "longshot", "atlas" };
-            for (int k = 0; k < ids.Length; k++)
+            var plan = new (string id, Vector2Int[] cells)[]
             {
-                var block = chosen[k];
-                var def = WeaponCatalog.Get(ids[k]);
+                ("wasp", new[] { new Vector2Int(0, 0) }),                                                        // Fountain Square
+                ("breaker", new[] { new Vector2Int(0, 1), new Vector2Int(1, 0), new Vector2Int(0, -1), new Vector2Int(-1, 0) }),   // inner side
+                ("kestrel", new[] { new Vector2Int(1, 1), new Vector2Int(-1, -1), new Vector2Int(1, -1), new Vector2Int(-1, 1) }), // inner corner
+                ("longshot", new[] { new Vector2Int(-2, 0), new Vector2Int(2, 0), new Vector2Int(-2, 1), new Vector2Int(2, -1) }), // West or East
+                ("atlas", new[] { new Vector2Int(0, 2), new Vector2Int(0, -2), new Vector2Int(1, 2), new Vector2Int(-1, -2) }),    // North or South
+            };
 
-                // Sides ordered by how much they face the map center; first free spot wins.
-                var order = new List<int> { 0, 1, 2, 3 };
-                Vector2 toCenter = -block.normalized;
-                order.Sort((a, b) => Vector2.Dot(SideNormals[b], toCenter).CompareTo(Vector2.Dot(SideNormals[a], toCenter)));
+            for (int k = 0; k < plan.Length; k++)
+            {
+                var def = WeaponCatalog.Get(plan[k].id);
                 bool placed = false;
-                foreach (float alongSign in new[] { k % 2 == 0 ? 1f : -1f, k % 2 == 0 ? -1f : 1f })
+                foreach (var cell in plan[k].cells)
                 {
-                    foreach (int side in order)
+                    Vector2 block = ZoneLayout.CellCenter(cell.x, cell.y);
+
+                    // Sides ordered by how much they face the map center; first free spot wins.
+                    var order = new List<int> { 0, 1, 2, 3 };
+                    Vector2 toCenter = block.sqrMagnitude < 0.01f ? Vector2.up : -block.normalized;
+                    order.Sort((a, b) => Vector2.Dot(SideNormals[b], toCenter).CompareTo(Vector2.Dot(SideNormals[a], toCenter)));
+                    foreach (float alongSign in new[] { k % 2 == 0 ? 1f : -1f, k % 2 == 0 ? -1f : 1f })
                     {
-                        Vector2 n = SideNormals[side];
-                        Vector2 tangent = new Vector2(-n.y, n.x);
-                        Vector2 p2 = block + n * KioskLine + tangent * (8.8f * alongSign);
-                        var pos = new Vector3(p2.x, SidewalkTop, p2.y);
-                        float yaw = Mathf.Atan2(n.x, n.y) * Mathf.Rad2Deg;
-                        if (!CombatSpotFree(pos, yaw, new Vector3(0.6f, 1.0f, 0.3f), 1.15f)) continue;
-                        MakeKiosk(def, kiosks, pos, yaw);
-                        placed = true;
-                        break;
+                        foreach (int side in order)
+                        {
+                            Vector2 n = SideNormals[side];
+                            Vector2 tangent = new Vector2(-n.y, n.x);
+                            Vector2 p2 = block + n * KioskLine + tangent * (8.8f * alongSign);
+                            var pos = new Vector3(p2.x, SidewalkTop, p2.y);
+                            float yaw = Mathf.Atan2(n.x, n.y) * Mathf.Rad2Deg;
+                            if (!CombatSpotFree(pos, yaw, new Vector3(0.6f, 1.0f, 0.3f), 1.15f)) continue;
+                            MakeKiosk(def, kiosks, pos, yaw);
+                            placed = true;
+                            break;
+                        }
+                        if (placed) break;
                     }
                     if (placed) break;
                 }
-                if (!placed) Debug.LogWarning("Combat: no free sidewalk spot for the " + def.DisplayName + " kiosk near block " + block);
+                if (!placed) Debug.LogWarning("Combat: no free sidewalk spot for the " + def.DisplayName + " kiosk in its districts");
             }
         }
 

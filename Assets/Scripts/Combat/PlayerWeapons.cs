@@ -41,7 +41,7 @@ namespace Zombies55
         readonly int[] _res = new int[SlotCount];
 
         PlayerController _player;
-        AimPose _pose;
+        PlayerAnimation _pose;
         CameraOrbit _orbit;
         float _nextFireTime;
         float _swapEnd;
@@ -59,7 +59,7 @@ namespace Zombies55
         {
             Instance = this;
             _player = GetComponent<PlayerController>();
-            _pose = GetComponent<AimPose>();
+            _pose = GetComponentInChildren<PlayerAnimation>();
             _slots[0] = WeaponCatalog.Get(WeaponCatalog.StarterId);
             _mag[0] = _slots[0].MagazineSize;
             _res[0] = _slots[0].MaxReserve;
@@ -306,6 +306,7 @@ namespace Zombies55
         {
             var cam = Camera.main;
             if (cam == null) return;
+            Physics.SyncTransforms(); // animated hitboxes: shoot at where the enemy is drawn this frame
             int slot = ActiveSlot;
             _mag[slot]--;
             _nextFireTime = Time.time + def.SecondsPerShot;

@@ -54,6 +54,7 @@ namespace Zombies55
         float _spawnTimer;
         bool _started;
         Transform _poolRoot;
+        bool _lastPickInView;
 
         void Awake() => Instance = this;
         void OnEnable() => Instance = this;
@@ -124,6 +125,7 @@ namespace Zombies55
             if (!TryGetSpawnPoint(out var pos)) return false;
             var e = _free.Pop();
             e.Activate(pos, Round);
+            if (_lastPickInView) ZoneManager.Instance?.PlaySpawnSmoke(pos);
             return true;
         }
 
@@ -145,11 +147,14 @@ namespace Zombies55
 
         internal void Release(Enemy enemy) => _free.Push(enemy);
 
-        // Picks a spawn point 25-90 m from the player, preferring points outside the camera view and
-        // hidden behind geometry. Falls back to the farthest point. Result is snapped to the NavMesh.
+        // Picks a spawn point in an owned district, 25-90 m from the player (the minimum shrinks to
+        // 0.8x the farthest owned point, never below 10 m, so small districts work), preferring points
+        // outside the camera view and hidden behind geometry. Falls back to the farthest owned point.
+        // Result is snapped to the NavMesh.
         public bool TryGetSpawnPoint(out Vector3 position)
         {
             position = default;
+            _lastPickInView = false;
             if (spawnPoints == null || spawnPoints.Length == 0) return false;
 
             var playerT = PlayerHealth.Instance != null ? PlayerHealth.Instance.transform : null;
@@ -158,18 +163,32 @@ namespace Zombies55
             Vector3 eye = cam != null ? cam.transform.position : pp + Vector3.up * 1.6f;
             const int occluders = (1 << GameLayers.Default) | (1 << GameLayers.Explosive);
 
+            var zones = ZoneManager.Instance;
             _cand.Clear();
             _candScore.Clear();
-            int farthest = 0;
+            int farthest = -1;
             float farthestD = -1f;
+            float farInRange = 0f;
             for (int i = 0; i < spawnPoints.Length; i++)
             {
-                Vector3 p = spawnPoints[i];
-                Vector3 d = p - pp;
+                if (zones != null && !zones.IsOwnedAt(spawnPoints[i])) continue;
+                Vector3 d = spawnPoints[i] - pp;
                 d.y = 0f;
                 float dist = d.magnitude;
                 if (dist > farthestD) { farthestD = dist; farthest = i; }
-                if (dist < minSpawnDistance || dist > maxSpawnDistance) continue;
+                if (dist <= maxSpawnDistance && dist > farInRange) farInRange = dist;
+            }
+            if (farthest < 0) return false;
+            float effMin = Mathf.Clamp(0.8f * farInRange, 10f, minSpawnDistance);
+
+            for (int i = 0; i < spawnPoints.Length; i++)
+            {
+                Vector3 p = spawnPoints[i];
+                if (zones != null && !zones.IsOwnedAt(p)) continue;
+                Vector3 d = p - pp;
+                d.y = 0f;
+                float dist = d.magnitude;
+                if (dist < effMin || dist > maxSpawnDistance) continue;
 
                 bool inView = false;
                 if (cam != null)
@@ -200,6 +219,7 @@ namespace Zombies55
                 if (NavMesh.SamplePosition(spawnPoints[idx], out var hit, 3f, NavMesh.AllAreas))
                 {
                     position = hit.position;
+                    _lastPickInView = IsInView(cam, hit.position);
                     if (_pointReadyAt != null && idx < _pointReadyAt.Length) _pointReadyAt[idx] = Time.time + 1.5f;
                     return true;
                 }
@@ -210,9 +230,17 @@ namespace Zombies55
             if (NavMesh.SamplePosition(spawnPoints[farthest], out var far, 3f, NavMesh.AllAreas))
             {
                 position = far.position;
+                _lastPickInView = IsInView(cam, far.position);
                 return true;
             }
             return false;
+        }
+
+        static bool IsInView(Camera cam, Vector3 p)
+        {
+            if (cam == null) return false;
+            Vector3 v = cam.WorldToViewportPoint(p + Vector3.up * 0.9f);
+            return v.z > 0f && v.x > 0f && v.x < 1f && v.y > 0f && v.y < 1f;
         }
     }
 }

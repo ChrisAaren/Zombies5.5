@@ -21,7 +21,10 @@ namespace Zombies55.EditorTools
             public Color Wood = Palette.WoodNatural;
             public Color Paint = Palette.HydrantRed;
             public Color Leaf = Palette.Leaf;
+            public Color Sign = Palette.SignRed;
+            public Color Trim = Palette.Stone;
             public Dictionary<string, Material> Override;
+            public Look WithSign(Color c) { var l = (Look)MemberwiseClone(); l.Sign = c; return l; }
         }
 
         static string Hx(Color c) { return ColorUtility.ToHtmlStringRGB(c); }
@@ -41,8 +44,13 @@ namespace Zombies55.EditorTools
             mat.SetTexture("_BumpMap", normal);
             mat.SetFloat("_BumpScale", 1f);
             if (normal != null) mat.EnableKeyword("_NORMALMAP"); else mat.DisableKeyword("_NORMALMAP");
-            mat.SetFloat("_Smoothness", smooth);
-            mat.SetFloat("_Metallic", metal);
+            // A <Name>_MS.png (R = metallic, A = smoothness) drives metallic + smoothness; _Smoothness then scales it.
+            var ms = tex != null ? AssetDatabase.LoadAssetAtPath<Texture2D>(TextureDir + "/" + tex + "_MS.png") : null;
+            mat.SetTexture("_MetallicGlossMap", ms);
+            if (ms != null) mat.EnableKeyword("_METALLICSPECGLOSSMAP"); else mat.DisableKeyword("_METALLICSPECGLOSSMAP");
+            mat.SetFloat("_SmoothnessTextureChannel", 0f);
+            mat.SetFloat("_Smoothness", ms != null ? Mathf.Clamp01(smooth * 1.0f) : smooth);
+            mat.SetFloat("_Metallic", ms != null ? 1f : metal);
             if (emission > 0f)
             {
                 var e = color * emission;
@@ -76,24 +84,28 @@ namespace Zombies55.EditorTools
             if (l.Override != null && l.Override.TryGetValue(slot, out var o) && o != null) return o;
             switch (slot)
             {
-                case "Wall": return Meters("Wall", l.Wall, l.WallTex, 2f, 0.2f);
-                case "Trim": return Meters("Trim", Palette.Stone, "Plaster", 2f, 0.3f);
-                case "Frame": return Meters("Frame", l.Frame, null, 1f, 0.45f);
+                case "Wall": return Meters("Wall", l.Wall, l.WallTex, 2f, 1f);
+                case "Trim": return Meters("Trim", l.Trim, "PlasterDirty", 2f, 1f);
+                case "Frame": return Meters("Frame", l.Frame, "MetalPainted", 1.5f, 1f);
                 case "Glass": return Meters("Glass", Palette.GlassTint, null, 1f, 0.92f, 0.3f);
                 case "Interior": return Meters("Interior", Palette.InteriorDark, null, 1f, 0.05f);
-                case "Door": return Meters("Door", l.Door, null, 1f, 0.4f);
+                case "Door": return Meters("Door", l.Door, "MetalPainted", 1.5f, 1f);
                 case "Awning": return Meters("Awning", l.Awning, null, 1f, 0.12f);
                 case "Roof": return Meters("Roof", Palette.RoofGravel, "Roof", 4f, 0.1f);
-                case "Metal": return Meters("Metal", Palette.MetalDark, null, 1f, 0.5f, 0.5f);
-                case "Concrete": return Meters("Concrete", Palette.ConcreteTint, "Concrete", 2f, 0.15f);
+                case "Metal": return Meters("Metal", Palette.MetalDark, "MetalPainted", 1.5f, 1f);
+                case "Concrete": return Meters("Concrete", Palette.ConcreteTint, "ConcreteStained", 2f, 1f);
                 case "Wood": return Meters("Wood", l.Wood, "Wood", 1f, 0.25f);
-                case "Paint": return Meters("Paint", l.Paint, null, 1f, 0.45f);
+                case "Paint": return Meters("Paint", l.Paint, "MetalPainted", 1.5f, 1f);
                 case "CarPaint": return Meters("CarPaint", l.Car, null, 1f, 0.7f, 0.3f);
                 case "Chrome": return Meters("Chrome", Palette.ChromeSilver, null, 1f, 0.85f, 0.9f);
                 case "Rubber": return Meters("Rubber", Palette.RubberBlack, null, 1f, 0.1f);
                 case "Headlight": return Surf("S_Headlight", Palette.HeadlightWarm, null, Vector2.one, 0.8f, 0f, 1.5f);
                 case "Taillight": return Surf("S_Taillight", Palette.TaillightRed, null, Vector2.one, 0.8f, 0f, 1.2f);
                 case "LampGlass": return Surf("S_LampGlass", Palette.SunKey, null, Vector2.one, 0.8f, 0f, 1.5f);
+                case "Wire": return Meters("Wire", Palette.RubberBlack, null, 1f, 0.2f);
+                case "SignPanel": return Meters("SignPanel", l.Sign, "MetalPainted", 1.5f, 1f);
+                case "SignText": return Meters("SignText", Palette.SignCream, null, 1f, 0.3f);
+                case "TrashBag": return Meters("TrashBag", Palette.TrashBagBlack, null, 1f, 0.55f);
                 case "Bark": return Meters("Bark", Palette.Trunk, null, 1f, 0.1f);
                 case "Leaf": return Meters("Leaf", l.Leaf, null, 1f, 0.15f);
                 case "Water": return Meters("Water", Palette.WaterTint, null, 1f, 0.95f);
@@ -181,21 +193,31 @@ namespace Zombies55.EditorTools
 
         // ------------------------------------------------------------------ facade kit
 
-        static readonly Color[] WallTints = { Palette.Terracotta, Palette.Sage, Palette.Sand, Palette.DustyBlue };
-        static readonly string[] WallTexs = { "Brick", "Plaster", "Brick", "Plaster" };
+        static readonly Color[] WallTints =
+        {
+            Palette.BrickSoot, Palette.PlasterGrey, Palette.BrickBrown, Palette.PlasterOcher,
+            Palette.PlasterBlue, Palette.BrickSoot, Palette.PlasterSage, Palette.BrickBrown,
+        };
+        static readonly string[] WallTexs = { "BrickWorn", "PlasterDirty", "BrickWorn", "PlasterDirty", "PlasterDirty", "BrickWorn", "PlasterDirty", "BrickWorn" };
 
+        // Weathered, varied per building: a different base wall, dirt level and slight hue drift each time.
         static Look NextBuildingLook()
         {
             int i = _buildingIndex++;
             var awnings = new[] { Palette.AwningRed, Palette.AwningGreen, Palette.AwningNavy, Palette.AwningCream };
             var doors = new[] { Palette.DoorGreen, Palette.DoorNavy, Palette.DoorRed };
+            float dirt = 0.78f + (float)_rng.NextDouble() * 0.22f;
+            var drift = new Color(1f + ((float)_rng.NextDouble() - 0.5f) * 0.1f, 1f + ((float)_rng.NextDouble() - 0.5f) * 0.06f, 1f + ((float)_rng.NextDouble() - 0.5f) * 0.1f);
+            Color Dirty(Color c, float k) { return new Color(c.r * k * drift.r, c.g * k * drift.g, c.b * k * drift.b, 1f); }
+            var awning = awnings[_rng.Next(awnings.Length)];
             return new Look
             {
-                Wall = WallTints[i % 4],
-                WallTex = WallTexs[i % 4],
-                Frame = _rng.NextDouble() < 0.6 ? Palette.FrameLight : Palette.FrameDark,
+                Wall = Dirty(WallTints[i % WallTints.Length], dirt),
+                WallTex = WallTexs[i % WallTexs.Length],
+                Trim = Dirty(Palette.Stone, 0.72f + dirt * 0.18f),
+                Frame = _rng.NextDouble() < 0.6 ? Dirty(Palette.FrameLight, 0.82f) : Palette.FrameDark,
                 Door = doors[_rng.Next(doors.Length)],
-                Awning = awnings[_rng.Next(awnings.Length)],
+                Awning = Dirty(awning, 0.78f),
             };
         }
 
@@ -236,6 +258,7 @@ namespace Zombies55.EditorTools
                 string other = primary == "Facade_Window" ? "Facade_WindowPair" : "Facade_Window";
                 int rhythm = _rng.Next(3);
                 var cols = new string[bays];
+                int escBay = -1;
                 for (int i = 0; i < bays; i++)
                 {
                     switch (rhythm)
@@ -245,6 +268,13 @@ namespace Zombies55.EditorTools
                         default: cols[i] = (i % 2 == 0) ? primary : other; break;
                     }
                     if (ring && i % 2 == 1) cols[i] = "Facade_Blank";
+                }
+
+                if (!ring && floors >= 2 && Gp(0.25f))
+                {
+                    var okBays = new List<int>();
+                    for (int i = 0; i < bays; i++) if (cols[i] == "Facade_Window" || cols[i] == "Facade_WindowPair") okBays.Add(i);
+                    if (okBays.Count > 0) escBay = okBays[_grit.Next(okBays.Count)];
                 }
 
                 for (int i = 0; i < bays; i++)
@@ -257,6 +287,7 @@ namespace Zombies55.EditorTools
                     for (int fl = 0; fl < floors; fl++)
                         Spawn(cols[i], face, p + new Vector3(0f, baseY + 4f + 3.2f * fl, 0f), yaws[f], look);
                     Spawn("Cornice", face, p + new Vector3(0f, baseY + height, 0f), yaws[f], look);
+                    if (!ring) DressBay(face, look, p, yaws[f], baseY, floors, ground[i], cols[i], i == escBay, i, bays);
                 }
             }
 

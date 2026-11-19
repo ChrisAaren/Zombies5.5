@@ -425,8 +425,9 @@ namespace Zombies55.EditorTools
         // ------------------------------------------------------------------ parked cars
 
         static readonly string[] CarModels =
-            { "CarV2_Sedan", "CarV2_Coupe", "CarV2_Hatch", "CarV2_Wagon", "CarV2_Van", "CarV2_Pickup", "CarV2_Cab", "CarV2_SUV", "CarV2_Minivan" };
-        static readonly float[] CarWeights = { 0.2f, 0.07f, 0.12f, 0.08f, 0.1f, 0.1f, 0.1f, 0.12f, 0.11f };
+            { "CarV3_Sedan", "CarV3_Compact", "CarV3_Hatch", "CarV3_Minivan", "CarV3_SUV", "CarV3_Pickup", "CarV3_Van", "CarV3_Cab" };
+        // Everyday traffic like the street photos: sedans, compacts and minivans dominate; a few cabs, vans and pickups.
+        static readonly float[] CarWeights = { 0.24f, 0.19f, 0.11f, 0.17f, 0.08f, 0.07f, 0.06f, 0.08f };
         static readonly Dictionary<string, Vector2> _carExtent = new Dictionary<string, Vector2>();   // z length, z centre offset
 
         static readonly Color[] CarColors =
@@ -489,12 +490,12 @@ namespace Zombies55.EditorTools
                                 float yaw = axis == 0 ? (side > 0 ? 0f : 180f) : (side < 0 ? 90f : 270f);
                                 if (_v2.NextDouble() < 0.07) yaw += 180f;
                                 yaw += ((float)_v2.NextDouble() - 0.5f) * 5f;
-                                var box = axis == 0 ? new Bounds(pos, new Vector3(1.9f, 2f, len)) : new Bounds(pos, new Vector3(len, 2f, 1.9f));
+                                var box = axis == 0 ? new Bounds(pos, new Vector3(2.1f, 2f, len)) : new Bounds(pos, new Vector3(len, 2f, 2.1f));
                                 bool clear = box.SqrDistance(player) > 3.5f * 3.5f;
                                 foreach (var h in _hydrants)
                                     if (clear && box.SqrDistance(new Vector3(h.x, 0f, h.y)) < 2.5f * 2.5f) clear = false;
                                 if (!clear) continue;
-                                Color paint = model == "CarV2_Cab" ? new Color(0.95f, 0.68f, 0.08f) : CarColors[_v2.Next(CarColors.Length)];
+                                Color paint = model == "CarV3_Cab" ? new Color(0.95f, 0.68f, 0.08f) : CarColors[_v2.Next(CarColors.Length)];
                                 double dq = _v2.NextDouble();
                                 slots.Add(new CarSlot { Pos = pos, Yaw = yaw, Model = model, Paint = paint, Dirt = dq < 0.15 ? 0f : dq < 0.5 ? 0.4f : dq < 0.8 ? 0.7f : 0.95f, Dist = dist });
                             }
@@ -511,14 +512,43 @@ namespace Zombies55.EditorTools
             Debug.Log("Cars: " + slots.Count + " parked cars");
         }
 
+        // LOD0 under ~12 m, LOD1 under ~35 m, LOD2 beyond, culled past ~150 m (distances at the quality level's LOD bias, 55 degree camera).
+        const float CarLod1Dist = 12f, CarLod2Dist = 35f, CarCullDist = 150f;
+
+        static float LodHeight(float size, float dist)
+        {
+            float tan = Mathf.Tan(55f * 0.5f * Mathf.Deg2Rad);
+            return size * QualitySettings.lodBias / (2f * dist * tan);
+        }
+
+        // Far glass: no cabin behind it any more, so it is an opaque dark pane.
+        static Material CarGlassFarMat()
+        {
+            var m = Surf("S_CarGlassFar", new Color(0.035f, 0.045f, 0.05f), null, Vector2.one, 0.85f, 0f);
+            return m;
+        }
+
         static void MakeCar(string model, Vector3 pos, float yaw, Color paint, float dirt)
         {
             var look = new Look { Car = paint, Dirt = dirt, Override = new Dictionary<string, Material> { { "Glass", CarGlassMat() }, { "Interior", CarInteriorMat() } } };
+            var farLook = new Look { Car = paint, Dirt = dirt, Override = new Dictionary<string, Material> { { "Glass", CarGlassFarMat() }, { "Interior", CarInteriorMat() } } };
             var car = Spawn(model, Sub("Cars"), pos, yaw, look, "ParkedCar");
             FitBox(car, 0.2f);
-            var lod = car.AddComponent<LODGroup>();
-            lod.SetLODs(new[] { new LOD(0.01f, car.GetComponentsInChildren<Renderer>()) });
-            lod.RecalculateBounds();
+            var lod0 = car.GetComponentsInChildren<Renderer>();
+            var lod1 = Spawn(model + "_L1", car.transform, Vector3.zero, 0f, look, "LOD1").GetComponentsInChildren<Renderer>();
+            var lod2 = Spawn(model + "_L2", car.transform, Vector3.zero, 0f, farLook, "LOD2").GetComponentsInChildren<Renderer>();
+            foreach (var r in lod2) r.shadowCastingMode = ShadowCastingMode.Off;
+            var lg = car.AddComponent<LODGroup>();
+            lg.SetLODs(new[] { new LOD(0.6f, lod0), new LOD(0.3f, lod1), new LOD(0.1f, lod2) });
+            lg.RecalculateBounds();
+            float size = lg.size;
+            lg.SetLODs(new[]
+            {
+                new LOD(LodHeight(size, CarLod1Dist), lod0),
+                new LOD(LodHeight(size, CarLod2Dist), lod1),
+                new LOD(LodHeight(size, CarCullDist), lod2),
+            });
+            lg.fadeMode = LODFadeMode.None;
         }
 
         // ------------------------------------------------------------------ signals controller

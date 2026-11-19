@@ -316,6 +316,21 @@ namespace Zombies55.EditorTools
                 }
                 if (!placed) Debug.LogWarning("Combat: no free sidewalk spot for the " + def.DisplayName + " kiosk in its districts");
             }
+
+            // Every kiosk keeps 2.5 m of free curb from any parked car (the V3 cars are wider than the old ones).
+            int removed = 0;
+            foreach (Transform k in kiosks)
+                for (int i = _carColliders.Count - 1; i >= 0; i--)
+                {
+                    var c = _carColliders[i];
+                    if (c == null) continue;
+                    var q = new Vector3(k.position.x, c.bounds.center.y, k.position.z);
+                    if (c.bounds.SqrDistance(q) >= 2.5f * 2.5f) continue;
+                    Object.DestroyImmediate(c.gameObject);
+                    _carColliders.RemoveAt(i);
+                    removed++;
+                }
+            if (removed > 0) Debug.Log("Kiosks: cleared " + removed + " parked cars inside 2.5 m");
         }
 
         static bool CombatSpotFree(Vector3 basePos, float yaw, Vector3 halfExtents, float centerHeight)

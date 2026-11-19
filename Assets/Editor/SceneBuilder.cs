@@ -98,6 +98,7 @@ namespace Zombies55.EditorTools
             BuildZones();
             BuildEnemies();
 
+            MergeSkyline();
             MarkStatic(_city);
             MarkStatic(_props);
             MarkStatic(_env.Find("Boundary"));

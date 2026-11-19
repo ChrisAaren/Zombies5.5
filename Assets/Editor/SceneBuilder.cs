@@ -123,12 +123,12 @@ namespace Zombies55.EditorTools
             if (_litShader == null) throw new InvalidOperationException("URP Lit shader not found.");
 
             // Worn texture sets; the packed _MS maps carry smoothness (and metal), so the float is a multiplier.
-            mAsphalt = Surf("Asphalt", new Color(0.78f, 0.77f, 0.75f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
+            mAsphalt = Surf("Asphalt", new Color(0.58f, 0.57f, 0.56f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
             mRoadLine = Mat("RoadLine", Palette.RoadLine);
-            mSidewalk = SurfW("Sidewalk", new Color(0.8f, 0.75f, 0.67f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f, 1.0f, 1f, 0.6f, 0f);
+            mSidewalk = SurfW("Sidewalk", new Color(0.72f, 0.67f, 0.6f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f, 1.0f, 1f, 0.6f, 0f);
             mCurb = SurfW("Curb", new Color(0.72f, 0.67f, 0.6f), "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f, 1.0f, 0f, 0.6f, 0f);
             mCurbZ = SurfW("CurbZ", new Color(0.72f, 0.67f, 0.6f), "ConcreteStained", new Vector2(0.15f, BlockSize / 2f), 1f, 1.0f, 0f, 0.6f, 0f);
-            mPlaza = SurfW("Plaza", new Color(0.78f, 0.72f, 0.64f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f, 0.8f, 1f, 0.6f, 0f);
+            mPlaza = SurfW("Plaza", new Color(0.7f, 0.64f, 0.57f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f, 0.8f, 1f, 0.6f, 0f);
             mEye = Mat("Eye", Palette.EyeBlack);
             mTerracotta = Mat("Terracotta", Palette.Terracotta);
             mSage = Mat("Sage", Palette.Sage);
@@ -241,13 +241,13 @@ namespace Zombies55.EditorTools
         {
             var sunGo = new GameObject("Sun");
             sunGo.transform.SetParent(_env, false);
-            sunGo.transform.rotation = Quaternion.Euler(55f, 34f, 0f);   // high clear-day sun: short, crisp shadows
+            sunGo.transform.rotation = Quaternion.Euler(38f, 34f, 0f);   // lower, warmer sun: long raking shadows that model the facades
             var sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.color = new Color(1f, 0.94f, 0.83f);
-            sun.intensity = 3.6f;
+            sun.color = new Color(1f, 0.9f, 0.74f);
+            sun.intensity = 4.2f;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.9f;
+            sun.shadowStrength = 1f;
             RenderSettings.sun = sun;
             mSky.SetVector("_SunDir", -sunGo.transform.forward);
             EditorUtility.SetDirty(mSky);
@@ -255,16 +255,16 @@ namespace Zombies55.EditorTools
             RenderSettings.skybox = mSky;
             // Bright, slightly blue sky fill with neutral bounce (never green): a tri-light ambient instead of the sky gradient. Reflections still come from the sky and the baked probes.
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.74f, 0.83f, 0.96f);
-            RenderSettings.ambientEquatorColor = new Color(0.74f, 0.74f, 0.74f);
-            RenderSettings.ambientGroundColor = new Color(0.56f, 0.52f, 0.48f);
+            RenderSettings.ambientSkyColor = new Color(0.55f, 0.64f, 0.78f);
+            RenderSettings.ambientEquatorColor = new Color(0.5f, 0.48f, 0.46f);
+            RenderSettings.ambientGroundColor = new Color(0.36f, 0.32f, 0.28f);
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
             RenderSettings.reflectionIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.0016f;                      // light distance haze only
-            RenderSettings.fogColor = new Color(0.68f, 0.78f, 0.9f);
+            RenderSettings.fogDensity = 0.0028f;                      // warm dusty street haze
+            RenderSettings.fogColor = new Color(0.78f, 0.76f, 0.7f);
             DynamicGI.UpdateEnvironment();
 
             ConfigureUrpAssets();

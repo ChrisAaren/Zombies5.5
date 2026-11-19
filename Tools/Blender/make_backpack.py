@@ -270,9 +270,9 @@ def main():
             if (loc - p).length > 0.05:        # key point far from the cloth: keep the guess
                 loc, n = p, (p - Vector((0, 0, p.z))).normalized()
             front = p.y < 0.04 and p.z > 1.28       # chest and collar: the jacket's lapel folds are lumpy, stand the band off further
-            pts.append(loc + n * (0.016 if front else 0.0095)); nors.append(n)
+            pts.append(loc + n * (0.030 if front else 0.0095)); nors.append(n)
         # smooth the draped path a little so the band does not ripple with the cloth
-        for _ in range(10):
+        for _ in range(16):
             sm = [pts[0]] + [(pts[i - 1] + pts[i] * 2 + pts[i + 1]) * 0.25 for i in range(1, len(pts) - 1)] + [pts[-1]]
             pts = sm
         # the band's two hinges: width 0.046, a padded profile 0.011 high

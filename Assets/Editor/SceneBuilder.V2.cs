@@ -171,8 +171,8 @@ namespace Zombies55.EditorTools
             var m = LoadOrCreateMat(name, shader);
             m.SetColor("_BaseColor", paint);
             m.color = paint;
-            m.SetFloat("_Smoothness", 0.66f);
-            m.SetFloat("_Metallic", 0.25f);
+            m.SetFloat("_Smoothness", 0.55f);
+            m.SetFloat("_Metallic", 0.2f);
             m.SetTexture("_DirtMask", Tex("CarDirt_Mask"));
             m.SetColor("_DirtColor", new Color(0.3f, 0.26f, 0.21f, 1f));
             m.SetFloat("_DirtAmount", dirt);

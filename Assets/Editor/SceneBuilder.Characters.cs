@@ -416,15 +416,86 @@ namespace Zombies55.EditorTools
             var go = BuildMpfb("MPFB_Hollow", parent, EnemyControllerPath, true, HollowMaterials());
             var head = HBone(go, HumanBodyBones.Head);
             var skull = SkinBoundsAbove(go, head.position.y);
-            // The hood covers the hair.
-            foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                if (HasPart(smr, "Hair")) Object.DestroyImmediate(smr.gameObject);
             var look = new Look { Override = new Dictionary<string, Material> { { "Hood", Mat("EnemyHood", new Color(0.11f, 0.1f, 0.13f)) } } };
             // Char2_Hood head part (model space): 0.22 wide, top at y 0.22, centred at z -0.035.
             float scale = skull.size.x * HoodWidthOverSkull / 0.22f;
             var origin = new Vector3(skull.center.x, skull.max.y + HoodRaise - 0.22f * scale, skull.center.z + 0.035f * scale);
-            PlaceAccessory("Char2_Hood", head, go.transform, look, Vector3.one * scale, origin, FitHoodMantle);
+            var hood = PlaceAccessory("Char2_Hood", head, go.transform, look, Vector3.one * scale, origin, FitHoodMantle);
+            AddHollowVariants(go, hood);
             return go;
+        }
+
+        static void FindSlot(GameObject go, string part, out SkinnedMeshRenderer smr, out int slot)
+        {
+            foreach (var r in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                    if (mats[i] != null && MpfbPart(mats[i].name) == part) { smr = r; slot = i; return; }
+            }
+            throw new InvalidOperationException("MPFB_Hollow has no '" + part + "' material slot.");
+        }
+
+        static Material HollowSkinVariant(string name, Color tint, float desat, float mottle, Color mottleColor, Color socket)
+        {
+            var m = MpfbSkin(name, "Hollow_Skin_Albedo", tint, 0.28f, 0.25f, 0.9f, desat, socket, new Color(0.38f, 0.3f, 0.38f), 0.35f, 0.4f, 1.0f, 0f, 0.5f, mottle, 0.85f);
+            m.SetColor("_MottleColor", mottleColor);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        static Material HollowClothes(string name, string albedo, Color tint)
+        {
+            return MpfbMat(name, albedo, "Hollow_Clothes_Normal", "Hollow_Clothes_AO", tint, 0.15f);
+        }
+
+        // Five looks the pool picks from at spawn: the original pale grey in a dark suit under the hood, a bruised hood-down walker,
+        // a sallow green one in an olive jacket, a dark-skinned one in a rust jacket and faded jeans, and a livid one in oxblood.
+        static void AddHollowVariants(GameObject go, GameObject hood)
+        {
+            var mats = HollowMaterials();
+            FindSlot(go, "Skin", out var skinR, out int skinSlot);
+            FindSlot(go, "Top", out var clothesR, out int topSlot);
+            FindSlot(go, "Pants", out _, out int pantsSlot);
+            FindSlot(go, "Hair", out var hairR, out int hairSlot);
+            var hairGrey = MpfbMat("Hollow_Hair_Grey", "Hollow_Hair_Albedo", null, null, new Color(2.2f, 2.1f, 2.0f), 0.3f, AlphaMode.Clip, 0.5f, true);
+            var hairBrown = MpfbMat("Hollow_Hair_Brown", "Hollow_Hair_Albedo", null, null, new Color(1.9f, 1.3f, 0.9f), 0.3f, AlphaMode.Clip, 0.5f, true);
+            var darkSocket = new Color(0.22f, 0.2f, 0.26f);
+            var v = go.AddComponent<EnemyVariant>();
+            var so = new SerializedObject(v);
+            var list = new List<(Material skin, Material top, Material pants, Material hair, bool hood, float w)>
+            {
+                (mats["Skin"], mats["Top"], mats["Pants"], mats["Hair"], true, 3f),
+                (HollowSkinVariant("Hollow_Skin_Bruised", new Color(1.0f, 0.9f, 0.95f), 0.4f, 0.9f, new Color(0.45f, 0.22f, 0.34f), darkSocket),
+                    HollowClothes("Hollow_Top_Charcoal", "Hollow_Top_Albedo", new Color(0.8f, 0.8f, 0.82f)), mats["Pants"], mats["Hair"], false, 2f),
+                (HollowSkinVariant("Hollow_Skin_Sallow", new Color(0.82f, 0.95f, 0.74f), 0.5f, 0.6f, new Color(0.35f, 0.42f, 0.22f), darkSocket),
+                    HollowClothes("Hollow_Top_Olive", "Hollow_Top_Albedo", new Color(1.15f, 1.2f, 0.7f)), mats["Pants"], hairGrey, true, 2f),
+                (HollowSkinVariant("Hollow_Skin_Dark", new Color(0.62f, 0.5f, 0.48f), 0.2f, 0.5f, new Color(0.3f, 0.12f, 0.16f), new Color(0.1f, 0.08f, 0.1f)),
+                    HollowClothes("Hollow_Top_Rust", "Hollow_Top_Albedo", new Color(1.6f, 0.9f, 0.55f)), HollowClothes("Hollow_Pants_Denim", "Hollow_Pants_Albedo", new Color(0.7f, 0.85f, 1.5f)), hairBrown, false, 2f),
+                (HollowSkinVariant("Hollow_Skin_Livid", new Color(0.95f, 0.8f, 1.05f), 0.35f, 1.0f, new Color(0.4f, 0.16f, 0.4f), darkSocket),
+                    HollowClothes("Hollow_Top_Oxblood", "Hollow_Top_Albedo", new Color(1.4f, 0.5f, 0.55f)), mats["Pants"], mats["Hair"], true, 2f),
+            };
+            so.FindProperty("skinRenderer").objectReferenceValue = skinR;
+            so.FindProperty("clothesRenderer").objectReferenceValue = clothesR;
+            so.FindProperty("hairRenderer").objectReferenceValue = hairR;
+            so.FindProperty("skinSlot").intValue = skinSlot;
+            so.FindProperty("topSlot").intValue = topSlot;
+            so.FindProperty("pantsSlot").intValue = pantsSlot;
+            so.FindProperty("hairSlot").intValue = hairSlot;
+            so.FindProperty("hood").objectReferenceValue = hood;
+            var looks = so.FindProperty("looks");
+            looks.arraySize = list.Count;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var e = looks.GetArrayElementAtIndex(i);
+                e.FindPropertyRelative("skin").objectReferenceValue = list[i].skin;
+                e.FindPropertyRelative("top").objectReferenceValue = list[i].top;
+                e.FindPropertyRelative("pants").objectReferenceValue = list[i].pants;
+                e.FindPropertyRelative("hair").objectReferenceValue = list[i].hair;
+                e.FindPropertyRelative("hood").boolValue = list[i].hood;
+                e.FindPropertyRelative("weight").floatValue = list[i].w;
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         const float HoodWidthOverSkull = 1.3f;

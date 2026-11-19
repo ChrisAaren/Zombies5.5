@@ -431,9 +431,9 @@ namespace Zombies55.EditorTools
 
         static readonly Color[] CarColors =
         {
-            new Color(0.78f, 0.78f, 0.76f), new Color(0.58f, 0.6f, 0.62f), new Color(0.15f, 0.16f, 0.17f), new Color(0.05f, 0.05f, 0.06f),
-            new Color(0.07f, 0.12f, 0.24f), new Color(0.38f, 0.07f, 0.09f), new Color(0.09f, 0.2f, 0.15f), new Color(0.6f, 0.54f, 0.42f),
-            new Color(0.33f, 0.47f, 0.62f), new Color(0.62f, 0.1f, 0.1f), new Color(0.72f, 0.72f, 0.7f), new Color(0.4f, 0.42f, 0.44f),
+            new Color(0.7f, 0.7f, 0.68f), new Color(0.5f, 0.52f, 0.54f), new Color(0.15f, 0.16f, 0.17f), new Color(0.05f, 0.05f, 0.06f),
+            new Color(0.07f, 0.12f, 0.24f), new Color(0.32f, 0.08f, 0.09f), new Color(0.1f, 0.18f, 0.14f), new Color(0.52f, 0.47f, 0.37f),
+            new Color(0.3f, 0.4f, 0.52f), new Color(0.5f, 0.13f, 0.11f), new Color(0.64f, 0.64f, 0.62f), new Color(0.4f, 0.42f, 0.44f),
         };
 
         static Vector2 CarExtent(string model)
@@ -496,7 +496,7 @@ namespace Zombies55.EditorTools
                                 if (!clear) continue;
                                 Color paint = model == "CarV2_Cab" ? new Color(0.95f, 0.68f, 0.08f) : CarColors[_v2.Next(CarColors.Length)];
                                 double dq = _v2.NextDouble();
-                                slots.Add(new CarSlot { Pos = pos, Yaw = yaw, Model = model, Paint = paint, Dirt = dq < 0.45 ? 0f : dq < 0.8 ? 0.35f : 0.7f, Dist = dist });
+                                slots.Add(new CarSlot { Pos = pos, Yaw = yaw, Model = model, Paint = paint, Dirt = dq < 0.15 ? 0f : dq < 0.5 ? 0.4f : dq < 0.8 ? 0.7f : 0.95f, Dist = dist });
                             }
                         }
                     }

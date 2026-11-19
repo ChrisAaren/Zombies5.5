@@ -70,18 +70,6 @@ namespace Zombies55.EditorTools
 
         static Enemy BuildEnemyTemplate(Transform parent)
         {
-            var hoodie = Mat("EnemyHoodie", Palette.EnemyHoodie);
-            var look = new CharacterLook
-            {
-                Skin = Surf("EnemySkinTex", Palette.EnemySkin, "Characters/Skin", Vector2.one, 0.25f),
-                Top = Surf("EnemyTop", Palette.EnemyHoodie, "Characters/Cloth", Vector2.one, 0.15f),
-                Pants = Surf("EnemyPantsTex", Palette.EnemyPants, "Characters/Denim", Vector2.one, 0.15f),
-                Shoe = Surf("EnemyShoe", Palette.EnemyPants, "Characters/Leather", Vector2.one, 0.2f),
-                EyeWhite = Mat("EnemyEyeWhite", new Color(0.55f, 0.5f, 0.48f)),
-                Iris = Mat("EnemyEye", Palette.EnemyEyeRed, 3f),   // emissive red: the signature read at distance
-                Brow = Mat("EnemyBrow", Palette.EnemyPants),
-            };
-
             var go = new GameObject("EnemyTemplate");
             go.transform.SetParent(parent, false);
 
@@ -104,32 +92,42 @@ namespace Zombies55.EditorTools
 
             go.AddComponent<Enemy>();
 
-            var character = BuildHumanoid(go.transform, look, EnemyControllerPath, true, HeadGear.Hood, hoodie, null);
+            var character = BuildHollow(go.transform);
             character.AddComponent<EnemyAnimation>();
 
-            // Hitboxes ride the animated bones, so a headshot lands on the head wherever the clip puts it.
-            // Shapes are placed in the rest pose (upright), then parented to their bone.
-            Transform Bone(string n) { return FindDeep(character.transform, n); }
-            AddBoneHitbox(Bone("Head"), "Hit_Head", HitZone.Head, new Vector3(0f, 1.69f, 0.01f), c =>
+            // Hitboxes ride the animated bones, so a headshot lands on the head wherever the clip puts it. Shapes are
+            // sized in the rest pose (upright, template at the origin), then parented to their bone.
+            Transform Bone(HumanBodyBones b) { return HBone(character, b); }
+            var skin = SkinRestBounds(character);
+            var headBone = Bone(HumanBodyBones.Head);
+            var skull = SkinBoundsAbove(character, headBone.position.y);
+            float headR = Mathf.Max(skull.extents.x, skull.extents.z) * 1.05f;
+            // The face (eyes, nose) sits at the front of the skull bounds, so the sphere is nudged forward to keep it inside.
+            AddBoneHitbox(headBone, "Hit_Head", HitZone.Head, new Vector3(skull.center.x, skull.max.y - headR, skull.center.z + 0.02f), c =>
             {
                 var sp = c.AddComponent<SphereCollider>();
-                sp.radius = 0.14f;
+                sp.radius = headR;
             });
-            AddBoneHitbox(Bone("Chest"), "Hit_Torso", HitZone.Body, new Vector3(0f, 1.22f, 0f), c =>
+            var chestBone = UpperTorso(character);
+            var spineBone = Bone(HumanBodyBones.Spine);
+            var neckBone = Bone(HumanBodyBones.Neck);
+            float torsoBottom = spineBone.position.y + 0.05f;
+            float torsoTop = neckBone.position.y - 0.01f;
+            AddBoneHitbox(chestBone, "Hit_Torso", HitZone.Body, new Vector3(0f, (torsoBottom + torsoTop) * 0.5f, skin.center.z), c =>
             {
                 var bx = c.AddComponent<BoxCollider>();
-                bx.size = new Vector3(0.38f, 0.52f, 0.26f);
+                bx.size = new Vector3(0.36f, torsoTop - torsoBottom, 0.26f);
             });
-            AddBoneHitbox(Bone("Hips"), "Hit_Hips", HitZone.Body, new Vector3(0f, 0.93f, 0f), c =>
+            var hipsBone = Bone(HumanBodyBones.Hips);
+            AddBoneHitbox(hipsBone, "Hit_Hips", HitZone.Body, new Vector3(0f, (hipsBone.position.y + spineBone.position.y) * 0.5f, skin.center.z), c =>
             {
                 var bx = c.AddComponent<BoxCollider>();
-                bx.size = new Vector3(0.36f, 0.2f, 0.25f);
+                bx.size = new Vector3(0.34f, 0.22f, 0.24f);
             });
-            foreach (string side in new[] { "Left", "Right" })
-            {
-                AddLimbHitbox(Bone(side + "UpperLeg"), Bone(side + "LowerLeg"), "Hit_" + side + "UpperLeg", 0.095f);
-                AddLimbHitbox(Bone(side + "LowerLeg"), Bone(side + "Foot"), "Hit_" + side + "LowerLeg", 0.075f);
-            }
+            AddLimbHitbox(Bone(HumanBodyBones.LeftUpperLeg), Bone(HumanBodyBones.LeftLowerLeg), "Hit_LeftUpperLeg", 0.095f);
+            AddLimbHitbox(Bone(HumanBodyBones.LeftLowerLeg), Bone(HumanBodyBones.LeftFoot), "Hit_LeftLowerLeg", 0.075f);
+            AddLimbHitbox(Bone(HumanBodyBones.RightUpperLeg), Bone(HumanBodyBones.RightLowerLeg), "Hit_RightUpperLeg", 0.095f);
+            AddLimbHitbox(Bone(HumanBodyBones.RightLowerLeg), Bone(HumanBodyBones.RightFoot), "Hit_RightLowerLeg", 0.075f);
 
             SetLayerRecursive(go, GameLayers.Enemy);
             go.SetActive(false);

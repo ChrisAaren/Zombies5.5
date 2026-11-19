@@ -121,15 +121,17 @@ namespace Zombies55.EditorTools
 
         // ------------------------------------------------------------------ player
 
-        // Gun grip origin and orientation in the RightHand bone frame (metres; bone Y runs along the hand, Z is dorsal).
-        // Starting point from the clip report (pistol grip (-0.015, 0.050, -0.031), rifle butt (0.042, -0.224, -0.015) in the
-        // Blender bone frame), then fitted against the clips: the rotations turn the gun so its barrel points along the
-        // character's forward in the AimPistol / AimRifle frame 0 poses (the hand axes sit about 25 degrees off the barrel),
-        // and the positions put each gun's pistol grip in the palm.
-        static readonly Quaternion PistolGripRot = new Quaternion(0.2472f, -0.6990f, -0.6683f, 0.0609f);
-        static readonly Vector3 PistolGripPos = new Vector3(-0.016f, 0.109f, 0.009f);
-        static readonly Quaternion LongGripRot = new Quaternion(0.5864f, -0.3276f, -0.5537f, 0.4922f);
-        static readonly Vector3 LongGripPos = new Vector3(0.014f, 0.089f, 0.007f);
+        // Gun grips, in the right hand's palm frame (see PlayerAnimation): X is the curl axis (the gun's up is -X, the thumb
+        // side), Y runs along the fingers (the barrel), Z is the palm normal (the gun's left, towards the palm). The grip
+        // positions are the gun origin's offset from the palm centre, fitted against the captures so the grip handle sits in
+        // the curled fingers; yaw and pitch trim the barrel against the fingers' direction in the AimPistol / AimRifle poses.
+        static readonly Vector3 PistolGripPos = new Vector3(-0.065f, 0.03f, 0.015f);
+        static readonly Vector3 PistolGripTrim = new Vector3(-2f, 18f, 0f);    // pitch, yaw, roll about the gun's own axes
+        static readonly Vector3 LongGripPos = new Vector3(-0.065f, 0.03f, 0.015f);
+        static readonly Vector3 LongGripTrim = new Vector3(0f, 104.6f, 0f);
+        // Left-hand palm centre on the gun, in gun space.
+        static readonly Vector3 PistolSupportPos = new Vector3(-0.045f, -0.07f, 0.02f);
+        const float HandguardHeight = 0.0f;
 
         static void BuildCombatPlayer()
         {
@@ -141,9 +143,13 @@ namespace Zombies55.EditorTools
             SetRef(fx, "particleMaterial", mParticle);
 
             var anim = _playerCharacter.GetComponent<PlayerAnimation>();
-            var hand = FindDeep(_playerCharacter, "RightHand");
+            var animator = _playerCharacter.GetComponent<Animator>();
+            var hand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            var middle = animator.GetBoneTransform(HumanBodyBones.RightMiddleProximal);
 
+            // Mount: at the palm centre, oriented as the palm frame (the rest orientation of the middle proximal bone).
             var mount = Node("GunMount", hand, Vector3.zero);
+            mount.SetPositionAndRotation(hand.position + (middle.position - hand.position).normalized * PlayerAnimation.PalmCentre, middle.rotation);
 
             foreach (var def in WeaponCatalog.All)
             {
@@ -153,16 +159,27 @@ namespace Zombies55.EditorTools
                     : StandInGun(def.ModelName, mount);
                 foreach (var c in gun.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
                 bool pistol = def.Id == WeaponCatalog.StarterId;
+                var trim = pistol ? PistolGripTrim : LongGripTrim;
+                // Barrel along the fingers (palm Y), gun up against the curl axis (palm -X).
+                gun.transform.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.left)
+                    * Quaternion.Euler(trim.x, trim.y, trim.z);
                 gun.transform.localPosition = pistol ? PistolGripPos : LongGripPos;
-                gun.transform.localRotation = pistol ? PistolGripRot : LongGripRot;
 
-                // Foregrip: where the left wrist goes on a long gun (under the handguard, palm up, fingers along the barrel).
-                if (!pistol)
+                // Foregrip: the left palm centre, as a palm frame (Y along the fingers, Z out of the palm).
+                var muzzle = FindDeep(gun.transform, "Muzzle");
+                Transform grip;
+                if (pistol)
                 {
-                    var muzzle = FindDeep(gun.transform, "Muzzle");
+                    // Support hand on the left of the grip, fingers forward, palm towards the gun.
+                    grip = Node("Foregrip", gun.transform, PistolSupportPos);
+                    grip.localRotation = Quaternion.LookRotation(Vector3.right, Vector3.forward);
+                }
+                else
+                {
+                    // Under the handguard, fingers across to the right, palm up, curling round the barrel.
                     float z = muzzle != null ? muzzle.localPosition.z * 0.45f : 0.3f;
-                    var grip = Node("Foregrip", gun.transform, new Vector3(0f, 0.09f, Mathf.Max(0.2f, z)));
-                    grip.localRotation = Quaternion.LookRotation(Vector3.down, Vector3.forward);
+                    grip = Node("Foregrip", gun.transform, new Vector3(0f, HandguardHeight, Mathf.Max(0.2f, z)));
+                    grip.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.right);
                 }
                 SetLayerRecursive(gun, GameLayers.Player);
                 gun.SetActive(pistol);

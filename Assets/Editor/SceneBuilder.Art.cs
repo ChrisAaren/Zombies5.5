@@ -27,7 +27,7 @@ namespace Zombies55.EditorTools
                 var ti = AssetImporter.GetAtPath(path) as TextureImporter;
                 if (ti == null) continue;
                 bool normal = path.EndsWith("_Normal.png");
-                bool mask = path.EndsWith("_Mask.png") || path.EndsWith("_MS.png");   // MS = packed metallic (R) + smoothness (A)
+                bool mask = path.EndsWith("_Mask.png") || path.EndsWith("_MS.png") || path.EndsWith("_AO.png");   // MS = packed metallic (R) + smoothness (A)
                 bool dirty = false;
                 var type = normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
                 if (ti.textureType != type) { ti.textureType = type; dirty = true; }
@@ -35,6 +35,11 @@ namespace Zombies55.EditorTools
                 if (ti.sRGBTexture != srgb && !normal) { ti.sRGBTexture = srgb; dirty = true; }
                 bool decal = path.EndsWith("/Grime_Albedo.png") || path.EndsWith("/RoadMarkings_Albedo.png");
                 if (decal && !ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
+                // MPFB alpha cards (brows, lashes, hair): colour bleeds into the transparent texels, and coverage is kept
+                // through the mips so distant hair does not thin out under alpha clip.
+                bool cards = path.Contains("/MPFB/") && (path.Contains("_Brows_") || path.Contains("_Lashes_") || path.Contains("_Hair_Albedo"));
+                if (cards && !ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
+                if (cards && !ti.mipMapsPreserveCoverage) { ti.mipMapsPreserveCoverage = true; ti.alphaTestReferenceValue = path.Contains("_Hair_") ? 0.5f : 0.3f; dirty = true; }
                 if (decal && ti.wrapMode != TextureWrapMode.Repeat) { ti.wrapMode = TextureWrapMode.Repeat; dirty = true; }
                 if (ti.wrapMode != TextureWrapMode.Repeat) { ti.wrapMode = TextureWrapMode.Repeat; dirty = true; }
                 if (!ti.mipmapEnabled) { ti.mipmapEnabled = true; dirty = true; }
@@ -54,8 +59,10 @@ namespace Zombies55.EditorTools
                 if (mi.importCameras) { mi.importCameras = false; dirty = true; }
                 if (mi.importLights) { mi.importLights = false; dirty = true; }
                 if (mi.importVisibility) { mi.importVisibility = false; dirty = true; }
-                // Char_Human is configured by ConfigureCharacterImports (Humanoid); the rigid models keep no rig.
-                if (path.EndsWith("/Char_Human.fbx")) { if (dirty) { mi.SaveAndReimport(); changed++; } continue; }
+                // The MPFB characters are configured by ConfigureCharacterImports (Humanoid); the retired Char_Human keeps its
+                // old settings; the rigid models keep no rig.
+                if (path.EndsWith("/Char_Human.fbx")) continue;
+                if (IsMpfbModel(path)) { if (dirty) { mi.SaveAndReimport(); changed++; } continue; }
                 var animType = ModelImporterAnimationType.None;
                 if (mi.animationType != animType) { mi.animationType = animType; dirty = true; }
                 if (mi.importAnimation) { mi.importAnimation = false; dirty = true; }
@@ -74,7 +81,10 @@ namespace Zombies55.EditorTools
 
         // ------------------------------------------------------------------ humanoid character and clips
 
-        const string HumanPath = ModelDir + "/Characters/Char_Human.fbx";
+        const string CourierPath = ModelDir + "/Characters/MPFB_Courier.fbx";
+        const string HollowPath = ModelDir + "/Characters/MPFB_Hollow.fbx";
+
+        static bool IsMpfbModel(string path) { return path == CourierPath || path == HollowPath; }
         const string AnimDir = "Assets/Art/Animations";
 
         // Clips that loop (loop time and loop pose); the rest play once.
@@ -84,26 +94,31 @@ namespace Zombies55.EditorTools
             "AimPistol", "AimRifle", "HoldRifleLow", "EnemyIdle", "Shamble", "EnemyJog", "EnemySprint",
         };
 
-        // Char_Human: Humanoid, avatar from the T-pose model. Each Anim_*: Humanoid, avatar created from the clip's own
-        // skeleton (copying Char_Human's avatar fails: the clip FBX roots the armature under a differently named parent). Returns the number of importers that changed.
+        // MPFB_Courier and MPFB_Hollow: Humanoid, avatar from the T-pose model. Each Anim_*: Humanoid, avatar created from the
+        // clip's own skeleton; the humanoid retarget carries the clips onto the MPFB avatars. Returns the number of importers that changed.
         static int ConfigureCharacterImports()
         {
             int changed = 0;
-            var human = AssetImporter.GetAtPath(HumanPath) as ModelImporter;
-            if (human == null) throw new InvalidOperationException("Char_Human.fbx is missing.");
-            bool dirty = false;
-            if (human.animationType != ModelImporterAnimationType.Human) { human.animationType = ModelImporterAnimationType.Human; dirty = true; }
-            if (human.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel) { human.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel; dirty = true; }
-            if (human.importAnimation) { human.importAnimation = false; dirty = true; }
-            if (human.optimizeGameObjects) { human.optimizeGameObjects = false; dirty = true; }
-            if (human.isReadable) { human.isReadable = false; dirty = true; }
-            if (dirty) { human.SaveAndReimport(); changed++; }
-            for (int i = 0; i < 3 && EnsureHumanDescription(human, HumanPath); i++) changed++;
+            foreach (var modelPath in new[] { CourierPath, HollowPath })
+            {
+                var human = AssetImporter.GetAtPath(modelPath) as ModelImporter;
+                if (human == null) throw new InvalidOperationException(modelPath + " is missing.");
+                bool dirty = false;
+                if (human.animationType != ModelImporterAnimationType.Human) { human.animationType = ModelImporterAnimationType.Human; dirty = true; }
+                if (human.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel) { human.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel; dirty = true; }
+                if (human.importAnimation) { human.importAnimation = false; dirty = true; }
+                if (human.optimizeGameObjects) { human.optimizeGameObjects = false; dirty = true; }
+                if (human.isReadable) { human.isReadable = false; dirty = true; }
+                if (human.materialImportMode != ModelImporterMaterialImportMode.ImportStandard) { human.materialImportMode = ModelImporterMaterialImportMode.ImportStandard; dirty = true; }
+                if (human.materialLocation != ModelImporterMaterialLocation.InPrefab) { human.materialLocation = ModelImporterMaterialLocation.InPrefab; dirty = true; }
+                if (dirty) { human.SaveAndReimport(); changed++; }
+                for (int i = 0; i < 3 && EnsureHumanDescription(human, modelPath); i++) changed++;
 
-            var avatar = HumanAvatar();
-            if (avatar == null || !avatar.isValid || !avatar.isHuman)
-                throw new InvalidOperationException("Char_Human avatar is not a valid humanoid: "
-                    + (avatar == null ? "no avatar" : "isValid=" + avatar.isValid + " isHuman=" + avatar.isHuman));
+                var avatar = AvatarAt(modelPath);
+                if (avatar == null || !avatar.isValid || !avatar.isHuman)
+                    throw new InvalidOperationException(modelPath + " avatar is not a valid humanoid: "
+                        + (avatar == null ? "no avatar" : "isValid=" + avatar.isValid + " isHuman=" + avatar.isHuman));
+            }
 
             foreach (var guid in AssetDatabase.FindAssets("Anim_ t:Model", new[] { AnimDir }))
             {
@@ -196,7 +211,11 @@ namespace Zombies55.EditorTools
             }
             if (!hasChest)
             {
-                list.Add(new HumanBone { humanName = "Chest", boneName = "Chest", limit = new HumanLimit { useDefaultValues = true } });
+                // Unity's automatic mapping leaves the optional Chest out: the clip skeleton's Chest sits between Spine and
+                // Neck, which on the mixamo rig is Spine1.
+                string chestBone = null;
+                foreach (var t in AssetDatabase.LoadAllAssetsAtPath(path)) if (t is GameObject g) { var f = FindDeep(g.transform, "mixamorig:Spine1"); if (f != null) chestBone = f.name; }
+                list.Add(new HumanBone { humanName = "Chest", boneName = chestBone ?? "Chest", limit = new HumanLimit { useDefaultValues = true } });
                 changed = true;
             }
             if (!changed) return false;
@@ -205,8 +224,6 @@ namespace Zombies55.EditorTools
             mi.SaveAndReimport();
             return true;
         }
-
-        static Avatar HumanAvatar() { return AvatarAt(HumanPath); }
 
         static Avatar AvatarAt(string path)
         {

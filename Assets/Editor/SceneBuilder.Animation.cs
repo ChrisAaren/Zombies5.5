@@ -137,7 +137,6 @@ namespace Zombies55.EditorTools
             up.avatarMask = mask;
             up.blendingMode = AnimatorLayerBlendingMode.Override;
             up.defaultWeight = 1f;
-            up.iKPass = true;
             c.layers = layers;
             var usm = c.layers[1].stateMachine;
 

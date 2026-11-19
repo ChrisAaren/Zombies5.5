@@ -77,6 +77,7 @@ namespace Zombies55.EditorTools
             _game = Root("Game");
             _camera = Root("Camera");
 
+            ConfigurePhysicsLayers();
             ConfigureImports();
             BuildAnimatorControllers();
             BuildMaterials();
@@ -743,145 +744,16 @@ namespace Zombies55.EditorTools
             cc.stepOffset = 0.4f;
             cc.slopeLimit = 50f;
 
+            AddPlayerCrowdObstacle(root);
             var pc = root.AddComponent<PlayerController>();
             _playerController = pc;
 
-            // The courier: teal top, dark jeans, sneakers, terracotta cap and backpack; skin straight from Skin_Albedo.
-            var look = new CharacterLook
-            {
-                Skin = Surf("CharSkin", Color.white, "Characters/Skin", Vector2.one, 0.3f),
-                Top = Surf("CharTop", Palette.CharacterPrimary, "Characters/Cloth", Vector2.one, 0.2f),
-                Pants = Surf("CharPants", Palette.Pants, "Characters/Denim", Vector2.one, 0.2f),
-                Shoe = Surf("CharShoe", Palette.Sneaker, "Characters/Leather", Vector2.one, 0.3f),
-                EyeWhite = EyeWhiteMat(),
-                Iris = IrisMat(),
-                Brow = Mat("CharBrow", Palette.HairDark),
-            };
-            var character = BuildHumanoid(root.transform, look, PlayerControllerPath, false, HeadGear.Cap, mTerracotta, mTerracotta);
+            var character = BuildCourier(root.transform);
             _playerCharacter = character.transform;
             character.AddComponent<PlayerAnimation>();
         }
 
-        // ------------------------------------------------------------------ humanoid character
-
-        enum HeadGear { Cap, ShortHair, LongHair, Hood }
-
-        class CharacterLook
-        {
-            public Material Skin, Top, Pants, Shoe, EyeWhite, Iris, Brow;
-        }
-
         static Transform _playerCharacter;
-
-        static Material EyeWhiteMat() { return Surf("CharEyeWhite", new Color(0.93f, 0.91f, 0.88f), null, Vector2.one, 0.8f); }
-
-        static Material IrisMat()
-        {
-            var m = Surf("CharIris", Color.white, null, Vector2.one, 0.85f);
-            m.SetTexture("_BaseMap", Tex("Characters/Eye_Albedo"));
-            EditorUtility.SetDirty(m);
-            return m;
-        }
-
-        // Char_Human with an Animator (humanoid avatar + controller), slot materials, and the accessories fitted to the
-        // Head / Chest bones. Returns the Char_Human root, which is where the animation components go.
-        static GameObject BuildHumanoid(Transform parent, CharacterLook look, string controllerPath, bool cullTransforms,
-            HeadGear gear, Material gearMat, Material packMat)
-        {
-            var go = (GameObject)Object.Instantiate(Model("Char_Human"));
-            go.name = "Char_Human";
-            go.transform.SetParent(parent, false);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale = Vector3.one;
-
-            var animator = go.GetComponent<Animator>();
-            if (animator == null) animator = go.AddComponent<Animator>();
-            animator.avatar = HumanAvatar();
-            animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(controllerPath);
-            animator.applyRootMotion = false;
-            animator.cullingMode = cullTransforms ? AnimatorCullingMode.CullUpdateTransforms : AnimatorCullingMode.AlwaysAnimate;
-
-            var bodyLook = new Look
-            {
-                Override = new Dictionary<string, Material>
-                {
-                    { "Skin", look.Skin }, { "Top", look.Top }, { "Pants", look.Pants }, { "Shoe", look.Shoe },
-                    { "EyeWhite", look.EyeWhite }, { "Iris", look.Iris }, { "Brow", look.Brow },
-                },
-            };
-            ApplyLook(go, bodyLook);
-            foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>())
-            {
-                smr.updateWhenOffscreen = false;
-                smr.quality = SkinQuality.Bone4;
-            }
-
-            var gearLook = new Look
-            {
-                Override = new Dictionary<string, Material>
-                {
-                    { "Hair", gearMat }, { "Cap", gearMat }, { "Hood", gearMat }, { "Bag", packMat },
-                },
-            };
-            var head = FindDeep(go.transform, "Head");
-            var chest = FindDeep(go.transform, "Chest");
-            switch (gear)
-            {
-                case HeadGear.Cap: AttachAccessory("Char2_Cap", head, go.transform, gearLook); break;
-                case HeadGear.ShortHair: AttachAccessory("Char2_HairShort", head, go.transform, gearLook); break;
-                case HeadGear.Hood: AttachAccessory("Char2_Hood", head, go.transform, gearLook); break;
-                default: AttachAccessory("Char2_HairLong", head, go.transform, gearLook); break;
-            }
-            if (packMat != null) AttachAccessory("Char2_Backpack", chest, go.transform, gearLook);
-            return go;
-        }
-
-        // The accessory meshes are authored in the T-pose with their pivot at the bone head, so they go on in the rest
-        // pose with world axes and then follow the bone.
-        static void AttachAccessory(string model, Transform bone, Transform character, Look look)
-        {
-            var acc = Spawn(model, bone, Vector3.zero, 0f, look, model);
-            acc.transform.SetPositionAndRotation(bone.position, character.rotation);
-            foreach (var c in acc.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
-            if (model == "Char2_Hood") FitHoodMantle(acc);
-        }
-
-        const string HoodFitPath = ModelDir + "/Characters/Generated/Char2_Hood_Fit.asset";
-
-        // Char2_Hood is authored for the T-pose: its shoulder mantle runs out along the arms (to 0.57 m from the centre line).
-        // The hood is rigid on the head, so with the arms down those tips stick out sideways. The mantle vertices are bent
-        // down and in, as if draped over the shoulder, and the result is saved as a mesh asset.
-        static void FitHoodMantle(GameObject hood)
-        {
-            var mf = hood.GetComponentInChildren<MeshFilter>();
-            var src = mf.sharedMesh;
-            var mesh = Object.Instantiate(src);
-            mesh.name = "Char2_Hood_Fit";
-            var v = mesh.vertices;
-            const float shoulder = 0.15f;
-            for (int i = 0; i < v.Length; i++)
-            {
-                float ax = Mathf.Abs(v[i].x);
-                if (ax <= shoulder) continue;
-                float d = ax - shoulder;
-                v[i].x = Mathf.Sign(v[i].x) * (shoulder + d * 0.25f);
-                v[i].y -= d * 0.6f;
-            }
-            mesh.vertices = v;
-            mesh.RecalculateBounds();
-            mesh.RecalculateNormals();
-            EnsureFolder(ModelDir + "/Characters/Generated");
-            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(HoodFitPath);
-            if (existing != null)
-            {
-                EditorUtility.CopySerialized(mesh, existing);
-                Object.DestroyImmediate(mesh);
-                mesh = existing;
-            }
-            else AssetDatabase.CreateAsset(mesh, HoodFitPath);
-            mf.sharedMesh = mesh;
-        }
 
         static void SetFloat(Object target, string field, float value)
         {

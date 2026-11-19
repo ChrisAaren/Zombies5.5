@@ -5,14 +5,25 @@ namespace Zombies55
 {
     // Drives the player's Animator (locomotion blend, jump / fall / land, upper-body weapon layer, death), holds the gun
     // in the right hand, puts the left hand on the foregrip and pitches the spine so the muzzle follows the crosshair.
-    // Lives on the same object as the Animator (the Char_Human instance) so OnAnimatorIK is called here.
+    // Lives on the same object as the Animator (the MPFB_Courier instance).
+    //
+    // Palm frame: the rest-pose orientation of a hand's MiddleProximal bone. Y runs along the fingers, Z is the palm normal
+    // (out of the palm, towards what the hand holds), X is the curl axis (Y x Z). The gun mount is a child of the right hand
+    // in that frame, and the foregrip nodes on the guns are palm frames of the left hand.
     [RequireComponent(typeof(Animator))]
     [DefaultExecutionOrder(100)]
     public class PlayerAnimation : MonoBehaviour
     {
         const int UpperLayer = 1;
 
-        [Tooltip("Parent of the gun models: a child of the RightHand bone at the grip.")]
+        // Distance from the wrist to the palm centre (the hand is about 0.115 m to the knuckles).
+        public const float PalmCentre = 0.063f;
+        // Closest point along the camera ray the muzzle is pointed at.
+        const float MinAimDistance = 10f;
+        // Share of the wrist roll that goes to the forearm; the hand takes the rest.
+        const float ForearmRollShare = 0.5f;
+
+        [Tooltip("Parent of the gun models: a child of the RightHand bone, at the palm centre, in the palm frame.")]
         [SerializeField] Transform gunMount;
         [SerializeField] float moveDamp = 0.08f;
         [SerializeField] float combatStanceSeconds = 0.5f;
@@ -21,19 +32,22 @@ namespace Zombies55
         [SerializeField] float maxAimCorrection = 75f;
         [SerializeField] float kickMeters = 0.03f;
         [Header("Grip fingers")]
-        [Tooltip("The clips' finger poses rotate about the bone's side axis (the fingers fan out instead of curling), so the" +
-                 " four long fingers of a hand holding a gun are curled here, about the bone X axis.")]
+        [Tooltip("The clips' finger poses do not close the hand, so the four long fingers of a hand holding a gun are curled" +
+                 " here, about the finger bones' X axis (the curl axis, positive towards the palm on both hands).")]
         [SerializeField] float curlProximal = 50f;
         [SerializeField] float curlIntermediate = 70f;
         [SerializeField] float curlDistal = 45f;
         [SerializeField] float curlSign = 1f;
-        [SerializeField, Range(0f, 1f)] float leftHandCurl = 0.6f;
+        [SerializeField, Range(0f, 1f)] float leftHandCurl = 0.8f;
 
         Animator _anim;
         PlayerController _player;
         PlayerHealth _health;
         PlayerWeapons _weapons;
         Transform _root, _spine, _chest;
+        Transform _lUpper, _lLower, _lHand, _rLower, _rHand;
+        Quaternion _palmRight, _palmLeft;
+        Vector3 _chestUpLocal;                  // the torso's up in the chest bone's frame (rest pose)
         readonly Dictionary<string, GameObject> _guns = new Dictionary<string, GameObject>();
         GameObject _gun;
         Transform _muzzle, _foregrip;
@@ -57,6 +71,15 @@ namespace Zombies55
             _root = _player != null ? _player.transform : transform;
             _spine = _anim.GetBoneTransform(HumanBodyBones.Spine);
             _chest = _anim.GetBoneTransform(HumanBodyBones.Chest);
+            _lUpper = _anim.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            _lLower = _anim.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+            _lHand = _anim.GetBoneTransform(HumanBodyBones.LeftHand);
+            _rLower = _anim.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            _rHand = _anim.GetBoneTransform(HumanBodyBones.RightHand);
+            // Awake runs before the Animator's first evaluation, so the bones are still in the T-pose.
+            _palmRight = PalmFrame(_rHand, _anim.GetBoneTransform(HumanBodyBones.RightMiddleProximal));
+            _palmLeft = PalmFrame(_lHand, _anim.GetBoneTransform(HumanBodyBones.LeftMiddleProximal));
+            _chestUpLocal = Quaternion.Inverse(_chest.rotation) * transform.up;
             _moveX = Animator.StringToHash("MoveX");
             _moveZ = Animator.StringToHash("MoveZ");
             _locoSpeed = Animator.StringToHash("LocoSpeed");
@@ -70,6 +93,11 @@ namespace Zombies55
             _rightFingers = CacheFingers(true);
             _leftFingers = CacheFingers(false);
             CacheGuns();
+        }
+
+        public static Quaternion PalmFrame(Transform hand, Transform middleProximal)
+        {
+            return Quaternion.Inverse(hand.rotation) * middleProximal.rotation;
         }
 
         FingerBone[] CacheFingers(bool right)
@@ -200,41 +228,101 @@ namespace Zombies55
 
             bool aimActive = aiming && !_dead && !reloading && _gun != null;
             _aimBlend = Mathf.MoveTowards(_aimBlend, aimActive ? 1f : 0f, dt * 8f);
-            bool ik = !pistol && !reloading && !_dead && _foregrip != null;
+            bool ik = !reloading && !_dead && _foregrip != null;
             _ikWeight = Mathf.MoveTowards(_ikWeight, ik ? 1f : 0f, dt * 6f);
             _kick = Mathf.MoveTowards(_kick, 0f, dt * 9f);
         }
 
-        // Left hand on the foregrip (long guns); the clips already place it close, the IK closes the last centimetres.
-        void OnAnimatorIK(int layerIndex)
-        {
-            if (layerIndex != UpperLayer) return;
-            float w = _ikWeight * _upperWeight;
-            if (_foregrip == null || w <= 0.001f)
-            {
-                _anim.SetIKPositionWeight(AvatarIKGoal.LeftHand, 0f);
-                _anim.SetIKRotationWeight(AvatarIKGoal.LeftHand, 0f);
-                return;
-            }
-            _anim.SetIKPositionWeight(AvatarIKGoal.LeftHand, w);
-            _anim.SetIKRotationWeight(AvatarIKGoal.LeftHand, w);
-            _anim.SetIKPosition(AvatarIKGoal.LeftHand, _foregrip.position);
-            _anim.SetIKRotation(AvatarIKGoal.LeftHand, _foregrip.rotation);
-        }
-
-        // After the animation: tilt spine and chest so the muzzle points at the camera's aim point.
+        // After the animation, in this order: roll the wrists so the grip stands upright, tilt spine and chest so the muzzle
+        // points at the camera's aim point, put the left hand on the foregrip, curl the fingers.
         void LateUpdate()
         {
             if (gunMount != null) gunMount.localPosition = _mountRest + new Vector3(0f, -_kick * kickMeters, 0f);
             _gripBlend = Mathf.MoveTowards(_gripBlend, _gun != null && !_dead ? 1f : 0f, Time.deltaTime * 6f);
-            CurlFingers(_rightFingers, _gripBlend);
-            CurlFingers(_leftFingers, _ikWeight * leftHandCurl);
-            if (_aimBlend <= 0.001f || _muzzle == null || _spine == null || _chest == null) return;
+            float roll = _gun != null && !_dead ? _upperWeight : 0f;
+            bool aim = _aimBlend > 0.001f && _muzzle != null && _spine != null && _chest != null;
+            Vector3 aimPoint = aim ? FindAimPoint() : Vector3.zero;
+            float ik = _ikWeight * _upperWeight;
 
-            Vector3 aimPoint = FindAimPoint();
-            Rotate(_spine, aimPoint, 0.4f);
-            Rotate(_chest, aimPoint, 0.75f);
-            Rotate(_chest, aimPoint, 1f);
+            if (roll > 0.001f) RollWrists(roll);
+            if (aim)
+            {
+                // Each pass re-measures the muzzle, so the rotations converge on the aim point.
+                for (int i = 0; i < 4; i++)
+                {
+                    Rotate(_spine, aimPoint, i == 0 ? 0.4f : 0.2f);
+                    Rotate(_chest, aimPoint, i == 0 ? 0.75f : 0.5f);
+                    if (roll > 0.001f) RollWrists(roll);
+                }
+                Rotate(_chest, aimPoint, 1f);
+            }
+            if (ik > 0.001f) PlaceLeftHand(ik);
+            CurlFingers(_rightFingers, _gripBlend);
+            CurlFingers(_leftFingers, Mathf.Max(ik * leftHandCurl, 0f));
+        }
+
+        void RollWrists(float weight)
+        {
+            // "Up" is the torso's, not the world's: when the chest pitches to bring the muzzle onto the target, the grip pitches
+            // with it instead of the roll fighting the aim.
+            Vector3 up = _chest.rotation * _chestUpLocal;
+            Roll(_rLower, _rHand, _palmRight, -1f, weight, up);
+            // The left hand is rolled only while it is not about to be placed on the foregrip.
+            if (_foregrip == null) Roll(_lLower, _lHand, _palmLeft, 1f, weight, up);
+        }
+
+        // Rolls the hand about its finger axis until the thumb side of the fist points up (the torso's up), so the gun stands upright in the
+        // palm (the clips hold the hands palm-down); the finger direction, and with it the barrel, does not move. The forearm
+        // takes part of the twist so the wrist is not wrung. The thumb side is -X of the palm frame on the right hand, +X on
+        // the left.
+        void Roll(Transform lower, Transform hand, Quaternion palm, float thumbSign, float weight, Vector3 up)
+        {
+            Quaternion palmWorld = hand.rotation * palm;
+            Vector3 fingers = palmWorld * Vector3.up;
+            Vector3 thumb = thumbSign * (palmWorld * Vector3.right);
+            Vector3 a = Vector3.ProjectOnPlane(thumb, fingers);
+            Vector3 b = Vector3.ProjectOnPlane(up, fingers);
+            if (a.sqrMagnitude < 0.04f || b.sqrMagnitude < 0.04f) return;
+            float angle = Mathf.Clamp(Vector3.SignedAngle(a, b, fingers), -130f, 130f) * weight;
+            Quaternion target = Quaternion.AngleAxis(angle, fingers) * hand.rotation;
+            Vector3 axis = hand.position - lower.position;
+            if (axis.sqrMagnitude > 1e-6f)
+                lower.rotation = Quaternion.AngleAxis(angle * ForearmRollShare, axis.normalized) * lower.rotation;
+            hand.rotation = target;
+        }
+
+        // Left wrist to the foregrip: the foregrip node is the palm frame of the left hand and its position is the palm
+        // centre. Two-bone solve for the arm (the elbow keeps its animated side), then the hand takes the node's orientation.
+        void PlaceLeftHand(float weight)
+        {
+            Quaternion handGoal = _foregrip.rotation * Quaternion.Inverse(_palmLeft);
+            Vector3 wristGoal = _foregrip.position - _foregrip.up * PalmCentre;
+            var upperRot = _lUpper.localRotation;
+            var lowerRot = _lLower.localRotation;
+            var handRot = _lHand.localRotation;
+            SolveTwoBone(_lUpper, _lLower, _lHand, wristGoal, _lLower.position);
+            _lHand.rotation = handGoal;
+            _lUpper.localRotation = Quaternion.Slerp(upperRot, _lUpper.localRotation, weight);
+            _lLower.localRotation = Quaternion.Slerp(lowerRot, _lLower.localRotation, weight);
+            _lHand.localRotation = Quaternion.Slerp(handRot, _lHand.localRotation, weight);
+        }
+
+        static void SolveTwoBone(Transform upper, Transform lower, Transform end, Vector3 target, Vector3 pole)
+        {
+            Vector3 a = upper.position, b = lower.position, c = end.position;
+            float l1 = (b - a).magnitude, l2 = (c - b).magnitude;
+            Vector3 toTarget = target - a;
+            float dist = Mathf.Clamp(toTarget.magnitude, Mathf.Abs(l1 - l2) + 1e-3f, l1 + l2 - 1e-3f);
+            Vector3 dir = toTarget.normalized;
+            float x = (l1 * l1 - l2 * l2 + dist * dist) / (2f * dist);
+            float h = Mathf.Sqrt(Mathf.Max(0f, l1 * l1 - x * x));
+            Vector3 side = Vector3.ProjectOnPlane(pole - a, dir);
+            if (side.sqrMagnitude < 1e-8f) side = Vector3.ProjectOnPlane(b - a, dir);
+            side.Normalize();
+            Vector3 newElbow = a + dir * x + side * h;
+            upper.rotation = Quaternion.FromToRotation(b - a, newElbow - a) * upper.rotation;
+            Vector3 b2 = lower.position, c2 = end.position;
+            lower.rotation = Quaternion.FromToRotation(c2 - b2, a + dir * dist - b2) * lower.rotation;
         }
 
         void Rotate(Transform bone, Vector3 aimPoint, float share)
@@ -256,8 +344,9 @@ namespace Zombies55
             Vector3 fwd = cam.transform.forward;
             float along = Mathf.Max(0.5f, Vector3.Dot(_root.position + Vector3.up * 1.4f - camPos, fwd));
             Vector3 origin = camPos + fwd * along;
+            // Never aim at something right in front of the gun (an enemy in the player's face): the spine would fold.
             if (Physics.Raycast(origin, fwd, out RaycastHit hit, 150f, GameLayers.ShotMask, QueryTriggerInteraction.Ignore))
-                return hit.point;
+                return origin + fwd * Mathf.Max(hit.distance, MinAimDistance);
             return origin + fwd * 60f;
         }
     }

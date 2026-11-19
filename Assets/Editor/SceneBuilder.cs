@@ -303,6 +303,22 @@ namespace Zombies55.EditorTools
             smh.shadows.Override(new Vector4(1.06f, 1.0f, 0.92f, 0.04f));
             smh.midtones.Override(new Vector4(1.02f, 1f, 0.95f, 0f));
             smh.highlights.Override(new Vector4(1.03f, 1f, 0.95f, -0.03f));
+            // Far-distance depth of field: the skyline softens, everything inside ~70 m (all combat ranges) stays crisp.
+            var dof = GetOrAdd<DepthOfField>(profile);
+            dof.mode.Override(DepthOfFieldMode.Gaussian);
+            dof.gaussianStart.Override(70f);
+            dof.gaussianEnd.Override(190f);
+            dof.gaussianMaxRadius.Override(0.9f);
+            dof.highQualitySampling.Override(false);
+            // Faint screen-space flare off the bright sky and lamps; the sun itself gets a Lens Flare (SRP) below.
+            var ssFlare = GetOrAdd<ScreenSpaceLensFlare>(profile);
+            ssFlare.intensity.Override(0.045f);
+            ssFlare.tintColor.Override(new Color(1f, 0.93f, 0.82f));
+            ssFlare.firstFlareIntensity.Override(0.5f);
+            ssFlare.secondaryFlareIntensity.Override(0.6f);
+            ssFlare.warpedFlareIntensity.Override(0.3f);
+            ssFlare.vignetteEffect.Override(0.8f);
+            ssFlare.chromaticAbberationIntensity.Override(0.3f);
             EditorUtility.SetDirty(profile);
 
             var volGo = new GameObject("Global Volume");
@@ -310,6 +326,54 @@ namespace Zombies55.EditorTools
             var volume = volGo.AddComponent<Volume>();
             volume.isGlobal = true;
             volume.sharedProfile = profile;
+
+            var flare = sunGo.AddComponent<LensFlareComponentSRP>();
+            flare.lensFlareData = BuildSunFlareData();
+            flare.intensity = 1f;                    // ImageQualityFX fades it with its own camera-to-sun rays
+            flare.useOcclusion = false;
+            flare.allowOffScreen = false;
+            flare.attenuationByLightShape = false;
+            var fx = volGo.AddComponent<ImageQualityFX>();
+            SetRef(fx, "volume", volume);
+            SetRef(fx, "sunFlare", flare);
+        }
+
+        // Soft warm glare around the sun with a faint ghost chain: kept deliberately small so it reads as lens bloom, not a game effect.
+        static LensFlareDataSRP BuildSunFlareData()
+        {
+            const string path = "Assets/Settings/SunFlare.asset";
+            var data = AssetDatabase.LoadAssetAtPath<LensFlareDataSRP>(path);
+            if (data == null)
+            {
+                data = ScriptableObject.CreateInstance<LensFlareDataSRP>();
+                AssetDatabase.CreateAsset(data, path);
+            }
+            LensFlareDataElementSRP El(float pos, float scale, float alpha, Color tint, SRPLensFlareType type = SRPLensFlareType.Circle, float falloff = 1f)
+            {
+                var e = new LensFlareDataElementSRP();
+                e.flareType = type;
+                e.position = pos;
+                e.uniformScale = scale;
+                e.sizeXY = Vector2.one;
+                e.tint = new Color(tint.r, tint.g, tint.b, alpha);
+                e.fallOff = falloff;
+                e.edgeOffset = 0.5f;
+                e.blendMode = SRPLensFlareBlendMode.Additive;
+                e.preserveAspectRatio = false;
+                e.sideCount = 6;
+                e.ringThickness = 0.08f;
+                return e;
+            }
+            var warm = new Color(1f, 0.88f, 0.68f);
+            data.elements = new[]
+            {
+                El(0f, 3.0f, 0.16f, warm, SRPLensFlareType.Circle, 1f),                        // glare halo on the sun
+                El(0f, 0.9f, 0.18f, new Color(1f, 0.95f, 0.85f), SRPLensFlareType.Circle, 1f),   // hot core
+                El(-0.55f, 0.35f, 0.05f, new Color(0.8f, 0.9f, 1f), SRPLensFlareType.Polygon, 0.6f),
+                El(-1.1f, 0.22f, 0.04f, new Color(1f, 0.8f, 0.6f), SRPLensFlareType.Polygon, 0.6f),
+            };
+            EditorUtility.SetDirty(data);
+            return data;
         }
 
         // Shadow quality and SSAO live on the URP assets; this reapplies them on every rebuild.
@@ -534,6 +598,7 @@ namespace Zombies55.EditorTools
             BuildParkedCars();
             BuildStreetGrit();
             BuildShopTrash();
+            BuildStreetDensity();
             BuildStreetDirt();
             BuildStreetNoise();
             BuildSignalController();
@@ -742,6 +807,10 @@ namespace Zombies55.EditorTools
             camData.renderPostProcessing = true;
             camData.antialiasing = AntialiasingMode.TemporalAntiAliasing;
             camData.antialiasingQuality = AntialiasingQuality.High;
+            var taa = camData.taaSettings;
+            taa.contrastAdaptiveSharpening = 0.45f;   // restores the facade detail TAA softens at 20-60 m
+            taa.mipBias = 0f;
+            camData.taaSettings = taa;
 
             var cmGo = new GameObject("Gameplay Camera");
             cmGo.transform.SetParent(_camera, false);

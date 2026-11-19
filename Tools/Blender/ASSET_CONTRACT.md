@@ -430,3 +430,30 @@ Preview-only Eevee materials live in `bl_street2.py`; the FBX carry plain slot n
   7 yellow single line, 8 stop bar (0.5 m deep, tiles along u), 9 stop bar worn, 10 crosswalk bars (0.5 m bars, 0.5 m gaps, bars run
   along v, tiles along u), 11 crosswalk worn, 12 straight arrow, 13 crack decal (near-black, alpha 0.75), 14 asphalt patch decal,
   15 tire-wear bands decal. Cells 0-12 carry paint color, 13-15 are dark overlays.
+
+## V3 vehicles (generic late-2000s / early-2010s everyday cars)
+Script: `make_vehicles_v3.py` (helpers from `bl_street2.py`; `--only=Sedan,Cab`, `--noprev`, `--nolineup`). Output: `Assets/Art/Models/Vehicles/V3/CarV3_*.fbx`.
+V2 files are untouched. Same conventions as V2: pivot = ground, bottom centre between the axles; forward = Unity +Z; X right; Y up; FBX export with
+`axis_forward -Z / axis_up Y`; same slots; `UVDirt` (uv2) for `CarDirt_Mask.png` (rear axle u = 0.2, front axle u = 0.8, v = height / 2 m); plate quads UV into
+`PlatesV2_Albedo.png` (Sedan cells 0/1, Compact 2/3, Hatch 4/5, Minivan 6/7, SUV 8/9, Pickup 10/11, Van 12/13, Cab 9 yellow at both ends).
+Bounds are the full mesh including door mirrors (x = width over mirrors, y up, z forward; z min/max are the tail / nose extremes from the pivot).
+
+| Name | Size x, y, z (m) | z min .. max | Tris | Notes |
+|---|---|---|---|---|
+| `CarV3_Sedan` | 1.95 x 1.45 x 4.80 | -2.44 .. 2.36 | 27.2k | mid-size, wheelbase 2.72, 5-spoke alloys |
+| `CarV3_Compact` | 1.88 x 1.42 x 4.50 | -2.27 .. 2.24 | 27.7k | wheelbase 2.60, steel wheels + hubcaps |
+| `CarV3_Hatch` | 1.84 x 1.47 x 4.06 | -1.97 .. 2.09 | 26.3k | wheelbase 2.45, steel wheels, tailgate shut line |
+| `CarV3_Minivan` | 2.00 x 1.73 x 5.00 | -2.57 .. 2.44 | 29.8k | wheelbase 2.92, 6-spoke alloys, sliding-door seams, hatch |
+| `CarV3_SUV` | 1.99 x 1.73 x 4.76 | -2.39 .. 2.38 | 28.2k | wheelbase 2.78, ground clearance ~0.22 m, 6-spoke alloys |
+| `CarV3_Pickup` | 2.07 x 1.73 x 5.40 | -2.80 .. 2.60 | 27.2k | open bed (liner, wheel houses, tailgate), chrome bumpers, steel wheels |
+| `CarV3_Van` | 2.06 x 1.99 x 5.06 | -2.57 .. 2.49 | 25.6k | boxy delivery van, windowless cargo box, rear doors with windows |
+| `CarV3_Cab` | 1.95 x 1.63 x 4.80 | -2.44 .. 2.36 | 27.7k | Sedan body in yellow-ish tint + roof sign (`Paint` body, `LampGlass` lenses), steel wheels |
+
+- Slots (identical on every car, wreck swap by slot name): `CarPaint`, `Glass`, `Chrome`, `Rubber`, `Interior`, `Headlight`, `Taillight`, `Metal`, `Paint`, `Plate`;
+  `LampGlass` only on the Cab sign. `Metal` = steel wheels, brake discs, underside, vent slats; `Paint` = brake calipers and the Cab sign body.
+  `Interior` is the only material inside the cabin (seats, dash, wheel, door cards, floor, headliner): give it a fabric/plastic grey-beige, not black rubber.
+- Glass is a **separate shell** (disjoint mesh island, normals out) sitting in rubber-gasketed openings (`Rubber` frame faces): keep `Glass` transparent / tinted (alpha ~0.25-0.4);
+  the interior shows through. `Headlight` clusters carry a clear `Glass` cover over chrome reflector cups and `Headlight` bulbs; taillight lens = `Taillight`, reverse lamp = `Headlight`.
+- Body = subdivided quad cage (Subsurf level 2 applied). Wheel arches are boolean-cut with a `Rubber` well liner; wheels (tire with sidewall bulge, rim lip / dish / spokes or hubcap, disc, caliper, lug nuts) sit ~0.03-0.05 m inside the fender line.
+- Details (geometry): panel-gap grooves (hood, trunk / tailgate, door outlines), door handles, mirrors on stalks, grille slats, fog lamps, bumper shut lines, wipers, cowl strip, recessed plate frames, tailpipe.
+- Back-face culling should be ON for `Rubber` (liner / well faces point toward the cavity). Previews: `previews/V3_Car_<Name>_{front34,rear34,side}.png`, curb lineups `previews/V3_Lineup_{curb,curb_close,across_a,across_b}.png`.

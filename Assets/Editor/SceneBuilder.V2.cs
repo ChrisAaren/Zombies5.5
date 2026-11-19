@@ -334,7 +334,9 @@ namespace Zombies55.EditorTools
                         else ground[i] = q < 0.7 ? "V2_Facade_ShutterShop_Half" : q < 0.82 ? "V2_Facade_ShopDoorway" : q < 0.92 ? "V2_Facade_ServiceDoor" : "V2_Side_Blank_Ground";
                     }
                     if (stoopOk && !anyStoop) ground[r.Next(bays)] = "V2_Facade_Stoop";
-                    bool awnings = commercial ? r.NextDouble() < 0.8 : r.NextDouble() < 0.4;
+                    double qAwn = r.NextDouble();
+                    bool oldAwnings = commercial ? qAwn < 0.8 : qAwn < 0.4;      // the draws below still follow the original layout seed
+                    bool awnings = commercial ? qAwn < 0.97 : qAwn < 0.7;       // r15: more awnings
                     if (floors >= 2 && r.NextDouble() < (commercial ? 0.3 : 0.5)) escBay = r.Next(bays);
 
                     for (int i = 0; i < bays; i++)
@@ -345,8 +347,8 @@ namespace Zombies55.EditorTools
                             stoopBoxes.Add((b.position + rot * new Vector3(xs[i], baseY + 0.5f, half + 0.8f), yaw));
                         if (shop)
                         {
-                            if (awnings && r.NextDouble() < 0.85) NoShadows(Put("V2_Awning", xs[i], 3.2f, 0.02f));
-                            if (r.NextDouble() < (commercial ? 0.75 : 0.35))
+                            if (awnings && (oldAwnings ? r.NextDouble() < 0.97 : true)) NoShadows(Put("V2_Awning", xs[i], 3.2f, 0.02f));
+                            if (r.NextDouble() < (commercial ? 0.92 : 0.6))
                             {
                                 int k = _signIndex++ % 6;
                                 NoShadows(Put("Storefront_Sign_" + (k + 1), xs[i], 3.3f, 0.15f, look.WithSign(SignColors[k])));
@@ -391,6 +393,20 @@ namespace Zombies55.EditorTools
                                 GrimeQuad(face, At(xs[i] + (float)(r.NextDouble() - 0.5) * 0.2f, y0 + 0.4f, 0.03f), rot, 1.6f, 0.8f + (float)r.NextDouble() * 0.2f);
                         }
                     }
+
+                    // Belt courses: a stone band over the shopfronts, a frieze band under the cornice and, on tall buildings, one at mid height.
+                    // They read from 20-60 m as strong horizontal shadow lines (no RNG draws, so the layout is unchanged).
+                    var trimMat = SlotMat("Trim", look);
+                    float bandW = bays * 3f - 0.05f;
+                    void Band(string nm, float y, float hgt, float depth)
+                    {
+                        var bnd = Box(nm, face, At(0f, y, depth * 0.5f - 0.01f), new Vector3(bandW, hgt, depth), trimMat, false);
+                        bnd.transform.localRotation = rot;
+                        bnd.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;   // thin bands: no shadow-map cost
+                    }
+                    Band("BeltCourse", 4.0f, 0.22f, 0.16f);
+                    Band("FriezeBand", height - 1.05f, 0.2f, 0.14f);
+                    if (floors >= 4) Band("BeltCourseMid", 4f + 3.2f * (floors / 2) , 0.16f, 0.12f);
 
                     if (escBay >= 0)
                     {

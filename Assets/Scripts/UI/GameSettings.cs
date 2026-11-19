@@ -12,6 +12,7 @@ namespace Zombies55
         CrosshairStyle, CrosshairColor, CrosshairSize, CrosshairGap, CrosshairLength,
         CrosshairThickness, CrosshairOpacity, CrosshairOutline, CrosshairDot, CrosshairDynamic,
         MusicVolume, SfxVolume,
+        DepthOfField, LensFlare,
     }
 
     // Player-facing settings, stored in PlayerPrefs. Loads lazily on first read.
@@ -47,6 +48,8 @@ namespace Zombies55
             new Def(Prefix + "CrosshairDynamic", 0f, 1f, 1f),
             new Def("Zombies55.MusicVolume", 0f, 1f, 0.8f), // GameAudio's own keys and defaults
             new Def("Zombies55.SfxVolume", 0f, 1f, 0.9f),
+            new Def(Prefix + "DepthOfField", 0f, 1f, 1f),
+            new Def(Prefix + "LensFlare", 0f, 1f, 1f),
         };
 
         public static readonly string[] StyleNames =
@@ -91,6 +94,7 @@ namespace Zombies55
             return i >= (int)SettingId.CrosshairStyle && i <= (int)SettingId.CrosshairColor
                 || i == (int)SettingId.InvertY || i == (int)SettingId.CrosshairOutline
                 || i == (int)SettingId.CrosshairDot || i == (int)SettingId.CrosshairDynamic
+                || i == (int)SettingId.DepthOfField || i == (int)SettingId.LensFlare
                 ? Mathf.Round(v) : v;
         }
 
@@ -143,7 +147,9 @@ namespace Zombies55
                 case SettingId.InvertY:
                 case SettingId.CrosshairOutline:
                 case SettingId.CrosshairDot:
-                case SettingId.CrosshairDynamic: return v > 0.5f ? "ON" : "OFF";
+                case SettingId.CrosshairDynamic:
+                case SettingId.DepthOfField:
+                case SettingId.LensFlare: return v > 0.5f ? "ON" : "OFF";
                 case SettingId.CrosshairOpacity:
                 case SettingId.MusicVolume:
                 case SettingId.SfxVolume: return Mathf.RoundToInt(v * 100f).ToString(ci) + "%";
@@ -197,6 +203,9 @@ namespace Zombies55
         public static bool CrosshairOutline { get => GetBool(SettingId.CrosshairOutline); set => SetBool(SettingId.CrosshairOutline, value); }
         public static bool CrosshairDot { get => GetBool(SettingId.CrosshairDot); set => SetBool(SettingId.CrosshairDot, value); }
         public static bool CrosshairDynamic { get => GetBool(SettingId.CrosshairDynamic); set => SetBool(SettingId.CrosshairDynamic, value); }
+
+        public static bool DepthOfField { get => GetBool(SettingId.DepthOfField); set => SetBool(SettingId.DepthOfField, value); }
+        public static bool LensFlare { get => GetBool(SettingId.LensFlare); set => SetBool(SettingId.LensFlare, value); }
 
         public static float MusicVolume { get => GetFloat(SettingId.MusicVolume); set => SetFloat(SettingId.MusicVolume, value); }
         public static float SfxVolume { get => GetFloat(SettingId.SfxVolume); set => SetFloat(SettingId.SfxVolume, value); }

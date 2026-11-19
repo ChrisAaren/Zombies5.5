@@ -117,7 +117,7 @@ Material:
     - _GlossyReflections: 0
     - _HairlineStrength: 0.4
     - _LipDesat: 0.6
-    - _LipSmooth: 0.4
+    - _LipSmooth: 0.55
     - _Metallic: 0
     - _MicroStrength: 0.3
     - _MottleAmount: 0
@@ -130,8 +130,8 @@ Material:
     - _SSSStrength: 0.25
     - _ScreenSpaceReflections: 1
     - _ScreenSpaceReflectionsContributeTransparent: 1
-    - _ShineBoost: 0.3
-    - _Smoothness: 0.26
+    - _ShineBoost: 0.13
+    - _Smoothness: 0.2
     - _SmoothnessTextureChannel: 0
     - _SocketAmount: 0.1
     - _SpecularHighlights: 1

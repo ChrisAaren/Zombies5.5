@@ -126,10 +126,11 @@ namespace Zombies55.EditorTools
         {
             return new Dictionary<string, Material>
             {
-                { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", new Color(0.95f, 0.87f, 0.82f), 0.26f, 0.3f, 0.1f, 0.1f,
+                { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", new Color(0.95f, 0.87f, 0.82f), 0.2f, 0.13f, 0.1f, 0.1f,
                     new Color(0.55f, 0.45f, 0.45f), new Color(0.8f, 0.45f, 0.35f), 0.25f, 0.5f, 1.2f, 0.2f, 0.3f, 0f, 0.25f,
-                    0.55f, 0.6f, 0.4f, 12f, new Color(0.5f, 0.45f, 0.44f)) },
-                { "Eyes", MpfbMat("Courier_Eyes", "Courier_Eyes_Albedo", null, null, Color.white, 0.75f) },
+                    0.55f, 0.6f, 0.55f, 12f, new Color(0.5f, 0.45f, 0.44f)) },
+                { "Eyes", MpfbMat("Courier_Eyes", "Courier_Eyes_Albedo", null, null, Color.white, 0.97f) },
+                { "EyeWet", EyeWetMat() },
                 { "Brows", MpfbMat("Courier_Brows", "Courier_Brows_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
                 { "Lashes", MpfbMat("Courier_Lashes", "Courier_Lashes_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
                 { "Hair", MpfbMat("Courier_Hair", "Courier_Hair_Albedo", "Courier_Hair_Normal", null, Color.white, 0.3f, AlphaMode.Clip, 0.5f, true) },
@@ -200,7 +201,46 @@ namespace Zombies55.EditorTools
                 string first = MpfbPart(shared[0].name);
                 smr.shadowCastingMode = first == "Brows" || first == "Lashes" || first == "Eyes" ? ShadowCastingMode.Off : ShadowCastingMode.On;
             }
+            if (mats.ContainsKey("EyeWet")) AddEyeWetShell(go, mats["EyeWet"]);
             return go;
+        }
+
+        // A second skinned renderer over the eyeballs with the wet-eye shell shader (cornea reflection, lid shadow, tear line).
+        static void AddEyeWetShell(GameObject go, Material wet)
+        {
+            foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.sharedMaterials.Length != 1 || MpfbPart(smr.sharedMaterials[0].name) != "Eyes") continue;
+                var shell = new GameObject(smr.name + "_Wet");
+                shell.transform.SetParent(smr.transform.parent, false);
+                shell.transform.localPosition = smr.transform.localPosition;
+                shell.transform.localRotation = smr.transform.localRotation;
+                shell.transform.localScale = smr.transform.localScale;
+                var r = shell.AddComponent<SkinnedMeshRenderer>();
+                r.sharedMesh = smr.sharedMesh;
+                r.bones = smr.bones;
+                r.rootBone = smr.rootBone;
+                r.localBounds = smr.localBounds;
+                r.sharedMaterial = wet;
+                r.shadowCastingMode = ShadowCastingMode.Off;
+                r.receiveShadows = true;
+                r.updateWhenOffscreen = false;
+                r.quality = SkinQuality.Bone4;
+                Debug.Log("EyeWet shell added to " + smr.name);
+                return;
+            }
+        }
+
+        static Material EyeWetMat()
+        {
+            if (_mats.TryGetValue("Courier_EyeWet", out var c)) return c;
+            var sh = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/EyeWet.shader");
+            if (sh == null) throw new InvalidOperationException("Shader 'Zombies55/EyeWet' not found.");
+            var m = LoadOrCreateMat("Courier_EyeWet", sh);
+            m.SetFloat("_Wet", 1.0f); m.SetFloat("_Glint", 5f); m.SetFloat("_LidShadow", 0.5f); m.SetFloat("_Tear", 0.18f);
+            EditorUtility.SetDirty(m);
+            _mats["Courier_EyeWet"] = m;
+            return m;
         }
 
         static bool HasPart(Renderer r, string part)

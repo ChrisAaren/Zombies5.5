@@ -323,10 +323,10 @@ void LitPassFragment(
     InitializeStandardLitSurfaceData(input.uv, surfaceData);
     // Distance-dependent mip bias and normal fade: the running-bond joints otherwise alias into a diagonal zig-zag at mid range.
     float camDist = distance(_WorldSpaceCameraPos, input.positionWS);
-    float lodBias = saturate((camDist - 8.0) / 45.0) * 2.2;
+    float lodBias = saturate((camDist - 14.0) / 60.0) * 1.0;   // was 2.2 over 45 m: smeared every facade at 20-60 m; TAA sharpening now holds the moire
     surfaceData.albedo = SAMPLE_TEXTURE2D_BIAS(_BaseMap, sampler_BaseMap, input.uv, lodBias).rgb * _BaseColor.rgb;
 #if defined(_NORMALMAP)
-    surfaceData.normalTS = UnpackNormalScale(SAMPLE_TEXTURE2D_BIAS(_BumpMap, sampler_BumpMap, input.uv, lodBias), _BumpScale * (1.0 - 0.75 * saturate((camDist - 9.0) / 36.0)));
+    surfaceData.normalTS = UnpackNormalScale(SAMPLE_TEXTURE2D_BIAS(_BumpMap, sampler_BumpMap, input.uv, lodBias), _BumpScale * (1.0 - 0.6 * saturate((camDist - 12.0) / 45.0)));
 #endif
     ApplyWeathering(input.positionWS, input.normalWS, surfaceData);
 

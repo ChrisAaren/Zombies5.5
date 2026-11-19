@@ -395,14 +395,14 @@ namespace Zombies55.EditorTools
             var heading = CreateText(cardRt, "Heading", "SETTINGS", 90, Palette.Accent, 8f, true);
             Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 395f), new Vector2(700f, 110f));
 
-            string[] tabNames = { "CONTROLS", "CROSSHAIR", "AUDIO" };
-            var tabButtons = new UnityEngine.UI.Button[3];
-            var tabPanels = new GameObject[3];
-            var firsts = new UnityEngine.UI.Selectable[3];
-            for (int i = 0; i < 3; i++)
+            string[] tabNames = { "CONTROLS", "CROSSHAIR", "AUDIO", "GRAPHICS" };
+            var tabButtons = new UnityEngine.UI.Button[4];
+            var tabPanels = new GameObject[4];
+            var firsts = new UnityEngine.UI.Selectable[4];
+            for (int i = 0; i < 4; i++)
             {
                 tabButtons[i] = CreateButton(cardRt, tabNames[i] + "Tab", tabNames[i],
-                    new Vector2(-340f + i * 340f, 300f), new Vector2(320f, 66f), 34f);
+                    new Vector2(-465f + i * 310f, 300f), new Vector2(295f, 66f), 32f);
                 tabPanels[i] = CreateStretched(tabNames[i] + "Panel", cardRt).gameObject;
             }
 
@@ -448,6 +448,11 @@ namespace Zombies55.EditorTools
             firsts[2] = AddSliderRow(audio, SettingId.MusicVolume, "MUSIC VOLUME", new Vector2(0f, 90f), 1200f, 70f);
             AddSliderRow(audio, SettingId.SfxVolume, "SFX VOLUME", new Vector2(0f, 0f), 1200f, 70f);
 
+            // Graphics
+            var gfx = (RectTransform)tabPanels[3].transform;
+            firsts[3] = AddToggleRow(gfx, SettingId.DepthOfField, "DEPTH OF FIELD", new Vector2(0f, 90f), 1200f, 70f);
+            AddToggleRow(gfx, SettingId.LensFlare, "LENS FLARE", new Vector2(0f, 0f), 1200f, 70f);
+
             var reset = CreateButton(cardRt, "ResetButton", "RESET TO DEFAULTS", new Vector2(-250f, -385f), new Vector2(440f, 80f), 34f);
             var back = CreateButton(cardRt, "BackButton", "BACK", new Vector2(250f, -385f), new Vector2(440f, 80f), 38f);
 
@@ -464,7 +469,7 @@ namespace Zombies55.EditorTools
             Wire(so, "card", cardRt);
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            for (int i = 1; i < 3; i++) tabPanels[i].SetActive(false);
+            for (int i = 1; i < 4; i++) tabPanels[i].SetActive(false);
             return menu;
         }
 

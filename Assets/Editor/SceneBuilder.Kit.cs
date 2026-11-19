@@ -23,6 +23,8 @@ namespace Zombies55.EditorTools
             public Color Leaf = Palette.Leaf;
             public Color Sign = Palette.SignRed;
             public Color Trim = Palette.Stone;
+            public float Dirt;
+            public string Axis = "Z";
             public Dictionary<string, Material> Override;
             public Look WithSign(Color c) { var l = (Look)MemberwiseClone(); l.Sign = c; return l; }
         }
@@ -37,7 +39,7 @@ namespace Zombies55.EditorTools
             mat.SetColor("_BaseColor", color);
             mat.color = color;
             var albedo = tex != null ? Tex(tex + "_Albedo") : null;
-            var normal = tex != null ? Tex(tex + "_Normal") : null;
+            var normal = tex != null ? TexOrNull(tex + "_Normal") : null;
             mat.SetTexture("_BaseMap", albedo);
             mat.SetTextureScale("_BaseMap", tiling);
             mat.SetTextureOffset("_BaseMap", Vector2.zero);
@@ -84,10 +86,19 @@ namespace Zombies55.EditorTools
             if (l.Override != null && l.Override.TryGetValue(slot, out var o) && o != null) return o;
             switch (slot)
             {
-                case "Wall": return Meters("Wall", l.Wall, l.WallTex, 2f, 1f);
-                case "Trim": return Meters("Trim", l.Trim, "PlasterDirty", 2f, 1f);
+                case "Wall": return WallMat(l);
+                case "Trim": return Surf("S_Trim_StoneTrim_" + Hx(l.Trim), l.Trim, "StoneTrim", new Vector2(0.5f, 0.5f), 0.22f);
                 case "Frame": return Meters("Frame", l.Frame, "MetalPainted", 1.5f, 1f);
-                case "Glass": return Meters("Glass", Palette.GlassTint, null, 1f, 0.92f, 0.3f);
+                case "Glass": return WindowGlassMat();
+                case "WindowInterior": return WindowInteriorMat();
+                case "Shutter": return Surf("S_Shutter", new Color(0.5f, 0.55f, 0.5f), "MetalShutter", Vector2.one, 0.4f, 0.45f);
+                case "SideAd": return SideAdMat();
+                case "LeafCard": return LeafMat(l.Leaf);
+                case "Plate": return Surf("S_Plate", Color.white, "PlatesV2", Vector2.one, 0.35f);
+                case "SignFace": return Surf("S_SignFace", new Color(0.92f, 0.92f, 0.9f), "StreetSigns", Vector2.one, 0.55f);
+                case "SignalRed": return SignalMat("Red", l.Axis, new Color(0.62f, 0.04f, 0.03f));
+                case "SignalAmber": return SignalMat("Amber", l.Axis, new Color(0.8f, 0.45f, 0.04f));
+                case "SignalGreen": return SignalMat("Green", l.Axis, new Color(0.04f, 0.5f, 0.2f));
                 case "Interior": return Meters("Interior", Palette.InteriorDark, null, 1f, 0.05f);
                 case "Door": return Meters("Door", l.Door, "MetalPainted", 1.5f, 1f);
                 case "Awning": return Meters("Awning", l.Awning, null, 1f, 0.12f);
@@ -96,8 +107,8 @@ namespace Zombies55.EditorTools
                 case "Concrete": return Meters("Concrete", Palette.ConcreteTint, "ConcreteStained", 2f, 1f);
                 case "Wood": return Meters("Wood", l.Wood, "Wood", 1f, 0.25f);
                 case "Paint": return Meters("Paint", l.Paint, "MetalPainted", 1.5f, 1f);
-                case "CarPaint": return Meters("CarPaint", l.Car, null, 1f, 0.7f, 0.3f);
-                case "Chrome": return Meters("Chrome", Palette.ChromeSilver, null, 1f, 0.85f, 0.9f);
+                case "CarPaint": return CarPaintMat(l.Car, l.Dirt);
+                case "Chrome": return Meters("Chrome", Palette.ChromeSilver, null, 1f, 0.9f, 0.95f);
                 case "Rubber": return Meters("Rubber", Palette.RubberBlack, null, 1f, 0.1f);
                 case "Headlight": return Surf("S_Headlight", Palette.HeadlightWarm, null, Vector2.one, 0.8f, 0f, 1.5f);
                 case "Taillight": return Surf("S_Taillight", Palette.TaillightRed, null, Vector2.one, 0.8f, 0f, 1.2f);
@@ -106,7 +117,7 @@ namespace Zombies55.EditorTools
                 case "SignPanel": return Meters("SignPanel", l.Sign, "MetalPainted", 1.5f, 1f);
                 case "SignText": return Meters("SignText", Palette.SignCream, null, 1f, 0.3f);
                 case "TrashBag": return Meters("TrashBag", Palette.TrashBagBlack, null, 1f, 0.55f);
-                case "Bark": return Meters("Bark", Palette.Trunk, null, 1f, 0.1f);
+                case "Bark": return Surf("S_Bark", new Color(0.62f, 0.56f, 0.5f), "BarkV2", Vector2.one, 0.08f);
                 case "Leaf": return Meters("Leaf", l.Leaf, null, 1f, 0.15f);
                 case "Water": return Meters("Water", Palette.WaterTint, null, 1f, 0.95f);
                 case "Eye": return Meters("Eye", Palette.EyeBlack, null, 1f, 0.8f);
@@ -210,10 +221,12 @@ namespace Zombies55.EditorTools
             var drift = new Color(1f + ((float)_rng.NextDouble() - 0.5f) * 0.1f, 1f + ((float)_rng.NextDouble() - 0.5f) * 0.06f, 1f + ((float)_rng.NextDouble() - 0.5f) * 0.1f);
             Color Dirty(Color c, float k) { return new Color(c.r * k * drift.r, c.g * k * drift.g, c.b * k * drift.b, 1f); }
             var awning = awnings[_rng.Next(awnings.Length)];
+            string[] bricks = { "BrickRed", "BrickBrown", "BrickTan" };
+            float bv = dirt * (i % 3 == 2 ? 0.9f : 1f);
             return new Look
             {
-                Wall = Dirty(WallTints[i % WallTints.Length], dirt),
-                WallTex = WallTexs[i % WallTexs.Length],
+                Wall = new Color(bv * drift.r, bv * drift.g, bv * drift.b, 1f),
+                WallTex = bricks[i % 3],
                 Trim = Dirty(Palette.Stone, 0.72f + dirt * 0.18f),
                 Frame = _rng.NextDouble() < 0.6 ? Dirty(Palette.FrameLight, 0.82f) : Palette.FrameDark,
                 Door = doors[_rng.Next(doors.Length)],
@@ -230,6 +243,14 @@ namespace Zombies55.EditorTools
         // Facade-kit building. w, d are multiples of 3 (outer wall planes at +-w/2, +-d/2 from pos).
         // faceMask bits: 1 = +z, 2 = -z, 4 = +x, 8 = -x.
         static void MakeKitBuilding(Transform parent, Vector3 pos, int w, int d, int floors, int faceMask, bool ring)
+        {
+            if (ring) { MakeKitBuildingLegacy(parent, pos, w, d, floors, faceMask, true); return; }
+            BurnLegacyRng(w, d, floors, faceMask);
+            MakeKitBuildingV2(parent, pos, w, d, floors);
+        }
+
+        // Distant skyline buildings keep the cheaper v1 pieces (hazed out, never inspected up close).
+        static void MakeKitBuildingLegacy(Transform parent, Vector3 pos, int w, int d, int floors, int faceMask, bool ring)
         {
             var look = NextBuildingLook();
             var b = Node("Building", parent, pos);

@@ -476,7 +476,7 @@ namespace Zombies55.EditorTools
         }
 
         const float PackDepthScale = 0.5f;
-        const float PackEmbed = 0.045f;
+        const float PackEmbed = 0.085f;
 
         // The jacket's back surface (most negative z) at the pack's height, within 10 cm of the spine line, rest pose.
         static float BackSurfaceZ(GameObject go, float y)
@@ -543,8 +543,7 @@ namespace Zombies55.EditorTools
                 }
                 mesh.SetTriangles(kept, sub);
             }
-            mesh.RecalculateBounds();
-            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();   // the authored normals stay: recomputing them splits the shading along every UV seam (a light diamond on the back)
             EnsureFolder(ModelDir + "/Characters/Generated");
             var existing = AssetDatabase.LoadAssetAtPath<Mesh>(HoodFitPath);
             if (existing != null)

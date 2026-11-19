@@ -193,7 +193,12 @@ namespace Zombies55
                     if (_repathTimer <= 0f)
                     {
                         _repathTimer = repathInterval;
-                        _agent.SetDestination(player.position);
+                        // Only path to a point that exists on the NavMesh (the player may be airborne or on a prop): an off-mesh or
+                        // non-finite target makes the NavMesh query log "CalculatePolygonPath: invalid input position(s)".
+                        var target = player.position;
+                        if (!float.IsNaN(target.x + target.y + target.z) && !float.IsInfinity(target.x + target.y + target.z)
+                            && NavMesh.SamplePosition(target, out var targetHit, 3f, NavMesh.AllAreas))
+                            _agent.SetDestination(targetHit.position);
                     }
                     Face(_agent.desiredVelocity.sqrMagnitude > 0.04f ? _agent.desiredVelocity : toPlayer, dt);
                     if (dist <= attackRange && _cooldown <= 0f && PlayerHealth.Instance.IsAlive)
@@ -254,6 +259,9 @@ namespace Zombies55
 
         void ApplyKnockback(float dt)
         {
+            // A non-finite knock (a blast with a degenerate direction) would move the agent to infinity and make every later
+            // NavMesh query log "CalculatePolygonPath: invalid input position(s)".
+            if (float.IsNaN(_knock.x + _knock.y + _knock.z) || float.IsInfinity(_knock.x + _knock.y + _knock.z)) _knock = Vector3.zero;
             if (_knock.sqrMagnitude < 0.01f) return;
             _agent.Move(_knock * dt);
             _knock = Vector3.Lerp(_knock, Vector3.zero, 1f - Mathf.Exp(-7f * dt));

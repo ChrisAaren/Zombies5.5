@@ -33,7 +33,10 @@ namespace Zombies55.EditorTools
                 if (ti.textureType != type) { ti.textureType = type; dirty = true; }
                 bool srgb = !(normal || mask);
                 if (ti.sRGBTexture != srgb && !normal) { ti.sRGBTexture = srgb; dirty = true; }
-                bool decal = path.EndsWith("/Grime_Albedo.png") || path.EndsWith("/RoadMarkings_Albedo.png");
+                bool decal = path.EndsWith("/Grime_Albedo.png") || path.EndsWith("/RoadMarkings_Albedo.png") || path.EndsWith("/RoadMarkingsV2_Albedo.png") || path.EndsWith("/SideAds_Albedo.png");
+                bool leaf = path.EndsWith("/LeafCards_Albedo.png");
+                if (leaf && !ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
+                if (leaf && !ti.mipMapsPreserveCoverage) { ti.mipMapsPreserveCoverage = true; ti.alphaTestReferenceValue = 0.5f; dirty = true; }
                 if (decal && !ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
                 // MPFB alpha cards (brows, lashes, hair): colour bleeds into the transparent texels, and coverage is kept
                 // through the mips so distant hair does not thin out under alpha clip.
@@ -59,6 +62,8 @@ namespace Zombies55.EditorTools
                 if (mi.importCameras) { mi.importCameras = false; dirty = true; }
                 if (mi.importLights) { mi.importLights = false; dirty = true; }
                 if (mi.importVisibility) { mi.importVisibility = false; dirty = true; }
+                // Trees keep their authored crown-radial normals; cars keep their second UV set (dirt mask).
+                if (path.Contains("/Nature/V2/") && mi.importNormals != ModelImporterNormals.Import) { mi.importNormals = ModelImporterNormals.Import; dirty = true; }
                 // The MPFB characters are configured by ConfigureCharacterImports (Humanoid); the retired Char_Human keeps its
                 // old settings; the rigid models keep no rig.
                 if (path.EndsWith("/Char_Human.fbx")) continue;
@@ -253,6 +258,12 @@ namespace Zombies55.EditorTools
                 return m;
             }
             throw new InvalidOperationException("Model not found: " + name);
+        }
+
+        static Texture2D TexOrNull(string name)
+        {
+            var t = AssetDatabase.LoadAssetAtPath<Texture2D>(TextureDir + "/" + name + ".png");
+            return t;
         }
 
         static Texture2D Tex(string name)

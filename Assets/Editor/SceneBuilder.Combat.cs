@@ -227,6 +227,7 @@ namespace Zombies55.EditorTools
             {
                 var col = car.GetComponent<BoxCollider>();
                 if (col == null) col = FitBox(car.gameObject, 0.2f);
+                _carColliders.Add(col);
                 SetLayerRecursive(car.gameObject, GameLayers.Explosive);
                 var prop = car.gameObject.AddComponent<ExplosiveProp>();
                 prop.Configure(ExplosiveKind.Car, wreck);

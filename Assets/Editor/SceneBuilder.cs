@@ -58,6 +58,12 @@ namespace Zombies55.EditorTools
 
             _rng = new System.Random(7);
             _grit = new System.Random(2024);
+            _v2 = new System.Random(512);
+            _hydrants.Clear();
+            _carColliders.Clear();
+            _signalZ.Clear();
+            _signalX.Clear();
+            _treeCount = 0;
             _signIndex = 0;
             _quads.Clear();
             _mats.Clear();
@@ -95,6 +101,7 @@ namespace Zombies55.EditorTools
             MarkStatic(_props);
             MarkStatic(_env.Find("Boundary"));
             MarkStatic(_env.Find("Skyline"));
+            BuildReflectionProbes();
 
             ShellBuilder.Build();
 
@@ -115,12 +122,12 @@ namespace Zombies55.EditorTools
             if (_litShader == null) throw new InvalidOperationException("URP Lit shader not found.");
 
             // Worn texture sets; the packed _MS maps carry smoothness (and metal), so the float is a multiplier.
-            mAsphalt = Surf("Asphalt", Palette.AsphaltWorn, "AsphaltWorn", new Vector2(60f, 60f), 1f);
+            mAsphalt = Surf("Asphalt", new Color(0.6f, 0.55f, 0.5f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
             mRoadLine = Mat("RoadLine", Palette.RoadLine);
-            mSidewalk = Surf("Sidewalk", Palette.SidewalkWorn, "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
-            mCurb = Surf("Curb", Palette.CurbWorn, "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f);
-            mCurbZ = Surf("CurbZ", Palette.CurbWorn, "ConcreteStained", new Vector2(0.15f, BlockSize / 2f), 1f);
-            mPlaza = Surf("Plaza", Palette.Plaza, "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
+            mSidewalk = Surf("Sidewalk", new Color(0.9f, 0.83f, 0.72f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
+            mCurb = Surf("Curb", new Color(0.78f, 0.72f, 0.63f), "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f);
+            mCurbZ = Surf("CurbZ", new Color(0.78f, 0.72f, 0.63f), "ConcreteStained", new Vector2(0.15f, BlockSize / 2f), 1f);
+            mPlaza = Surf("Plaza", new Color(0.84f, 0.77f, 0.67f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
             mEye = Mat("Eye", Palette.EyeBlack);
             mTerracotta = Mat("Terracotta", Palette.Terracotta);
             mSage = Mat("Sage", Palette.Sage);
@@ -148,17 +155,17 @@ namespace Zombies55.EditorTools
             if (skyShader == null) skyShader = Shader.Find("Zombies55/CloudSky");
             if (skyShader == null) throw new InvalidOperationException("Shader 'Zombies55/CloudSky' not found.");
             mSky = LoadOrCreateMat("SkyClouds", skyShader);
-            mSky.SetColor("_ZenithColor", Palette.SkyZenithGritty);
-            mSky.SetColor("_HorizonColor", Palette.SkyHorizonGritty);
+            mSky.SetColor("_ZenithColor", new Color(0.1f, 0.28f, 0.74f));
+            mSky.SetColor("_HorizonColor", new Color(0.95f, 0.92f, 0.85f));
             mSky.SetColor("_GroundColor", Palette.GroundAmbient);
             mSky.SetColor("_SunColor", Palette.SunHaze);
-            mSky.SetColor("_CloudLit", new Color(1f, 0.94f, 0.84f));
-            mSky.SetColor("_CloudShadow", new Color(0.52f, 0.58f, 0.68f));
-            mSky.SetFloat("_Exposure", 1.25f);
-            mSky.SetFloat("_HazeWidth", 0.3f);
+            mSky.SetColor("_CloudLit", new Color(1f, 0.97f, 0.92f));
+            mSky.SetColor("_CloudShadow", new Color(0.78f, 0.77f, 0.76f));
+            mSky.SetFloat("_Exposure", 1.15f);
+            mSky.SetFloat("_HazeWidth", 0.42f);
             mSky.SetFloat("_SunSize", 0.022f);
             mSky.SetFloat("_SunIntensity", 8f);
-            mSky.SetFloat("_CloudCover", 0.5f);
+            mSky.SetFloat("_CloudCover", 0.44f);
             mSky.SetFloat("_CloudSoft", 0.3f);
             mSky.SetFloat("_CloudScale", 1.5f);
             EditorUtility.SetDirty(mSky);
@@ -233,30 +240,33 @@ namespace Zombies55.EditorTools
         {
             var sunGo = new GameObject("Sun");
             sunGo.transform.SetParent(_env, false);
-            sunGo.transform.rotation = Quaternion.Euler(24f, 38f, 0f);   // low, warm sun
+            sunGo.transform.rotation = Quaternion.Euler(38f, 38f, 0f);   // high enough to light the streets, low enough for long shadows
             var sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.color = Palette.SunHaze;
-            sun.intensity = 2.1f;
+            sun.color = new Color(1f, 0.95f, 0.87f);
+            sun.intensity = 3.1f;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.88f; // leave some sky fill in cast shadows so shaded streets stay readable
+            sun.shadowStrength = 0.92f;
             RenderSettings.sun = sun;
             mSky.SetVector("_SunDir", -sunGo.transform.forward);
             EditorUtility.SetDirty(mSky);
 
             RenderSettings.skybox = mSky;
-            RenderSettings.ambientMode = AmbientMode.Skybox;
-            RenderSettings.ambientIntensity = 1.75f;
+            // Warm-gray fill (never blue-green): a tri-light ambient instead of the sky gradient. Reflections still come from the sky and the baked probes.
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.74f, 0.72f, 0.68f);
+            RenderSettings.ambientEquatorColor = new Color(0.6f, 0.56f, 0.5f);
+            RenderSettings.ambientGroundColor = new Color(0.4f, 0.35f, 0.3f);
+            RenderSettings.ambientIntensity = 1f;
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
             RenderSettings.reflectionIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.0085f;                      // warm-gray distance haze
-            RenderSettings.fogColor = Palette.HazeFog;
+            RenderSettings.fogDensity = 0.0072f;                      // strong milky aerial haze
+            RenderSettings.fogColor = new Color(0.86f, 0.84f, 0.79f);
             DynamicGI.UpdateEnvironment();
 
             ConfigureUrpAssets();
-            BuildReflectionProbe();
 
             // Post-processing
             var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(VolumePath);
@@ -265,31 +275,33 @@ namespace Zombies55.EditorTools
                 profile = ScriptableObject.CreateInstance<VolumeProfile>();
                 AssetDatabase.CreateAsset(profile, VolumePath);
             }
-            GetOrAdd<Tonemapping>(profile).mode.Override(TonemappingMode.ACES);
-            var bloom = GetOrAdd<Bloom>(profile);                      // restrained: only real highlights (muzzle flash, lamps, gold UI glow)
-            bloom.intensity.Override(0.16f);
-            bloom.threshold.Override(1.25f);
-            bloom.scatter.Override(0.55f);
+            GetOrAdd<Tonemapping>(profile).mode.Override(TonemappingMode.ACES);   // contrasty filmic curve
+            var bloom = GetOrAdd<Bloom>(profile);                      // gentle halo round the sky, lamps and muzzle flashes
+            bloom.intensity.Override(0.22f);
+            bloom.threshold.Override(1.05f);
+            bloom.scatter.Override(0.62f);
             var vig = GetOrAdd<Vignette>(profile);
-            vig.intensity.Override(0.27f);
-            vig.smoothness.Override(0.42f);
+            vig.intensity.Override(0.16f);
+            vig.smoothness.Override(0.45f);
             var grade = GetOrAdd<ColorAdjustments>(profile);
-            grade.postExposure.Override(0.6f);
-            grade.saturation.Override(-20f);                           // desaturated, grounded
-            grade.contrast.Override(16f);
+            grade.postExposure.Override(0.55f);                        // brighter, warm exposure
+            grade.saturation.Override(-10f);                           // desaturated, grounded
+            grade.contrast.Override(22f);
             var wb = GetOrAdd<WhiteBalance>(profile);
-            wb.temperature.Override(9f);
+            wb.temperature.Override(4f);                              // warm, slightly sepia
             wb.tint.Override(0f);
-            var split = GetOrAdd<SplitToning>(profile);                // cool shadows, warm highlights
-            split.shadows.Override(new Color(0.47f, 0.53f, 0.62f));
-            split.highlights.Override(new Color(0.95f, 0.76f, 0.52f));
-            split.balance.Override(0f);
+            var split = GetOrAdd<SplitToning>(profile);                // warm-gray shadows (no blue-green), warm highlights
+            split.shadows.Override(new Color(0.56f, 0.5f, 0.44f));
+            split.highlights.Override(new Color(0.98f, 0.88f, 0.72f));
+            split.balance.Override(-10f);
             var grain = GetOrAdd<FilmGrain>(profile);
             grain.type.Override(FilmGrainLookup.Thin1);
-            grain.intensity.Override(0.14f);
+            grain.intensity.Override(0.1f);
             grain.response.Override(0.8f);
             var smh = GetOrAdd<ShadowsMidtonesHighlights>(profile);
-            smh.shadows.Override(new Vector4(0.95f, 1f, 1.08f, -0.05f));
+            smh.shadows.Override(new Vector4(1.04f, 0.98f, 0.9f, -0.02f));
+            smh.midtones.Override(new Vector4(1.02f, 1f, 0.95f, 0f));
+            smh.highlights.Override(new Vector4(1.04f, 1f, 0.94f, 0.05f));
             EditorUtility.SetDirty(profile);
 
             var volGo = new GameObject("Global Volume");
@@ -311,7 +323,7 @@ namespace Zombies55.EditorTools
                 SetInt("m_MainLightShadowmapResolution", 4096);
                 SetInt("m_ShadowCascadeCount", 4);
                 SetInt("m_SoftShadowQuality", 3); // High
-                SetFloat("m_ShadowDistance", 120f);
+                SetFloat("m_ShadowDistance", 140f);
                 SetFloat("m_ShadowDepthBias", 0.8f);
                 SetFloat("m_ShadowNormalBias", 1.0f);
                 so.ApplyModifiedPropertiesWithoutUndo();
@@ -344,35 +356,15 @@ namespace Zombies55.EditorTools
                 if (settings != null)
                 {
                     settings.FindPropertyRelative("Source").intValue = 1; // DepthNormals
-                    settings.FindPropertyRelative("Intensity").floatValue = 1.0f;
-                    settings.FindPropertyRelative("Radius").floatValue = 0.5f;
-                    settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.32f;
+                    settings.FindPropertyRelative("Intensity").floatValue = 1.25f;
+                    settings.FindPropertyRelative("Radius").floatValue = 0.6f;
+                    settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.4f;
                 }
                 sso.ApplyModifiedPropertiesWithoutUndo();
                 ssao.SetActive(true);
                 EditorUtility.SetDirty(ssao);
             }
             EditorUtility.SetDirty(rendererData);
-        }
-
-        static void BuildReflectionProbe()
-        {
-            var go = new GameObject("City Reflection Probe");
-            go.transform.SetParent(_env, false);
-            go.transform.position = new Vector3(0f, 12f, 0f);
-            var probe = go.AddComponent<ReflectionProbe>();
-            probe.mode = ReflectionProbeMode.Realtime;
-            probe.refreshMode = ReflectionProbeRefreshMode.OnAwake;
-            probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.NoTimeSlicing;
-            probe.resolution = 256;
-            probe.boxProjection = false;
-            probe.hdr = true;
-            probe.importance = 1;
-            probe.intensity = 1f;
-            probe.size = new Vector3(300f, 80f, 300f);
-            probe.center = Vector3.zero;
-            probe.nearClipPlane = 0.3f;
-            probe.farClipPlane = 400f;
         }
 
         static T GetOrAdd<T>(VolumeProfile profile) where T : VolumeComponent
@@ -416,7 +408,7 @@ namespace Zombies55.EditorTools
         static void BuildRoadLines()
         {
             var lines = Node("RoadLines", _city, Vector3.zero);
-            BuildWornMarkings(lines);     // worn painted dashes and zebra crossings (SceneBuilder.Grit.cs)
+            BuildV2Markings(lines);       // double yellow centreline, parking lines, stop bars, crosswalks (SceneBuilder.Street.cs)
         }
 
         static void BuildBlockBase(float cx, float cz, bool plaza)
@@ -515,6 +507,7 @@ namespace Zombies55.EditorTools
 
         static void BuildProps()
         {
+            Physics.SyncTransforms();
             BuildPlaza();
 
             int k = 0;
@@ -526,40 +519,21 @@ namespace Zombies55.EditorTools
                     float cx = BlockCenters[i];
                     float cz = BlockCenters[j];
                     bool plaza = i == BlockCenters.Length / 2 && j == BlockCenters.Length / 2;
-                    BuildCornerLamps(cx, cz);
                     if (plaza) continue;
                     BuildBlockProps(cx, cz, k, counts[k % counts.Length]);
                     k++;
                 }
             }
 
+            BuildIntersections();
+            BuildBlockLamps();
+            BuildCurbside();
             BuildParkedCars();
             BuildStreetGrit();
-        }
-
-        static void BuildCornerLamps(float cx, float cz)
-        {
-            foreach (float sx in new[] { -1f, 1f })
-                foreach (float sz in new[] { -1f, 1f })
-                    MakeLamp(new Vector3(cx + sx * 12.2f, SidewalkTop, cz + sz * 12.2f), Mathf.Atan2(sx, sz) * Mathf.Rad2Deg);
-        }
-
-        static void MakeLamp(Vector3 basePos, float yaw)
-        {
-            // The lamp arm points +Z; yaw swings it out over the intersection.
-            var lamp = Spawn("StreetLamp", Sub("Lamps"), basePos, yaw);
-            ThinBox(lamp, 0.2f, 5f);
+            BuildSignalController();
         }
 
         static int _treeCount;
-
-        static void MakeTree(Vector3 basePos)
-        {
-            string model = (_treeCount++ % 2 == 0) ? "Tree_A" : "Tree_B";
-            var look = new Look { Leaf = (_treeCount % 3 == 0) ? Palette.LeafDark : Palette.Leaf };
-            var tree = Spawn(model, Sub("Trees"), basePos, Rf(0f, 360f), look, "Tree");
-            ThinBox(tree, 0.35f, 3f);
-        }
 
         static void MakeCrate(Vector3 basePos, float yaw, Color wood)
         {
@@ -577,12 +551,12 @@ namespace Zombies55.EditorTools
         {
             var taken = new List<Vector2>();
 
-            // Trees in the sidewalk margin
+            // Street trees in the sidewalk margin: fewer than before, only where the spot is clear.
             for (int t = 0; t < 3; t++)
             {
                 int side = (k * 3 + t) % 4;
                 float along = Rf(-7f, 7f);
-                const float m = 11.6f;
+                const float m = 11.9f;
                 Vector3 p;
                 switch (side)
                 {
@@ -591,8 +565,11 @@ namespace Zombies55.EditorTools
                     case 2: p = new Vector3(cx + m, SidewalkTop, cz + along); break;
                     default: p = new Vector3(cx - m, SidewalkTop, cz + along); break;
                 }
+                if (t == 2 || (t == 1 && k % 2 == 1)) continue;
+                if (!SidewalkSpotOk(p, 0.7f, 3f, 2.4f)) continue;
                 taken.Add(new Vector2(p.x, p.z));
-                MakeTree(p);
+                MakeStreetTree(p);
+                Physics.SyncTransforms();
             }
 
             // Hydrants, trash cans, bollards and planters, kept off the NPC lanes
@@ -639,7 +616,8 @@ namespace Zombies55.EditorTools
 
         static void MakeFurniture(string kind, Vector3 pos, float yaw)
         {
-            var go = Spawn(kind, Sub("Furniture"), pos, yaw, new Look { Paint = kind == "Bollard" ? Palette.BollardPaint : Palette.HydrantRed });
+            if (kind == "Hydrant") _hydrants.Add(new Vector2(pos.x, pos.z));
+            var go = Spawn(kind == "Bollard" ? "Bollard_V2" : kind, Sub("Furniture"), pos, yaw, new Look { Paint = kind == "Bollard" ? Palette.BollardPaint : Palette.HydrantRed });
             // Colliders stay within 0.25 m of the line so they clear both lanes by 0.5 m.
             FitBox(go, float.NegativeInfinity, 0.25f);
         }
@@ -662,7 +640,7 @@ namespace Zombies55.EditorTools
             // Trees
             foreach (float sx in new[] { -1f, 1f })
                 foreach (float sz in new[] { -1f, 1f })
-                    MakeTree(new Vector3(sx * 9f, b, sz * 9f));
+                    MakeStreetTree(new Vector3(sx * 9f, b, sz * 9f));
 
             // Benches facing the fountain
             MakeBench(new Vector3(0f, b, -6.5f), 0f);
@@ -685,45 +663,6 @@ namespace Zombies55.EditorTools
         {
             var bench = Spawn("Bench", Sub("Benches"), basePos, yaw, new Look { Wood = Palette.WoodNatural });
             FitBox(bench);
-        }
-
-        static void BuildParkedCars()
-        {
-            // x, z, yaw (0 = along Z, 90 = along X). Cars sit in the road next to the curb.
-            var cars = new[]
-            {
-                new Vector3(23.8f, -34f, 0f),
-                new Vector3(23.8f, -26.6f, 0f),
-                new Vector3(-14.2f, 8f, 0f),
-                new Vector3(-23.8f, -30f, 0f),
-                new Vector3(-38f, 23.8f, 90f),
-                new Vector3(38f, -14.2f, 90f),
-                new Vector3(52.2f, -10f, 0f),
-                new Vector3(-8f, 52.2f, 90f),
-                // Outer streets of the 5x5 grid
-                new Vector3(-61.8f, 38f, 0f),
-                new Vector3(61.8f, -76f, 0f),
-                new Vector3(90.2f, 20f, 0f),
-                new Vector3(-99.8f, -50f, 0f),
-                new Vector3(99.8f, 70f, 0f),
-                new Vector3(-52.2f, -76f, 0f),
-                new Vector3(-76f, 90.2f, 90f),
-                new Vector3(45f, -99.8f, 90f),
-                new Vector3(-76f, 23.8f, 90f),
-                new Vector3(76f, 14.2f, 90f),
-                new Vector3(-38f, -14.2f, 90f),
-                new Vector3(0f, -23.8f, 90f),
-            };
-            var models = new[] { "Car_Sedan", "Car_Hatchback", "Car_Van" };
-            var paintSet = new[] { Palette.CarRed, Palette.CarBlue, Palette.CarWhite, Palette.CarSilver, Palette.CarGreen, Palette.CarYellow, Palette.CarBlack };
-            for (int i = 0; i < cars.Length; i++)
-                MakeCar(models[(i * 5 + i / 3) % models.Length], new Vector3(cars[i].x, 0f, cars[i].y), cars[i].z, paintSet[(i * 3 + i / 7) % paintSet.Length]);
-        }
-
-        static void MakeCar(string model, Vector3 pos, float yaw, Color paint)
-        {
-            var car = Spawn(model, Sub("Cars"), pos, yaw, new Look { Car = paint }, "ParkedCar");
-            FitBox(car, 0.2f);
         }
 
         // ------------------------------------------------------------------ player
@@ -793,7 +732,10 @@ namespace Zombies55.EditorTools
             cam.clearFlags = CameraClearFlags.Skybox;
             camGo.AddComponent<AudioListener>();
             camGo.AddComponent<CinemachineBrain>();
-            cam.GetUniversalAdditionalCameraData().renderPostProcessing = true;
+            var camData = cam.GetUniversalAdditionalCameraData();
+            camData.renderPostProcessing = true;
+            camData.antialiasing = AntialiasingMode.TemporalAntiAliasing;
+            camData.antialiasingQuality = AntialiasingQuality.High;
 
             var cmGo = new GameObject("Gameplay Camera");
             cmGo.transform.SetParent(_camera, false);

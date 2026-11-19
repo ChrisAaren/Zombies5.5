@@ -340,10 +340,11 @@ namespace Zombies55.EditorTools
                         var t = new Vector2(-n.y, n.x);
                         var p2 = new Vector2(cx, cz) + n * 13.35f + t * Gf(-7f, 7f);
                         if (NearSpawnCandidate(p2, 2.5f)) continue;
-                        var pos = new Vector3(p2.x, 0.004f, p2.y);
-                        float yaw = n.y != 0f ? 0f : 90f;
-                        if (!BoxFree(pos + Vector3.up * 0.45f, new Vector3(0.5f, 0.3f, 0.3f), yaw)) continue;
-                        Spawn("StormGrate", grates, pos, yaw);
+                        // The curb throat sits in the curb face (13.0 from the block centre); the grate lies in the gutter.
+                        var pos = new Vector3(p2.x - n.x * 0.35f, 0f, p2.y - n.y * 0.35f);
+                        float yaw = Mathf.Atan2(n.x, n.y) * Mathf.Rad2Deg;
+                        if (!BoxFree(pos + Vector3.up * 0.45f, new Vector3(0.7f, 0.3f, 0.5f), yaw)) continue;
+                        Spawn("CurbDrain", grates, pos, yaw);
                     }
         }
 

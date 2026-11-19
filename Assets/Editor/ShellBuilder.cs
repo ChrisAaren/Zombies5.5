@@ -15,10 +15,12 @@ namespace Zombies55.EditorTools
         const string UiFolder = "Assets/Art/UI";
         const string RoundedRectPath = UiFolder + "/RoundedRect.png";
         const string VignettePath = UiFolder + "/Vignette.png";
+        const string ScrimPath = UiFolder + "/TopScrim.png";
         const string OutlineMaterialPath = UiFolder + "/UIText_Outline.mat";
 
         static Sprite s_RoundedRect;
         static Sprite s_Vignette;
+        static Sprite s_Scrim;
         static Material s_Outline;
 
         // ------------------------------------------------------------------ public contract
@@ -29,6 +31,7 @@ namespace Zombies55.EditorTools
             s_Outline = GetOrCreateOutlineMaterial();
             s_RoundedRect = GetOrCreateRoundedRect();
             s_Vignette = GetOrCreateVignette();
+            s_Scrim = GetOrCreateScrim();
 
             var existing = UnityEngine.Object.FindAnyObjectByType<GameShell>();
             if (existing != null) UnityEngine.Object.DestroyImmediate(existing.gameObject);
@@ -159,6 +162,15 @@ namespace Zombies55.EditorTools
             // Damage vignette sits behind everything else.
             var vignette = CreateImage(root, "DamageVignette", s_Vignette, Palette.WithAlpha(Palette.Danger, 0f), false);
             Stretch(vignette.rectTransform);
+
+            // A soft dark gradient behind the top HUD so the round counter and points stay readable over bright daylight and haze.
+            var scrim = CreateImage(root, "TopScrim", s_Scrim, new Color(0.07f, 0.055f, 0.04f, 0.75f), false);
+            var scrimRt = scrim.rectTransform;
+            scrimRt.anchorMin = new Vector2(0f, 1f);
+            scrimRt.anchorMax = new Vector2(1f, 1f);
+            scrimRt.pivot = new Vector2(0.5f, 1f);
+            scrimRt.anchoredPosition = Vector2.zero;
+            scrimRt.sizeDelta = new Vector2(0f, 420f);
 
             // Round counter, top-left.
             var roundLabel = CreateText(root, "RoundLabel", "ROUND", 30, soft, 12f, true);
@@ -866,6 +878,21 @@ namespace Zombies55.EditorTools
             }
 
             return WriteSprite(VignettePath, size, pixels, Vector4.zero);
+        }
+
+        static Sprite GetOrCreateScrim()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(ScrimPath);
+            if (existing != null) return existing;
+            const int size = 64;
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                float t = 1f - (y + 0.5f) / size;
+                float a = 1f - Mathf.Pow(t, 1.6f);
+                for (int x = 0; x < size; x++) pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
+            }
+            return WriteSprite(ScrimPath, size, pixels, Vector4.zero);
         }
 
         static Sprite WriteSprite(string path, int size, Color32[] pixels, Vector4 border)

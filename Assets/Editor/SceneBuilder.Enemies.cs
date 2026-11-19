@@ -249,6 +249,17 @@ namespace Zombies55.EditorTools
             return valid;
         }
 
+        static bool NearParkedCar(Vector3 p, float r)
+        {
+            foreach (var c in _carColliders)
+            {
+                if (c == null) continue;
+                var q = new Vector3(p.x, c.bounds.center.y, p.z);
+                if (c.bounds.SqrDistance(q) < r * r) return true;
+            }
+            return false;
+        }
+
         static List<Vector3> CellSpawnPoints(Vector2 center, float reach, float gap, Vector3 origin, NavMeshPath path)
         {
             var found = new List<Vector3>();
@@ -259,6 +270,7 @@ namespace Zombies55.EditorTools
                     if (!NavMesh.SamplePosition(c, out var hit, 2f, NavMesh.AllAreas)) continue;
                     var p = hit.position;
                     if (Mathf.Abs(p.x - center.x) > reach || Mathf.Abs(p.z - center.y) > reach) continue;
+                    if (NearParkedCar(p, 2.5f)) continue;
                     if (!NavMesh.CalculatePath(origin, p, NavMesh.AllAreas, path) || path.status != NavMeshPathStatus.PathComplete) continue;
                     found.Add(p);
                 }

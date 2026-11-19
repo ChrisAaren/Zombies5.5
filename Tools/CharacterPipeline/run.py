@@ -1,6 +1,7 @@
 """One-command runner: creates work/<character>/vNNN, runs stages 1-4 and check.py, publishes on a pass.
 
-  python Tools/CharacterPipeline/run.py <character> <source.fbx|.blend|.obj> [--config file.json] [--no-publish] [--stage N]
+  python Tools/CharacterPipeline/run.py <character> <source.fbx|.blend|.obj> [--config file.json] [--no-publish] [--stage N] [--unity]
+  python Tools/CharacterPipeline/run.py <character> --unity-only      # only the Unity check (stage 6) on the published FBX
 
 --stage N: run only stages N.. in the latest existing version folder (re-run after hand edits); default runs all in a new folder.
 Plain Python 3 (it only launches Blender subprocesses). Env BLENDER overrides the Blender path.
@@ -11,9 +12,49 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 BLENDER = os.environ.get("BLENDER", r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe")
 
+UNITY_CLI = os.environ.get("UNITY_CLI", r"C:\Users\<user>\AppData\Local\Unity\bin\unity.exe")
+UNITY_EDITOR = os.environ.get("UNITY_EDITOR", r"D:\Unity\6000.6.9f1\Editor\Unity.exe")
+
+
+def unity_check(name):
+    """Stage 6. Open Editor on this project -> `unity command script eval` (CharacterUnityCheck.Run);
+    otherwise Unity batch mode (-executeMethod CharacterUnityCheck.RunBatch). Returns 0 on pass."""
+    proj = os.path.normcase(os.path.normpath(ROOT))
+    open_editor = False
+    try:
+        r = subprocess.run([UNITY_CLI, "status", "--format", "json"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        for inst in json.loads(r.stdout).get("data", {}).get("instances", []):
+            if os.path.normcase(os.path.normpath(inst.get("projectPath", ""))) == proj and inst.get("state") == "ready":
+                open_editor = True
+    except Exception as e:
+        print("unity status failed (%s); assuming no open Editor" % e)
+    if open_editor:
+        print("unity check: open Editor found, using script eval")
+        code = 'return CharacterUnityCheck.Run("%s");' % name
+        r = subprocess.run([UNITY_CLI, "command", "script", "eval", "--", "--code", code, "--timeout", "300000", "--format", "json"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        print(r.stdout[-2000:], r.stderr[-1000:])
+        try:
+            out = json.loads(r.stdout)
+            if isinstance(out, dict):
+                out = out.get("data", {}).get("result", out)
+            summ = json.loads(out) if isinstance(out, str) else out
+            return 0 if summ["pass"] else 1
+        except Exception as e:
+            print("could not parse the eval result:", e)
+            return 1
+    log = os.path.join(HERE, "work", name, "unity_batch.log")
+    print("unity check: no open Editor, batch mode (log: %s)" % log)
+    cmd = [UNITY_EDITOR, "-batchmode", "-projectPath", ROOT, "-executeMethod", "CharacterUnityCheck.RunBatch", "-character", name, "-logFile", log]
+    r = subprocess.run(cmd)
+    print("unity batch exit code:", r.returncode, "(0 = all checks pass)")
+    return r.returncode
+
 
 def main():
     a = sys.argv[1:]
+    if len(a) >= 2 and a[1] == "--unity-only":
+        return unity_check(a[0])
     if len(a) < 2:
         print(__doc__)
         return 2
@@ -72,7 +113,11 @@ def main():
         for f in os.listdir(os.path.join(vdir, "export")):
             shutil.copy2(os.path.join(vdir, "export", f), os.path.join(dst, f))
         print("published to", dst)
-    return 0 if rep["overall_pass"] else 3
+    rc = 0 if rep["overall_pass"] else 3
+    if "--unity" in a:
+        urc = unity_check(name)
+        rc = rc or (4 if urc else 0)
+    return rc
 
 
 if __name__ == "__main__":

@@ -66,3 +66,30 @@ Header = verdict. 5-column grid, 512 px tiles, Workbench, fixed orthographic cam
 the 9 stress poses (label `V` volume %, `X` new overlaps, `S` worst stretch ratio; red dots = new self-intersections);
 the worst pose on LOD1 and LOD2; close-ups of both hands (top), armpit, shoulder, crotch, knee.
 `sheet_compare.png` = previous version (left) vs this one (right), half size.
+
+## Stage 6: Unity check (`Assets/Editor/CharacterPipeline/`)
+
+`CharacterImportRule.cs` (AssetPostprocessor, scope `Assets/Art/Characters/**` only): FBX -> Humanoid, avatar from the model,
+animation import off, URP Lit material `<name>_Lit.mat` (albedo + normal) remapped onto every FBX material, `*_Normal` textures as
+normal maps, `*_Albedo` sRGB. **A-pose handling:** after import it reads the rest pose, then computes an "Enforce T-Pose" equivalent in
+code (copy of the hierarchy: upper/lower arm, hand and every finger segment aligned to the +-X axis, upper/lower leg straight down,
+foot keeps its rest rotation) and stores it as `HumanDescription.skeleton` with the bone mapping (`SaveAndReimport` only when it differs).
+LODs: Unity builds the LODGroup itself from `_LOD0/_LOD1/_LOD2`.
+
+`CharacterUnityCheck.cs` (force reimport, avatar valid/human + all required bones, LODGroup + tris per LOD, height 1.7-1.9, then Anim_Walk /
+Anim_AimRifle / Anim_Jog sampled on the character in a `PreviewRenderUtility` scene: NaN bones, feet height, head height, reach, knee/elbow
+flips, hands swapped, bone lengths, mesh sanity, 3 screenshots per clip; the game scene is checked to be untouched). Output in the version
+folder whose `export/<name>.fbx` equals the published asset (else the latest): `unity_report.json`, `unity_sheet.png`, `unity_<clip>_<n>.png`.
+
+Two entry points, same code:
+```
+# 1. Editor open on the project (normal path)
+unity command script eval -- --code 'return CharacterUnityCheck.Run("testcourier");' --timeout 300000
+#    (after editing the scripts: unity command script recompile, then poll unity command script recompile_status)
+
+# 2. Project closed: batch mode (calls EditorApplication.Exit: 0 = all pass, 1 = a check failed, 2 = exception, 3 = bad args). No -quit.
+"D:\Unity\6000.6.9f1\Editor\Unity.exe" -batchmode -projectPath "E:\Unity\Zombies5.5" -executeMethod CharacterUnityCheck.RunBatch -character testcourier -logFile Tools/CharacterPipeline/work/testcourier/unity_batch.log
+```
+`run.py <name> <source> --unity` runs stages 1-5 then picks the entry point itself (`unity status` shows a ready Editor on the project -> script eval,
+else batch). `run.py <name> --unity-only` runs only the Unity check. Env `UNITY_CLI` / `UNITY_EDITOR` override the paths.
+Batch mode cannot open a project that an Editor has open (project lock); close it first with `unity close "E:\Unity\Zombies5.5"`.

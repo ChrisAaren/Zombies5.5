@@ -15,7 +15,7 @@ namespace Zombies55.EditorTools
     /// <summary>
     /// Builds the whole Zombies 5.5 scene from code. Deterministic and safe to re-run.
     /// </summary>
-    public static class SceneBuilder
+    public static partial class SceneBuilder
     {
         const string ScenePath = "Assets/Scenes/Zombies55.unity";
         const string MaterialDir = "Assets/Art/Materials";
@@ -34,7 +34,7 @@ namespace Zombies55.EditorTools
         static int _buildingIndex;
 
         // Shared materials
-        static Material mAsphalt, mRoadLine, mSidewalk, mCurb, mPlaza;
+        static Material mAsphalt, mRoadLine, mSidewalk, mCurb, mCurbZ, mPlaza, mEye;
         static Material mTerracotta, mSage, mSand, mDustyBlue, mWindow, mTrim;
         static Material mPrimary, mSecondary, mPants, mLeaf, mTrunk, mShadow;
         static Material mGold, mTokenFace, mLampHead, mBeacon, mParticle, mSky;
@@ -76,6 +76,7 @@ namespace Zombies55.EditorTools
             _game = Root("Game");
             _camera = Root("Camera");
 
+            ConfigureImports();
             BuildMaterials();
             BuildLighting();
             BuildCity();
@@ -98,6 +99,7 @@ namespace Zombies55.EditorTools
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
+            CleanupSlotMaterials();
             Debug.Log("Zombies 5.5 scene built");
         }
 
@@ -108,11 +110,13 @@ namespace Zombies55.EditorTools
             _litShader = GraphicsSettings.currentRenderPipeline.defaultMaterial.shader;
             if (_litShader == null) throw new InvalidOperationException("URP Lit shader not found.");
 
-            mAsphalt = Mat("Asphalt", Palette.Asphalt);
+            mAsphalt = Surf("Asphalt", Palette.Asphalt, "Asphalt", new Vector2(60f, 60f), 0.1f);
             mRoadLine = Mat("RoadLine", Palette.RoadLine);
-            mSidewalk = Mat("Sidewalk", Palette.Sidewalk);
-            mCurb = Mat("Curb", Palette.Curb);
-            mPlaza = Mat("Plaza", Palette.Plaza);
+            mSidewalk = Surf("Sidewalk", Palette.Sidewalk, "Concrete", new Vector2(BlockSize / 2f, BlockSize / 2f), 0.15f);
+            mCurb = Surf("Curb", Palette.Curb, "Concrete", new Vector2(BlockSize / 2f, 0.15f), 0.15f);
+            mCurbZ = Surf("CurbZ", Palette.Curb, "Concrete", new Vector2(0.15f, BlockSize / 2f), 0.15f);
+            mPlaza = Surf("Plaza", Palette.Plaza, "Concrete", new Vector2(BlockSize / 2f, BlockSize / 2f), 0.15f);
+            mEye = Mat("Eye", Palette.EyeBlack);
             mTerracotta = Mat("Terracotta", Palette.Terracotta);
             mSage = Mat("Sage", Palette.Sage);
             mSand = Mat("Sand", Palette.Sand);
@@ -154,14 +158,17 @@ namespace Zombies55.EditorTools
             mParticle = LoadOrCreateMat("Particle", sprites);
             EditorUtility.SetDirty(mParticle);
 
-            // Sky
-            var skyShader = Shader.Find("Zombies55/GradientSky");
-            if (skyShader == null) throw new InvalidOperationException("Shader 'Zombies55/GradientSky' not found. Make sure Shaders/GradientSky.shader is imported.");
-            mSky = LoadOrCreateMat("Sky", skyShader);
-            mSky.SetColor("_TopColor", Palette.SkyTop);
-            mSky.SetColor("_HorizonColor", Palette.SkyHorizon);
-            mSky.SetColor("_BottomColor", Palette.GroundAmbient);
-            mSky.SetFloat("_Exponent", 0.6f);
+            // Sky: Unity's physically based procedural sky (sun disc follows RenderSettings.sun).
+            var skyShader = Shader.Find("Skybox/Procedural");
+            if (skyShader == null) throw new InvalidOperationException("Shader 'Skybox/Procedural' not found.");
+            mSky = LoadOrCreateMat("SkyProcedural", skyShader);
+            mSky.SetFloat("_SunDisk", 2f);                 // high quality disc
+            mSky.SetFloat("_SunSize", 0.045f);
+            mSky.SetFloat("_SunSizeConvergence", 5f);
+            mSky.SetFloat("_AtmosphereThickness", 1.25f);  // thicker air = warmer, redder low sun
+            mSky.SetColor("_SkyTint", new Color(0.42f, 0.5f, 0.66f));
+            mSky.SetColor("_GroundColor", Palette.GroundAmbient);
+            mSky.SetFloat("_Exposure", 1.6f);
             EditorUtility.SetDirty(mSky);
         }
 
@@ -181,13 +188,33 @@ namespace Zombies55.EditorTools
             return mat;
         }
 
+        static float SmoothnessFor(string name)
+        {
+            switch (name)
+            {
+                case "Asphalt": return 0.1f;
+                case "RoadLine": return 0.2f;
+                case "Sidewalk":
+                case "Curb":
+                case "Plaza": return 0.15f;
+                case "Eye": return 0.8f;
+                case "Window": return 0.85f;   // glass-like strips
+                case "Terracotta":
+                case "Sage":
+                case "Sand":
+                case "DustyBlue":
+                case "Trim": return 0.35f;      // painted surfaces
+                default: return 0.25f;          // cloth, skin, foliage, wood, props
+            }
+        }
+
         static Material Mat(string name, Color color, float emissionMultiplier = 0f)
         {
             if (_mats.TryGetValue(name, out var cached)) return cached;
             var mat = LoadOrCreateMat(name, _litShader);
             mat.SetColor("_BaseColor", color);
             mat.color = color;
-            mat.SetFloat("_Smoothness", 0.15f);
+            mat.SetFloat("_Smoothness", SmoothnessFor(name));
             mat.SetFloat("_Metallic", 0f);
             if (emissionMultiplier > 0f)
             {
@@ -212,34 +239,30 @@ namespace Zombies55.EditorTools
 
         static void BuildLighting()
         {
-            RenderSettings.skybox = mSky;
-            RenderSettings.ambientMode = AmbientMode.Trilight;
-            // Ambient is the fill that keeps shadowed streets readable (HDR values above 1 are fine here).
-            RenderSettings.ambientSkyColor = Color.Lerp(Palette.SkyTop, Palette.UiLight, 0.3f) * 1.35f;
-            RenderSettings.ambientEquatorColor = Palette.Sidewalk * 0.9f;
-            RenderSettings.ambientGroundColor = Color.Lerp(Palette.GroundAmbient, Palette.Sidewalk, 0.3f);
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.006f;
-            RenderSettings.fogColor = Palette.SkyHorizon;
-
             var sunGo = new GameObject("Sun");
             sunGo.transform.SetParent(_env, false);
-            sunGo.transform.rotation = Quaternion.Euler(38f, 35f, 0f);
+            sunGo.transform.rotation = Quaternion.Euler(32f, 35f, 0f);
             var sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.color = Palette.SunKey;
-            sun.intensity = 1.2f;
+            sun.intensity = 1.6f;
             sun.shadows = LightShadows.Soft;
+            sun.shadowStrength = 0.85f; // leave some sky fill in cast shadows so shaded streets stay readable
             RenderSettings.sun = sun;
 
-            var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
-            if (urp != null)
-            {
-                urp.shadowDistance = 120f;
-                urp.supportsHDR = true;
-                EditorUtility.SetDirty(urp);
-            }
+            RenderSettings.skybox = mSky;
+            RenderSettings.ambientMode = AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = 1.15f;
+            RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
+            RenderSettings.reflectionIntensity = 1f;
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Exponential;
+            RenderSettings.fogDensity = 0.004f;
+            RenderSettings.fogColor = new Color(0.92f, 0.78f, 0.6f);
+            DynamicGI.UpdateEnvironment();
+
+            ConfigureUrpAssets();
+            BuildReflectionProbe();
 
             // Post-processing
             var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(VolumePath);
@@ -250,12 +273,19 @@ namespace Zombies55.EditorTools
             }
             GetOrAdd<Tonemapping>(profile).mode.Override(TonemappingMode.ACES);
             var bloom = GetOrAdd<Bloom>(profile);
-            bloom.intensity.Override(0.35f);
-            bloom.threshold.Override(1.1f);
-            GetOrAdd<Vignette>(profile).intensity.Override(0.22f);
+            bloom.intensity.Override(0.25f);
+            bloom.threshold.Override(1.2f);
+            bloom.scatter.Override(0.6f);
+            GetOrAdd<Vignette>(profile).intensity.Override(0.18f);
             var grade = GetOrAdd<ColorAdjustments>(profile);
-            grade.saturation.Override(8f);
-            grade.contrast.Override(5f);
+            grade.postExposure.Override(0.35f);
+            grade.saturation.Override(0f);
+            grade.contrast.Override(8f);
+            var wb = GetOrAdd<WhiteBalance>(profile);
+            wb.temperature.Override(8f);
+            wb.tint.Override(0f);
+            var smh = GetOrAdd<ShadowsMidtonesHighlights>(profile);
+            smh.shadows.Override(new Vector4(0.95f, 1f, 1.08f, -0.05f));
             EditorUtility.SetDirty(profile);
 
             var volGo = new GameObject("Global Volume");
@@ -263,6 +293,82 @@ namespace Zombies55.EditorTools
             var volume = volGo.AddComponent<Volume>();
             volume.isGlobal = true;
             volume.sharedProfile = profile;
+        }
+
+        // Shadow quality and SSAO live on the URP assets; this reapplies them on every rebuild.
+        static void ConfigureUrpAssets()
+        {
+            var urp = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>("Assets/Settings/PC_RPAsset.asset");
+            if (urp != null)
+            {
+                var so = new SerializedObject(urp);
+                void SetInt(string n, int v) { var p = so.FindProperty(n); if (p != null) p.intValue = v; }
+                void SetFloat(string n, float v) { var p = so.FindProperty(n); if (p != null) p.floatValue = v; }
+                SetInt("m_MainLightShadowmapResolution", 4096);
+                SetInt("m_ShadowCascadeCount", 4);
+                SetInt("m_SoftShadowQuality", 3); // High
+                SetFloat("m_ShadowDistance", 120f);
+                SetFloat("m_ShadowDepthBias", 0.8f);
+                SetFloat("m_ShadowNormalBias", 1.0f);
+                so.ApplyModifiedPropertiesWithoutUndo();
+                urp.supportsHDR = true;
+                EditorUtility.SetDirty(urp);
+            }
+
+            // SSAO is an internal URP type: edit the existing feature, or create it by type name once.
+            var rendererData = AssetDatabase.LoadAssetAtPath<UniversalRendererData>("Assets/Settings/PC_Renderer.asset");
+            if (rendererData == null) return;
+            ScriptableRendererFeature ssao = null;
+            foreach (var f in rendererData.rendererFeatures)
+                if (f != null && f.GetType().Name == "ScreenSpaceAmbientOcclusion") { ssao = f; break; }
+            if (ssao == null)
+            {
+                var type = typeof(UniversalRendererData).Assembly.GetType("UnityEngine.Rendering.Universal.ScreenSpaceAmbientOcclusion");
+                if (type != null)
+                {
+                    ssao = (ScriptableRendererFeature)ScriptableObject.CreateInstance(type);
+                    ssao.name = "ScreenSpaceAmbientOcclusion";
+                    AssetDatabase.AddObjectToAsset(ssao, rendererData);
+                    rendererData.rendererFeatures.Add(ssao);
+                    typeof(ScriptableRendererData).GetMethod("OnValidate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)?.Invoke(rendererData, null);
+                }
+            }
+            if (ssao != null)
+            {
+                var sso = new SerializedObject(ssao);
+                var settings = sso.FindProperty("m_Settings");
+                if (settings != null)
+                {
+                    settings.FindPropertyRelative("Source").intValue = 1; // DepthNormals
+                    settings.FindPropertyRelative("Intensity").floatValue = 0.7f;
+                    settings.FindPropertyRelative("Radius").floatValue = 0.4f;
+                    settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.25f;
+                }
+                sso.ApplyModifiedPropertiesWithoutUndo();
+                ssao.SetActive(true);
+                EditorUtility.SetDirty(ssao);
+            }
+            EditorUtility.SetDirty(rendererData);
+        }
+
+        static void BuildReflectionProbe()
+        {
+            var go = new GameObject("City Reflection Probe");
+            go.transform.SetParent(_env, false);
+            go.transform.position = new Vector3(0f, 12f, 0f);
+            var probe = go.AddComponent<ReflectionProbe>();
+            probe.mode = ReflectionProbeMode.Realtime;
+            probe.refreshMode = ReflectionProbeRefreshMode.OnAwake;
+            probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.NoTimeSlicing;
+            probe.resolution = 256;
+            probe.boxProjection = false;
+            probe.hdr = true;
+            probe.importance = 1;
+            probe.intensity = 1f;
+            probe.size = new Vector3(260f, 80f, 260f);
+            probe.center = Vector3.zero;
+            probe.nearClipPlane = 0.3f;
+            probe.farClipPlane = 400f;
         }
 
         static T GetOrAdd<T>(VolumeProfile profile) where T : VolumeComponent
@@ -328,10 +434,10 @@ namespace Zombies55.EditorTools
                 new Vector3(BlockSize, SidewalkTop, BlockSize), plaza ? mPlaza : mSidewalk, true);
             float edge = BlockSize * 0.5f - 0.15f;
             float rimY = SidewalkTop + 0.05f;
-            Box("CurbN", block, new Vector3(0f, rimY, edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, false);
-            Box("CurbS", block, new Vector3(0f, rimY, -edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, false);
-            Box("CurbE", block, new Vector3(edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurb, false);
-            Box("CurbW", block, new Vector3(-edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurb, false);
+            Box("CurbN", block, new Vector3(0f, rimY, edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, true);
+            Box("CurbS", block, new Vector3(0f, rimY, -edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, true);
+            Box("CurbE", block, new Vector3(edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurbZ, true);
+            Box("CurbW", block, new Vector3(-edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurbZ, true);
         }
 
         static void BuildBlockBuildings(float cx, float cz, int k, int count)
@@ -341,42 +447,35 @@ namespace Zombies55.EditorTools
             if (count == 3) missing[k % 4] = true;
             else if (count == 2) { int q = k % 2; missing[q] = true; missing[3 - q] = true; }
 
+            // Footprints snap to multiples of 3 m (6 or 9). Outer wall planes stay within 10.0 m of the block
+            // center (NPC lanes run at 10.8 / 12.3); a 9 m side hugs 1.0 m from the center, so its alley partner stays 6 m.
+            var wq = new int[4];
+            var dq = new int[4];
+            for (int q = 0; q < 4; q++)
+            {
+                if (missing[q]) continue;
+                int w = 6, d = 6;
+                if (_rng.NextDouble() < 0.4 && wq[q ^ 1] != 9) w = 9;
+                if (_rng.NextDouble() < 0.4 && dq[q ^ 2] != 9) d = 9;
+                wq[q] = w;
+                dq[q] = d;
+            }
+
             var group = Node("Buildings", _city, new Vector3(cx, 0f, cz));
             for (int q = 0; q < 4; q++)
             {
                 if (missing[q]) continue;
                 float sx = (q % 2 == 0) ? -1f : 1f;
                 float sz = q < 2 ? -1f : 1f;
-                float w = Rf(6.5f, 8.6f);
-                float d = Rf(6.5f, 8.6f);
-                float h = Rf(6f, 22f);
-                float bx = sx * (1.5f + w * 0.5f + Rf(0f, 8.75f - w));
-                float bz = sz * (1.5f + d * 0.5f + Rf(0f, 8.75f - d));
-                MakeBuilding(group, bx, bz, w, d, h, NextBuildingMat(), 15);
+                int w = wq[q], d = dq[q];
+                float innerX = w == 9 ? 1f : Rf(2f, 10f - w);
+                float innerZ = d == 9 ? 1f : Rf(2f, 10f - d);
+                float bx = sx * (innerX + w * 0.5f);
+                float bz = sz * (innerZ + d * 0.5f);
+                int[] floorChoices = { 1, 2, 2, 3, 3, 4, 5 };
+                int floors = floorChoices[_rng.Next(floorChoices.Length)];
+                MakeKitBuilding(group, new Vector3(bx, 0f, bz), w, d, floors, 15, false);
             }
-        }
-
-        static Material NextBuildingMat()
-        {
-            return _buildingMats[_buildingIndex++ % _buildingMats.Length];
-        }
-
-        // faceMask bits: 1 = +z, 2 = -z, 4 = +x, 8 = -x
-        static void MakeBuilding(Transform parent, float x, float z, float w, float d, float h, Material mat, int faceMask)
-        {
-            var b = Node("Building", parent, new Vector3(x, 0f, z));
-            Box("Walls", b, new Vector3(0f, SidewalkTop + h * 0.5f, 0f), new Vector3(w, h, d), mat, true);
-
-            const float bandH = 1f;
-            for (float y = SidewalkTop + 2.4f; y + bandH * 0.5f < SidewalkTop + h - 1f; y += 3f)
-            {
-                if ((faceMask & 1) != 0) Box("Win", b, new Vector3(0f, y, d * 0.5f + 0.03f), new Vector3(w - 1f, bandH, 0.08f), mWindow, false);
-                if ((faceMask & 2) != 0) Box("Win", b, new Vector3(0f, y, -d * 0.5f - 0.03f), new Vector3(w - 1f, bandH, 0.08f), mWindow, false);
-                if ((faceMask & 4) != 0) Box("Win", b, new Vector3(w * 0.5f + 0.03f, y, 0f), new Vector3(0.08f, bandH, d - 1f), mWindow, false);
-                if ((faceMask & 8) != 0) Box("Win", b, new Vector3(-w * 0.5f - 0.03f, y, 0f), new Vector3(0.08f, bandH, d - 1f), mWindow, false);
-            }
-
-            Box("RoofCap", b, new Vector3(0f, SidewalkTop + h + 0.2f, 0f), new Vector3(w + 0.4f, 0.4f, d + 0.4f), mTrim, false);
         }
 
         static void BuildBoundary()
@@ -400,13 +499,13 @@ namespace Zombies55.EditorTools
             float pos = from;
             while (pos < to)
             {
-                float w = Rf(11f, 15f);
-                float depth = 14f;
-                float h = Rf(18f, 40f);
+                int w = _rng.Next(2) == 0 ? 12 : 15;
+                const int depth = 15;
+                int floors = 4 + _rng.Next(5);
                 float along = pos + w * 0.5f;
                 float across = sign * (near + depth * 0.5f);
-                if (alongX) MakeBuilding(parent, along, across, w, depth, h, NextBuildingMat(), mask);
-                else MakeBuilding(parent, across, along, depth, w, h, NextBuildingMat(), mask);
+                if (alongX) MakeKitBuilding(parent, new Vector3(along, 0f, across), w, depth, floors, mask, true);
+                else MakeKitBuilding(parent, new Vector3(across, 0f, along), depth, w, floors, mask, true);
                 pos += w + Rf(0.5f, 1.5f);
             }
         }
@@ -448,33 +547,41 @@ namespace Zombies55.EditorTools
         {
             foreach (float sx in new[] { -1f, 1f })
                 foreach (float sz in new[] { -1f, 1f })
-                    MakeLamp(new Vector3(cx + sx * 12.2f, SidewalkTop, cz + sz * 12.2f));
+                    MakeLamp(new Vector3(cx + sx * 12.2f, SidewalkTop, cz + sz * 12.2f), Mathf.Atan2(sx, sz) * Mathf.Rad2Deg);
         }
 
-        static void MakeLamp(Vector3 basePos)
+        static void MakeLamp(Vector3 basePos, float yaw)
         {
-            var lamp = Node("StreetLamp", Sub("Lamps"), basePos);
-            Box("Pole", lamp, new Vector3(0f, 2.25f, 0f), new Vector3(0.15f, 4.5f, 0.15f), mShadow, true);
-            Box("Arm", lamp, new Vector3(0f, 4.5f, 0f), new Vector3(0.3f, 0.12f, 0.3f), mShadow, false);
-            Prim(PrimitiveType.Sphere, "Head", lamp, new Vector3(0f, 4.75f, 0f), Vector3.one * 0.5f, mLampHead, false);
+            // The lamp arm points +Z; yaw swings it out over the intersection.
+            var lamp = Spawn("StreetLamp", Sub("Lamps"), basePos, yaw);
+            ThinBox(lamp, 0.2f, 5f);
         }
+
+        static int _treeCount;
 
         static void MakeTree(Vector3 basePos)
         {
-            var tree = Node("Tree", Sub("Trees"), basePos);
-            Prim(PrimitiveType.Cylinder, "Trunk", tree, new Vector3(0f, 1.1f, 0f), new Vector3(0.35f, 1.1f, 0.35f), mTrunk, true);
-            Prim(PrimitiveType.Sphere, "LeavesA", tree, new Vector3(0f, 2.9f, 0f), Vector3.one * 2.6f, mLeaf, false);
-            Prim(PrimitiveType.Sphere, "LeavesB", tree, new Vector3(0.5f, 3.4f, 0.3f), Vector3.one * 2.0f, mLeaf, false);
+            string model = (_treeCount++ % 2 == 0) ? "Tree_A" : "Tree_B";
+            var look = new Look { Leaf = (_treeCount % 3 == 0) ? Palette.LeafDark : Palette.Leaf };
+            var tree = Spawn(model, Sub("Trees"), basePos, Rf(0f, 360f), look, "Tree");
+            ThinBox(tree, 0.35f, 3f);
         }
 
-        static void MakeCrate(Vector3 basePos, float yaw, Material mat)
+        static void MakeCrate(Vector3 basePos, float yaw, Color wood)
         {
-            Prim(PrimitiveType.Cube, "Crate", Sub("Crates"), basePos + new Vector3(0f, 0.55f, 0f), Vector3.one * 1.1f, mat, true,
-                new Vector3(0f, yaw, 0f));
+            var crate = Spawn("Crate", Sub("Crates"), basePos, yaw, new Look { Wood = wood });
+            var box = crate.AddComponent<BoxCollider>();
+            box.center = new Vector3(0f, 0.55f, 0f);
+            box.size = Vector3.one * 1.1f;
         }
+
+        // Sidewalk furniture sits on the line midway between the two NPC lanes (10.8 and 12.3).
+        const float FurnitureLine = 11.55f;
 
         static void BuildBlockProps(float cx, float cz, int k, int count)
         {
+            var taken = new List<Vector2>();
+
             // Trees in the sidewalk margin
             for (int t = 0; t < 3; t++)
             {
@@ -489,7 +596,34 @@ namespace Zombies55.EditorTools
                     case 2: p = new Vector3(cx + m, SidewalkTop, cz + along); break;
                     default: p = new Vector3(cx - m, SidewalkTop, cz + along); break;
                 }
+                taken.Add(new Vector2(p.x, p.z));
                 MakeTree(p);
+            }
+
+            // Hydrants, trash cans, bollards and planters, kept off the NPC lanes
+            var kinds = new[] { "Hydrant", "TrashCan", "Bollard", "Planter" };
+            for (int n = 0; n < 4; n++)
+            {
+                string kind = kinds[(n + k) % 4];
+                for (int attempt = 0; attempt < 12; attempt++)
+                {
+                    int side = _rng.Next(4);
+                    float along = Rf(-7f, 7f);
+                    Vector2 pos2;
+                    switch (side)
+                    {
+                        case 0: pos2 = new Vector2(cx + along, cz + FurnitureLine); break;
+                        case 1: pos2 = new Vector2(cx + along, cz - FurnitureLine); break;
+                        case 2: pos2 = new Vector2(cx + FurnitureLine, cz + along); break;
+                        default: pos2 = new Vector2(cx - FurnitureLine, cz + along); break;
+                    }
+                    bool clear = true;
+                    foreach (var o in taken) if ((o - pos2).magnitude < 2.4f) { clear = false; break; }
+                    if (!clear) continue;
+                    taken.Add(pos2);
+                    MakeFurniture(kind, new Vector3(pos2.x, SidewalkTop, pos2.y), side < 2 ? 0f : 90f);
+                    break;
+                }
             }
 
             // Crates in empty quadrants (courtyards)
@@ -502,24 +636,29 @@ namespace Zombies55.EditorTools
                 float sx = (q % 2 == 0) ? -1f : 1f;
                 float sz = q < 2 ? -1f : 1f;
                 var c = new Vector3(cx + sx * 6f, SidewalkTop, cz + sz * 6f);
-                MakeCrate(c, Rf(-20f, 20f), mSand);
-                MakeCrate(c + new Vector3(1.3f, 0f, 0.4f), Rf(-20f, 20f), mTrunk);
-                MakeCrate(c + new Vector3(0.3f, 0f, 1.4f), Rf(-20f, 20f), mSand);
+                MakeCrate(c, Rf(-20f, 20f), Palette.WoodLight);
+                MakeCrate(c + new Vector3(1.3f, 0f, 0.4f), Rf(-20f, 20f), Palette.WoodNatural);
+                MakeCrate(c + new Vector3(0.3f, 0f, 1.4f), Rf(-20f, 20f), Palette.WoodLight);
             }
+        }
+
+        static void MakeFurniture(string kind, Vector3 pos, float yaw)
+        {
+            var go = Spawn(kind, Sub("Furniture"), pos, yaw, new Look { Paint = kind == "Bollard" ? Palette.BollardPaint : Palette.HydrantRed });
+            // Colliders stay within 0.25 m of the line so they clear both lanes by 0.5 m.
+            FitBox(go, float.NegativeInfinity, 0.25f);
         }
 
         static void BuildPlaza()
         {
             float b = SidewalkTop;
 
-            // Fountain
-            var fountain = Node("Fountain", Sub("Plaza"), new Vector3(0f, 0f, 0f));
-            Prim(PrimitiveType.Cylinder, "Base", fountain, new Vector3(0f, b + 0.3f, 0f), new Vector3(8f, 0.3f, 8f), mTrim, true);
-            Prim(PrimitiveType.Cylinder, "Water", fountain, new Vector3(0f, b + 0.62f, 0f), new Vector3(7f, 0.03f, 7f), mDustyBlue, false);
-            Prim(PrimitiveType.Cylinder, "Pillar", fountain, new Vector3(0f, b + 1.5f, 0f), new Vector3(1f, 0.9f, 1f), mTrim, false);
-            Prim(PrimitiveType.Cylinder, "UpperBowl", fountain, new Vector3(0f, b + 2.4f, 0f), new Vector3(3f, 0.12f, 3f), mTrim, false);
-            Prim(PrimitiveType.Cylinder, "UpperWater", fountain, new Vector3(0f, b + 2.54f, 0f), new Vector3(2.6f, 0.03f, 2.6f), mDustyBlue, false);
-            Prim(PrimitiveType.Sphere, "Finial", fountain, new Vector3(0f, b + 2.9f, 0f), Vector3.one * 0.6f, mTrim, false);
+            // Fountain: stone basin with a basin-height collider, plus the water meshes
+            var fountain = Spawn("Fountain", Sub("Plaza"), new Vector3(0f, b, 0f));
+            var basin = fountain.AddComponent<BoxCollider>();
+            basin.center = new Vector3(0f, 0.3f, 0f);
+            basin.size = new Vector3(8f, 0.6f, 8f);
+            Spawn("Fountain_Water", Sub("Plaza"), new Vector3(0f, b, 0f));
 
             // Trees
             foreach (float sx in new[] { -1f, 1f })
@@ -533,24 +672,20 @@ namespace Zombies55.EditorTools
             MakeBench(new Vector3(-6.5f, b, 0f), 90f);
 
             // Two-high crate stack with a one-high step crate, reachable with a 1.5 m jump
-            MakeCrate(new Vector3(4.5f, b, 10.5f), 0f, mSand);
-            MakeCrate(new Vector3(4.5f, b + 1.1f, 10.5f), 0f, mTrunk);
-            MakeCrate(new Vector3(4.5f, b, 9.4f), 0f, mTrunk);
+            MakeCrate(new Vector3(4.5f, b, 10.5f), 0f, Palette.WoodLight);
+            MakeCrate(new Vector3(4.5f, b + 1.1f, 10.5f), 0f, Palette.WoodNatural);
+            MakeCrate(new Vector3(4.5f, b, 9.4f), 0f, Palette.WoodNatural);
 
             // Loose crates
-            MakeCrate(new Vector3(-4.5f, b, 10.5f), 12f, mSand);
-            MakeCrate(new Vector3(-5.7f, b, 10.8f), -8f, mTrunk);
-            MakeCrate(new Vector3(11f, b, -3f), 20f, mSand);
+            MakeCrate(new Vector3(-4.5f, b, 10.5f), 12f, Palette.WoodLight);
+            MakeCrate(new Vector3(-5.7f, b, 10.8f), -8f, Palette.WoodNatural);
+            MakeCrate(new Vector3(11f, b, -3f), 20f, Palette.WoodLight);
         }
 
         static void MakeBench(Vector3 basePos, float yaw)
         {
-            var bench = Node("Bench", Sub("Benches"), basePos);
-            bench.localRotation = Quaternion.Euler(0f, yaw, 0f);
-            Box("Seat", bench, new Vector3(0f, 0.5f, 0f), new Vector3(2f, 0.12f, 0.6f), mTrunk, true);
-            Box("Back", bench, new Vector3(0f, 0.85f, -0.27f), new Vector3(2f, 0.5f, 0.08f), mTrunk, false);
-            Box("LegL", bench, new Vector3(-0.85f, 0.22f, 0f), new Vector3(0.1f, 0.44f, 0.5f), mShadow, false);
-            Box("LegR", bench, new Vector3(0.85f, 0.22f, 0f), new Vector3(0.1f, 0.44f, 0.5f), mShadow, false);
+            var bench = Spawn("Bench", Sub("Benches"), basePos, yaw, new Look { Wood = Palette.WoodNatural });
+            FitBox(bench);
         }
 
         static void BuildParkedCars()
@@ -567,20 +702,16 @@ namespace Zombies55.EditorTools
                 new Vector3(52.2f, -10f, 0f),
                 new Vector3(-8f, 52.2f, 90f),
             };
+            var models = new[] { "Car_Sedan", "Car_Hatchback", "Car_Van", "Car_Sedan", "Car_Hatchback", "Car_Sedan", "Car_Van", "Car_Hatchback" };
+            var paints = new[] { Palette.CarRed, Palette.CarBlue, Palette.CarWhite, Palette.CarSilver, Palette.CarGreen, Palette.CarYellow, Palette.CarBlack, Palette.CarWhite };
             for (int i = 0; i < cars.Length; i++)
-                MakeCar(new Vector3(cars[i].x, 0f, cars[i].y), cars[i].z, _buildingMats[(i + 1) % _buildingMats.Length]);
+                MakeCar(models[i], new Vector3(cars[i].x, 0f, cars[i].y), cars[i].z, paints[i]);
         }
 
-        static void MakeCar(Vector3 pos, float yaw, Material bodyMat)
+        static void MakeCar(string model, Vector3 pos, float yaw, Color paint)
         {
-            var car = Node("ParkedCar", Sub("Cars"), pos);
-            car.localRotation = Quaternion.Euler(0f, yaw, 0f);
-            Box("Body", car, new Vector3(0f, 0.7f, 0f), new Vector3(1.9f, 0.7f, 4.2f), bodyMat, true);
-            Box("Cabin", car, new Vector3(0f, 1.325f, -0.2f), new Vector3(1.6f, 0.55f, 2.2f), mWindow, false);
-            foreach (float sx in new[] { -0.95f, 0.95f })
-                foreach (float sz in new[] { -1.3f, 1.3f })
-                    Prim(PrimitiveType.Cylinder, "Wheel", car, new Vector3(sx, 0.35f, sz), new Vector3(0.7f, 0.12f, 0.7f), mShadow, false,
-                        new Vector3(0f, 0f, 90f));
+            var car = Spawn(model, Sub("Cars"), pos, yaw, new Look { Car = paint }, "ParkedCar");
+            FitBox(car, 0.2f);
         }
 
         // ------------------------------------------------------------------ tokens
@@ -674,60 +805,49 @@ namespace Zombies55.EditorTools
             public Transform Visual, Body;
         }
 
-        // Builds the primitive character (about 15 primitives) under root and wires it into motion.
+        // Builds the character from the Char_* meshes under root and wires it into motion.
         // gearMat is the cap or hair color; packMat null means no backpack.
         static CharacterRig BuildCharacterRig(Transform root, CharacterMotion motion, Material top, Material pants,
             Material skin, Material shoes, HeadGear gear, Material gearMat, Material packMat, float height, float width)
         {
+            var look = new Look
+            {
+                Override = new Dictionary<string, Material>
+                {
+                    { "Top", top }, { "Pants", pants }, { "Skin", skin }, { "Shoe", shoes },
+                    { "Hair", gearMat }, { "Cap", gearMat }, { "Bag", packMat }, { "Eye", mEye },
+                },
+            };
+
             var visual = Node("Visual", root, Vector3.zero);
             visual.localScale = new Vector3(width, height, width);
             var body = Node("Body", visual, new Vector3(0f, 0.95f, 0f));
 
-            var legL = Node("LegL", body, new Vector3(-0.14f, 0f, 0f));
-            var legR = Node("LegR", body, new Vector3(0.14f, 0f, 0f));
-            foreach (var leg in new[] { legL, legR })
-            {
-                Prim(PrimitiveType.Capsule, "Pants", leg, new Vector3(0f, -0.45f, 0f), new Vector3(0.2f, 0.42f, 0.2f), pants, false);
-                Prim(PrimitiveType.Cube, "Shoe", leg, new Vector3(0f, -0.88f, 0.05f), new Vector3(0.2f, 0.12f, 0.32f), shoes, false);
-            }
+            Spawn("Char_Torso", body, Vector3.zero, 0f, look, "Torso");
 
-            Prim(PrimitiveType.Capsule, "Torso", body, new Vector3(0f, 0.38f, 0f), new Vector3(0.5f, 0.36f, 0.36f), top, false);
+            var legL = Node("LegL", body, new Vector3(-0.11f, 0f, 0f));
+            var legR = Node("LegR", body, new Vector3(0.11f, 0f, 0f));
+            foreach (var leg in new[] { legL, legR }) Spawn("Char_Leg", leg, Vector3.zero, 0f, look, "Leg");
 
             Transform backpack = null;
             if (packMat != null)
             {
-                backpack = Node("Backpack", body, new Vector3(0f, 0.55f, -0.2f));
-                Prim(PrimitiveType.Cube, "Pack", backpack, new Vector3(0f, -0.15f, -0.06f), new Vector3(0.38f, 0.42f, 0.2f), packMat, false);
+                backpack = Node("Backpack", body, new Vector3(0f, 0.55f, -0.13f));
+                Spawn("Char_Backpack", backpack, Vector3.zero, 0f, look, "Pack");
             }
 
-            var head = Node("Head", body, new Vector3(0f, 0.72f, 0f));
-            Prim(PrimitiveType.Sphere, "Face", head, new Vector3(0f, 0.12f, 0f), Vector3.one * 0.42f, skin, false);
+            var head = Node("Head", body, new Vector3(0f, 0.60f, 0f));
+            Spawn("Char_Head", head, Vector3.zero, 0f, look, "Face");
             switch (gear)
             {
-                case HeadGear.Cap:
-                    Prim(PrimitiveType.Sphere, "Cap", head, new Vector3(0f, 0.25f, 0f), new Vector3(0.45f, 0.24f, 0.45f), gearMat, false);
-                    Prim(PrimitiveType.Cube, "Brim", head, new Vector3(0f, 0.2f, 0.24f), new Vector3(0.36f, 0.04f, 0.26f), gearMat, false);
-                    break;
-                case HeadGear.ShortHair:
-                    Prim(PrimitiveType.Sphere, "Hair", head, new Vector3(0f, 0.24f, -0.02f), new Vector3(0.45f, 0.26f, 0.46f), gearMat, false);
-                    break;
-                default:
-                    Prim(PrimitiveType.Sphere, "Hair", head, new Vector3(0f, 0.24f, -0.02f), new Vector3(0.45f, 0.26f, 0.46f), gearMat, false);
-                    Prim(PrimitiveType.Sphere, "HairBack", head, new Vector3(0f, 0.04f, -0.12f), new Vector3(0.4f, 0.46f, 0.26f), gearMat, false);
-                    break;
+                case HeadGear.Cap: Spawn("Char_Cap", head, Vector3.zero, 0f, look, "Cap"); break;
+                case HeadGear.ShortHair: Spawn("Char_HairShort", head, Vector3.zero, 0f, look, "Hair"); break;
+                default: Spawn("Char_HairLong", head, Vector3.zero, 0f, look, "Hair"); break;
             }
-            Prim(PrimitiveType.Sphere, "EyeL", head, new Vector3(-0.08f, 0.14f, 0.19f), Vector3.one * 0.06f, mShadow, false);
-            Prim(PrimitiveType.Sphere, "EyeR", head, new Vector3(0.08f, 0.14f, 0.19f), Vector3.one * 0.06f, mShadow, false);
 
-            var armL = Node("ArmL", body, new Vector3(-0.33f, 0.55f, 0f));
-            var armR = Node("ArmR", body, new Vector3(0.33f, 0.55f, 0f));
-            armL.localRotation = Quaternion.Euler(0f, 0f, -8f);
-            armR.localRotation = Quaternion.Euler(0f, 0f, 8f);
-            foreach (var arm in new[] { armL, armR })
-            {
-                Prim(PrimitiveType.Capsule, "Sleeve", arm, new Vector3(0f, -0.28f, 0f), new Vector3(0.15f, 0.28f, 0.15f), top, false);
-                Prim(PrimitiveType.Sphere, "Hand", arm, new Vector3(0f, -0.58f, 0f), Vector3.one * 0.13f, skin, false);
-            }
+            var armL = Node("ArmL", body, new Vector3(-0.21f, 0.55f, 0f));
+            var armR = Node("ArmR", body, new Vector3(0.21f, 0.55f, 0f));
+            foreach (var arm in new[] { armL, armR }) Spawn("Char_Arm", arm, Vector3.zero, 0f, look, "Arm");
 
             SetRef(motion, "visualRoot", visual);
             SetRef(motion, "body", body);

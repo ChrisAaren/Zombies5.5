@@ -13,7 +13,7 @@ namespace Zombies55.EditorTools
     public static partial class SceneBuilder
     {
         const float ZoneBarrierThickness = 1.8f;     // covers the jersey blocks on either side of the fence
-        const float ZoneSignScale = 2f;
+        const float ZoneSignScale = 1.5f;
         const int ZonePanelsPerSegment = 13;
 
         static Transform _zoneGates;

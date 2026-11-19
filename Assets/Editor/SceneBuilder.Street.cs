@@ -346,7 +346,7 @@ namespace Zombies55.EditorTools
             return CarModels[0];
         }
 
-        const int MaxParkedCars = 125;
+        const int MaxParkedCars = 600;
 
         struct CarSlot { public Vector3 Pos; public float Yaw; public string Model; public Color Paint; public float Dirt; public float Dist; }
 
@@ -363,18 +363,18 @@ namespace Zombies55.EditorTools
                         float mid = (RoadCenters[seg] + RoadCenters[seg + 1]) * 0.5f;
                         var mid2 = axis == 0 ? new Vector2(road, mid) : new Vector2(mid, road);
                         float dist = mid2.magnitude;
-                        float density = dist < 56f ? 1f : dist < 90f ? 0.5f : 0.3f;
+                        const float density = 0.94f;          // bumper to bumper on both curbs of every street, with the odd empty space
                         foreach (int side in new[] { -1, 1 })
                         {
                             float cursor = a + (float)_v2.NextDouble() * 1.2f;
-                            for (int guard = 0; guard < 8; guard++)
+                            for (int guard = 0; guard < 12; guard++)
                             {
                                 string model = PickCarModel();
                                 var ext = CarExtent(model);
                                 float len = ext.x;
                                 float c = cursor + len * 0.5f;
                                 if (c + len * 0.5f > b) break;
-                                cursor = c + len * 0.5f + 0.3f + (float)_v2.NextDouble() * 0.85f;
+                                cursor = c + len * 0.5f + 0.25f + (float)_v2.NextDouble() * 0.45f;
                                 if (_v2.NextDouble() > density) continue;
                                 float lat = side * (4.85f + ((float)_v2.NextDouble() - 0.5f) * 0.2f);
                                 Vector3 pos = axis == 0 ? new Vector3(road + lat, 0f, c - ext.y) : new Vector3(c - ext.y, 0f, road + lat);
@@ -441,7 +441,7 @@ namespace Zombies55.EditorTools
                     go.transform.position = new Vector3(rx, 6f, rz);
                     var probe = go.AddComponent<ReflectionProbe>();
                     probe.mode = ReflectionProbeMode.Baked;
-                    probe.resolution = 128;
+                    probe.resolution = 256;
                     probe.boxProjection = true;
                     probe.hdr = true;
                     probe.importance = 1;

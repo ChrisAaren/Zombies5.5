@@ -37,7 +37,7 @@ namespace Zombies55.EditorTools
         {
             string t = l.WallTex;
             if (t == "BrickRed" || t == "BrickBrown" || t == "BrickTan")
-                return Surf("S_Wall_" + t + "_" + Hx(l.Wall), l.Wall, t, new Vector2(1f / 1.5f, 1f / 1.6f), 0.3f);
+                return Surf("S_Wall_" + t + "_" + Hx(l.Wall), l.Wall, t, new Vector2(2f / 1.5f, 2f / 1.6f), 0.3f);
             return Meters("Wall", l.Wall, t, 2f, 1f);
         }
 
@@ -45,8 +45,14 @@ namespace Zombies55.EditorTools
         static Material WindowGlassMat()
         {
             if (_mats.TryGetValue("S_WindowGlass", out var cached)) return cached;
-            var m = Surf("S_WindowGlass", new Color(0.28f, 0.33f, 0.36f, 0.6f), null, Vector2.one, 0.93f, 0.4f);
-            MakeTransparent(m, true);
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/WindowGlass.shader");
+            if (shader == null) throw new InvalidOperationException("Shader 'Zombies55/WindowGlass' not found.");
+            var m = LoadOrCreateMat("S_WindowGlass", shader);
+            m.SetColor("_BaseColor", new Color(0.04f, 0.07f, 0.09f, 1f));
+            m.SetFloat("_Smoothness", 0.98f);
+            m.renderQueue = (int)RenderQueue.Transparent;
+            EditorUtility.SetDirty(m);
+            _mats["S_WindowGlass"] = m;
             return m;
         }
 
@@ -62,9 +68,9 @@ namespace Zombies55.EditorTools
         static Material WindowInteriorMat()
         {
             if (_mats.TryGetValue("S_WindowInterior", out var cached)) return cached;
-            var m = Surf("S_WindowInterior", new Color(0.8f, 0.8f, 0.8f), "WindowInteriors", Vector2.one, 0.05f);
+            var m = Surf("S_WindowInterior", new Color(0.55f, 0.55f, 0.55f), "WindowInteriors", Vector2.one, 0.05f);
             m.SetTexture("_EmissionMap", Tex("WindowInteriors_Emission"));
-            m.SetColor("_EmissionColor", new Color(0.7f, 0.7f, 0.7f, 1f));
+            m.SetColor("_EmissionColor", new Color(0.4f, 0.4f, 0.4f, 1f));
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             return m;
@@ -204,7 +210,24 @@ namespace Zombies55.EditorTools
             return go;
         }
 
-        static void MakeKitBuildingV2(Transform parent, Vector3 pos, int w, int d, int floors)
+        // Skyline: the v1 pass runs first into a throwaway node so every random stream downstream stays exactly as it was,
+        // then the v2 kit builds the face that looks at the city with its own stream.
+        static void MakeRingBuilding(Transform parent, Vector3 pos, int w, int d, int floors, int mask)
+        {
+            var tmp = Node("_skylineBurn", parent, pos);
+            MakeKitBuildingLegacy(tmp, Vector3.zero, w, d, floors, mask, true);
+            Object.DestroyImmediate(tmp.gameObject);
+            var savedRng = _v2;
+            int savedSign = _signIndex;
+            _v2 = new System.Random(9001 + _ringIndex++);
+            MakeKitBuildingV2(parent, pos, w, d, floors + (_v2.Next(3) == 0 ? 2 : 0), mask, true);
+            _v2 = savedRng;
+            _signIndex = savedSign;
+        }
+
+        static int _ringIndex;
+
+        static void MakeKitBuildingV2(Transform parent, Vector3 pos, int w, int d, int floors, int faceMask = 15, bool ring = false)
         {
             var r = _v2;
             var look = V2Look();
@@ -222,10 +245,11 @@ namespace Zombies55.EditorTools
 
             for (int f = 0; f < 4; f++)
             {
+                if (ring && (faceMask & (1 << f)) == 0) continue;     // skyline buildings only get the face that looks at the city
                 bool zFace = f < 2;
                 int bays = (zFace ? w : d) / 3;
                 float half = (zFace ? d : w) * 0.5f;
-                bool street = f == 0 ? pos.z > 0f : f == 1 ? pos.z < 0f : f == 2 ? pos.x > 0f : pos.x < 0f;
+                bool street = ring || (f == 0 ? pos.z > 0f : f == 1 ? pos.z < 0f : f == 2 ? pos.x > 0f : pos.x < 0f);
                 float plane = zFace ? Mathf.Abs(pos.z) + half : Mathf.Abs(pos.x) + half;
                 float yaw = yaws[f];
                 var rot = Quaternion.Euler(0f, yaw, 0f);
@@ -241,7 +265,7 @@ namespace Zombies55.EditorTools
 
                 if (street)
                 {
-                    bool stoopOk = !commercial && plane <= 9.6f;
+                    bool stoopOk = !ring && !commercial && plane <= 9.6f;
                     bool anyStoop = false;
                     for (int i = 0; i < bays; i++)
                     {
@@ -393,6 +417,11 @@ namespace Zombies55.EditorTools
                 if (bracketed) Put("V2_Cornice_Bracketed_Corner_L", xe, height);
             }
 
+            // Skyline buildings only carry the city-facing face: a plain shell closes the other three sides and the roof underside.
+            if (ring)
+                Box("Shell", b, new Vector3(0f, baseY + (height + 0.3f) * 0.5f, 0f), new Vector3(w - 0.7f, height + 0.3f, d - 0.7f),
+                    Surf("S_RingShell_" + Hx(look.Wall), new Color(look.Wall.r * 0.5f, look.Wall.g * 0.26f, look.Wall.b * 0.19f, 1f), null, Vector2.one, 0.15f), false);
+
             // Roof slab and rooftop furniture.
             Box("Roof", b, new Vector3(0f, baseY + height + 0.15f, 0f), new Vector3(w - 0.5f, 0.3f, d - 0.5f), RoofSlabMat(w - 0.5f, d - 0.5f), false);
             float roofY = baseY + height + 0.3f;
@@ -402,7 +431,7 @@ namespace Zombies55.EditorTools
             float cw = (w - 2.6f) / 2f, cd = (d - 2.6f) / 2f;
             Vector3 CellPos(int c) { return new Vector3(((c % 3) - 1) * cw, roofY, ((c / 3) - 1) * cd); }
             int tankCell = -1;
-            if ((w >= 9 || d >= 9) && r.NextDouble() < 0.35) { tankCell = cells[0]; cells.RemoveAt(0); Spawn("V2_Roof_WaterTower", b, CellPos(tankCell), r.Next(4) * 90f, look); }
+            if ((w >= 9 || d >= 9) && r.NextDouble() < (ring ? 0.7 : 0.35)) { tankCell = cells[0]; cells.RemoveAt(0); Spawn("V2_Roof_WaterTower", b, CellPos(tankCell), r.Next(4) * 90f, look); }
             string[] roofKinds = { "V2_Roof_Chimney_A", "V2_Roof_Chimney_B", "V2_Roof_Bulkhead", "Roof_ACUnit", "Roof_Vent", "V2_Roof_Chimney_A", "Roof_ACUnit" };
             int count = 1 + r.Next(3);
             bool bulk = floors >= 3 && r.NextDouble() < 0.4;
@@ -419,6 +448,8 @@ namespace Zombies55.EditorTools
             var col = b.gameObject.AddComponent<BoxCollider>();
             col.center = new Vector3(0f, baseY + (height + 0.3f) * 0.5f, 0f);
             col.size = new Vector3(w, height + 0.3f, d);
+            if (ring)
+                foreach (var mr in b.GetComponentsInChildren<MeshRenderer>()) mr.shadowCastingMode = ShadowCastingMode.Off;
 
             // Solid stoops: a low block the player cannot step onto, so the steps are not walked through.
             foreach (var s in stoopBoxes)

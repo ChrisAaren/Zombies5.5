@@ -23,7 +23,7 @@ os.makedirs(PREV_DIR, exist_ok=True)
 import bl_v2_textures as T
 
 H_UP, H_GR = 3.2, 4.0
-HW, YB, YT = 0.62, 0.85, 2.55          # window half-width, sill height, head height
+HW, YB, YT = 0.52, 0.9, 2.5           # window half-width, sill height, head height
 WALL_Z = -0.33                         # front wall layer back face (upper bays): reveal 0.25 to the frame front at -0.25
 EDGE = [(0, -1.5), (0, 1.5)]
 
@@ -441,15 +441,15 @@ def build_side(name, ad=None, h=H_UP):
 def build_quoin(name, h, left):
     p = Piece(name)
     s = 1 if left else -1
-    n = int(round(h / 0.4))
+    n = int(round(h / 0.2))          # real quoin course: ~20 cm (about 2.5 brick courses)
     for k in range(n):
-        y0, y1 = k * 0.4 + 0.01, (k + 1) * 0.4
+        y0, y1 = k * 0.2 + 0.006, (k + 1) * 0.2
         if k % 2 == 0:
-            xa, xb = sorted((-0.22 * s, 0.44 * s))
-            p.box(xa, xb, y0, y1, -0.22, 0.05, "Trim", 0.012, 1)
+            xa, xb = sorted((-0.11 * s, 0.30 * s))
+            p.box(xa, xb, y0, y1, -0.11, 0.04, "Trim", 0.008, 1)
         else:
-            xa, xb = sorted((-0.22 * s, 0.05 * s))
-            p.box(xa, xb, y0, y1, -0.44, 0.05, "Trim", 0.012, 1)
+            xa, xb = sorted((-0.11 * s, 0.04 * s))
+            p.box(xa, xb, y0, y1, -0.30, 0.04, "Trim", 0.008, 1)
     p.box(-0.24, 0.24, 0.0, 0.01, -0.24, 0.24, "Trim") if False else None
     return p
 

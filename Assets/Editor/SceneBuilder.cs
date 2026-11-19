@@ -68,6 +68,7 @@ namespace Zombies55.EditorTools
             _quads.Clear();
             _mats.Clear();
             _buildingIndex = 0;
+            _ringIndex = 0;
 
             EnsureFolder("Assets/Scenes");
             EnsureFolder("Assets/Art");
@@ -122,7 +123,7 @@ namespace Zombies55.EditorTools
             if (_litShader == null) throw new InvalidOperationException("URP Lit shader not found.");
 
             // Worn texture sets; the packed _MS maps carry smoothness (and metal), so the float is a multiplier.
-            mAsphalt = Surf("Asphalt", new Color(0.6f, 0.55f, 0.5f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
+            mAsphalt = Surf("Asphalt", new Color(0.58f, 0.58f, 0.58f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
             mRoadLine = Mat("RoadLine", Palette.RoadLine);
             mSidewalk = Surf("Sidewalk", new Color(0.9f, 0.83f, 0.72f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
             mCurb = Surf("Curb", new Color(0.78f, 0.72f, 0.63f), "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f);
@@ -155,18 +156,18 @@ namespace Zombies55.EditorTools
             if (skyShader == null) skyShader = Shader.Find("Zombies55/CloudSky");
             if (skyShader == null) throw new InvalidOperationException("Shader 'Zombies55/CloudSky' not found.");
             mSky = LoadOrCreateMat("SkyClouds", skyShader);
-            mSky.SetColor("_ZenithColor", new Color(0.1f, 0.28f, 0.74f));
-            mSky.SetColor("_HorizonColor", new Color(0.95f, 0.92f, 0.85f));
+            mSky.SetColor("_ZenithColor", new Color(0.05f, 0.22f, 0.72f));
+            mSky.SetColor("_HorizonColor", new Color(0.62f, 0.8f, 0.97f));
             mSky.SetColor("_GroundColor", Palette.GroundAmbient);
             mSky.SetColor("_SunColor", Palette.SunHaze);
             mSky.SetColor("_CloudLit", new Color(1f, 0.97f, 0.92f));
-            mSky.SetColor("_CloudShadow", new Color(0.78f, 0.77f, 0.76f));
-            mSky.SetFloat("_Exposure", 1.15f);
-            mSky.SetFloat("_HazeWidth", 0.42f);
+            mSky.SetColor("_CloudShadow", new Color(0.62f, 0.7f, 0.82f));
+            mSky.SetFloat("_Exposure", 1.1f);
+            mSky.SetFloat("_HazeWidth", 0.3f);
             mSky.SetFloat("_SunSize", 0.022f);
             mSky.SetFloat("_SunIntensity", 8f);
-            mSky.SetFloat("_CloudCover", 0.44f);
-            mSky.SetFloat("_CloudSoft", 0.3f);
+            mSky.SetFloat("_CloudCover", 0.6f);
+            mSky.SetFloat("_CloudSoft", 0.09f);
             mSky.SetFloat("_CloudScale", 1.5f);
             EditorUtility.SetDirty(mSky);
         }
@@ -240,13 +241,13 @@ namespace Zombies55.EditorTools
         {
             var sunGo = new GameObject("Sun");
             sunGo.transform.SetParent(_env, false);
-            sunGo.transform.rotation = Quaternion.Euler(38f, 38f, 0f);   // high enough to light the streets, low enough for long shadows
+            sunGo.transform.rotation = Quaternion.Euler(55f, 34f, 0f);   // high clear-day sun: short, crisp shadows
             var sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.color = new Color(1f, 0.95f, 0.87f);
-            sun.intensity = 3.1f;
+            sun.color = new Color(1f, 0.94f, 0.83f);
+            sun.intensity = 3.6f;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.92f;
+            sun.shadowStrength = 1f;
             RenderSettings.sun = sun;
             mSky.SetVector("_SunDir", -sunGo.transform.forward);
             EditorUtility.SetDirty(mSky);
@@ -254,16 +255,16 @@ namespace Zombies55.EditorTools
             RenderSettings.skybox = mSky;
             // Warm-gray fill (never blue-green): a tri-light ambient instead of the sky gradient. Reflections still come from the sky and the baked probes.
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.74f, 0.72f, 0.68f);
-            RenderSettings.ambientEquatorColor = new Color(0.6f, 0.56f, 0.5f);
-            RenderSettings.ambientGroundColor = new Color(0.4f, 0.35f, 0.3f);
+            RenderSettings.ambientSkyColor = new Color(0.62f, 0.69f, 0.8f);
+            RenderSettings.ambientEquatorColor = new Color(0.58f, 0.56f, 0.54f);
+            RenderSettings.ambientGroundColor = new Color(0.4f, 0.36f, 0.32f);
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
             RenderSettings.reflectionIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.0072f;                      // strong milky aerial haze
-            RenderSettings.fogColor = new Color(0.86f, 0.84f, 0.79f);
+            RenderSettings.fogDensity = 0.0016f;                      // light distance haze only
+            RenderSettings.fogColor = new Color(0.68f, 0.78f, 0.9f);
             DynamicGI.UpdateEnvironment();
 
             ConfigureUrpAssets();
@@ -284,9 +285,9 @@ namespace Zombies55.EditorTools
             vig.intensity.Override(0.16f);
             vig.smoothness.Override(0.45f);
             var grade = GetOrAdd<ColorAdjustments>(profile);
-            grade.postExposure.Override(0.55f);                        // brighter, warm exposure
-            grade.saturation.Override(-10f);                           // desaturated, grounded
-            grade.contrast.Override(22f);
+            grade.postExposure.Override(0.35f);                        // brighter, warm exposure
+            grade.saturation.Override(-4f);                           // desaturated, grounded
+            grade.contrast.Override(28f);
             var wb = GetOrAdd<WhiteBalance>(profile);
             wb.temperature.Override(4f);                              // warm, slightly sepia
             wb.tint.Override(0f);
@@ -325,7 +326,7 @@ namespace Zombies55.EditorTools
                 SetInt("m_SoftShadowQuality", 3); // High
                 SetFloat("m_ShadowDistance", 140f);
                 SetFloat("m_ShadowDepthBias", 0.8f);
-                SetFloat("m_ShadowNormalBias", 1.0f);
+                SetFloat("m_ShadowNormalBias", 0.8f);
                 so.ApplyModifiedPropertiesWithoutUndo();
                 urp.supportsHDR = true;
                 EditorUtility.SetDirty(urp);
@@ -356,7 +357,7 @@ namespace Zombies55.EditorTools
                 if (settings != null)
                 {
                     settings.FindPropertyRelative("Source").intValue = 1; // DepthNormals
-                    settings.FindPropertyRelative("Intensity").floatValue = 1.25f;
+                    settings.FindPropertyRelative("Intensity").floatValue = 1.0f;
                     settings.FindPropertyRelative("Radius").floatValue = 0.6f;
                     settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.4f;
                 }
@@ -489,8 +490,8 @@ namespace Zombies55.EditorTools
                 int floors = 4 + _rng.Next(5);
                 float along = pos + w * 0.5f;
                 float across = sign * (near + depth * 0.5f);
-                if (alongX) MakeKitBuilding(parent, new Vector3(along, 0f, across), w, depth, floors, mask, true);
-                else MakeKitBuilding(parent, new Vector3(across, 0f, along), depth, w, floors, mask, true);
+                if (alongX) MakeRingBuilding(parent, new Vector3(along, 0f, across), w, depth, floors, mask);
+                else MakeRingBuilding(parent, new Vector3(across, 0f, along), depth, w, floors, mask);
                 pos += w + Rf(0.5f, 1.5f);
             }
         }
@@ -528,8 +529,11 @@ namespace Zombies55.EditorTools
             BuildIntersections();
             BuildBlockLamps();
             BuildCurbside();
+            BuildExtraStreetTrees();
             BuildParkedCars();
             BuildStreetGrit();
+            BuildShopTrash();
+            BuildStreetDirt();
             BuildSignalController();
         }
 

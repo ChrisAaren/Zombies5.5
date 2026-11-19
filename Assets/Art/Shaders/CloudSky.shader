@@ -95,7 +95,7 @@ Shader "Zombies55/CloudSky"
 
                 // Warm scatter around the sun (wide haze glow + tight core) and the disc.
                 float sd = saturate(dot(d, sun));
-                col += _SunColor.rgb * (pow(sd, 6.0) * 0.22 + pow(sd, 48.0) * 0.5);
+                col += _SunColor.rgb * (pow(sd, 6.0) * 0.08 + pow(sd, 48.0) * 0.35);
                 float ang = acos(clamp(dot(d, sun), -1.0, 1.0));
                 float disc = 1.0 - smoothstep(_SunSize * 0.8, _SunSize * 1.15, ang);
 
@@ -110,12 +110,12 @@ Shader "Zombies55/CloudSky"
                     // Cheap self shadowing: density a step toward the sun.
                     float2 sOff = normalize(sun.xz + 1e-4) * 0.1;
                     float nS = fbm(uv + sOff);
-                    float shade = saturate((n - nS) * 5.0 + 0.55);
+                    float shade = saturate((n - nS) * 6.0 + 0.7);
                     float3 cc = lerp(_CloudShadow.rgb, _CloudLit.rgb, shade);
                     cc += _SunColor.rgb * pow(sd, 10.0) * 0.5 * (1.0 - dens * 0.5);   // silver lining near the sun
-                    float fade = smoothstep(0.0, 0.16, h);                              // melt into haze at the horizon
+                    float fade = smoothstep(0.03, 0.22, h);                              // melt into haze at the horizon
                     cloudMask = dens * fade;
-                    cc = lerp(_HorizonColor.rgb * 0.95, cc, fade);
+                    cc = lerp(_HorizonColor.rgb, cc, fade);
                     col = lerp(col, cc, cloudMask * 0.92);
                 }
                 col += _SunColor.rgb * _SunIntensity * disc * (1.0 - cloudMask) * step(0.0, h + 0.02);

@@ -267,9 +267,10 @@ namespace Zombies55.EditorTools
                     var placed = new List<Vector3>();
                     var yawDeg = axis == 0 ? 0f : 90f;
                     foreach (float bc in BlockCenters)
+                    for (int slot = 0; slot < 2; slot++)
                     {
-                        // Slide along the sidewalk until the spot is free of trees, furniture and spawn points.
-                        foreach (float shift in new[] { 5f, -5f, 7.5f, -7.5f, 2.5f })
+                        // Two poles per block (one per half), slid along the sidewalk until the spot is free of trees, furniture and spawn points.
+                        foreach (float shift in slot == 0 ? new[] { -6.5f, -8.5f, -4.5f, -3f } : new[] { 6.5f, 8.5f, 4.5f, 3f })
                         {
                             float s = bc + shift;
                             var pos = axis == 0 ? new Vector3(lineOff, SidewalkTop, s) : new Vector3(s, SidewalkTop, lineOff);

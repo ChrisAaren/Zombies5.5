@@ -83,7 +83,7 @@ namespace Zombies55.EditorTools
                 }
 
             var mesh = SaveMarkMesh("StreetDirtV2", acc);
-            var mat = DecalMat("StreetDirtV2", "StreetDirt", Color.white);
+            var mat = DecalMat("StreetDirtV2", "StreetDirt", new Color(0.52f, 0.48f, 0.44f, 1f));
             mat.SetFloat("_Smoothness", 0.02f);
             var go = new GameObject("StreetDirtV2");
             go.transform.SetParent(Sub("Dirt"), false);

@@ -125,10 +125,10 @@ namespace Zombies55.EditorTools
             // Worn texture sets; the packed _MS maps carry smoothness (and metal), so the float is a multiplier.
             mAsphalt = Surf("Asphalt", new Color(0.58f, 0.58f, 0.58f), "AsphaltWorn", new Vector2(60f, 60f), 1f);
             mRoadLine = Mat("RoadLine", Palette.RoadLine);
-            mSidewalk = Surf("Sidewalk", new Color(0.9f, 0.83f, 0.72f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
-            mCurb = Surf("Curb", new Color(0.78f, 0.72f, 0.63f), "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f);
-            mCurbZ = Surf("CurbZ", new Color(0.78f, 0.72f, 0.63f), "ConcreteStained", new Vector2(0.15f, BlockSize / 2f), 1f);
-            mPlaza = Surf("Plaza", new Color(0.84f, 0.77f, 0.67f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f);
+            mSidewalk = SurfW("Sidewalk", new Color(0.8f, 0.75f, 0.67f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f, 1.0f, 1f, 0.6f, 0f);
+            mCurb = SurfW("Curb", new Color(0.72f, 0.67f, 0.6f), "ConcreteStained", new Vector2(BlockSize / 2f, 0.15f), 1f, 1.0f, 0f, 0.6f, 0f);
+            mCurbZ = SurfW("CurbZ", new Color(0.72f, 0.67f, 0.6f), "ConcreteStained", new Vector2(0.15f, BlockSize / 2f), 1f, 1.0f, 0f, 0.6f, 0f);
+            mPlaza = SurfW("Plaza", new Color(0.78f, 0.72f, 0.64f), "ConcreteStained", new Vector2(BlockSize / 2f, BlockSize / 2f), 1f, 0.8f, 1f, 0.6f, 0f);
             mEye = Mat("Eye", Palette.EyeBlack);
             mTerracotta = Mat("Terracotta", Palette.Terracotta);
             mSage = Mat("Sage", Palette.Sage);

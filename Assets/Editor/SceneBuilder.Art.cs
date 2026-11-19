@@ -46,7 +46,8 @@ namespace Zombies55.EditorTools
                 if (decal && ti.wrapMode != TextureWrapMode.Repeat) { ti.wrapMode = TextureWrapMode.Repeat; dirty = true; }
                 if (ti.wrapMode != TextureWrapMode.Repeat) { ti.wrapMode = TextureWrapMode.Repeat; dirty = true; }
                 if (!ti.mipmapEnabled) { ti.mipmapEnabled = true; dirty = true; }
-                if (ti.anisoLevel != 4) { ti.anisoLevel = 4; dirty = true; }
+                int aniso = path.Contains("/Brick") || path.Contains("/Asphalt") || path.Contains("/Concrete") ? 16 : 8;
+                if (ti.anisoLevel != aniso) { ti.anisoLevel = aniso; dirty = true; }
                 if (ti.filterMode != FilterMode.Trilinear) { ti.filterMode = FilterMode.Trilinear; dirty = true; }
                 if (ti.maxTextureSize < 1024) { ti.maxTextureSize = 1024; dirty = true; }
                 if (dirty) { ti.SaveAndReimport(); changed++; }

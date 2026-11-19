@@ -88,12 +88,14 @@ Shader "Zombies55/WindowGlass"
                 N = normalize(N + T * tilt.x + half3(0, 1, 0) * tilt.y);
 
                 half NoV = saturate(dot(N, V));
-                half fres = _ReflMin + (_ReflMax - _ReflMin) * pow(1.0 - NoV, _FresnelPower);
+                half rel = pow(1.0 - NoV, _FresnelPower);
+                half fres = _ReflMin + (_ReflMax - _ReflMin) * rel;
                 half3 R = reflect(-V, N);
                 half3 env = GlossyEnvironmentReflection(R, i.positionWS, 1.0h - _Smoothness, 1.0h, GetNormalizedScreenSpaceUV(i.positionCS));
 
                 half3 refl = env * fres * _ReflIntensity;
-                half a = saturate(_InteriorDim + (1.0h - _InteriorDim) * fres * 0.6h);
+                // Face-on the pane is mostly clear (interior shows); toward grazing it turns into a mirror and hides the room.
+                half a = saturate(_InteriorDim + (1.0h - _InteriorDim) * rel);
                 half3 col = refl + _BaseColor.rgb * a;
                 col = MixFogColor(col, unity_FogColor.rgb * a, i.fogFactor);
                 return half4(col, a);

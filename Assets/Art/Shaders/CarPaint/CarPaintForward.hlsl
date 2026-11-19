@@ -267,6 +267,14 @@ void LitPassFragment(
     InitializeBakedGIData(input, inputData);
 
     half4 color = UniversalFragmentPBR(inputData, surfaceData);
+    {
+        // Clearcoat: a second, glossier specular lobe (probe reflection with a Fresnel ramp) that dirt hides.
+        half NoV = saturate(dot(inputData.normalWS, inputData.viewDirectionWS));
+        half3 Rc = reflect(-inputData.viewDirectionWS, inputData.normalWS);
+        half3 envc = GlossyEnvironmentReflection(Rc, inputData.positionWS, 0.04h, 1.0h, inputData.normalizedScreenSpaceUV);
+        half fresc = 0.04h + 0.96h * pow(1.0h - NoV, 5.0h);
+        color.rgb += envc * fresc * _CoatStrength * (1.0h - dirt) * surfaceData.occlusion * 2.2h;
+    }
     color.rgb = MixFog(color.rgb, inputData.fogCoord);
     color.a = OutputAlpha(color.a, IsSurfaceTypeTransparent());
 

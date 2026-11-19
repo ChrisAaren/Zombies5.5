@@ -67,13 +67,46 @@ namespace Zombies55.EditorTools
             return mat;
         }
 
+        // Worn canvas gear: the flat terracotta read as a glowing orange block in full sun.
+        static Material CourierGearMat() { return Surf("S_CourierGear", new Color(0.46f, 0.27f, 0.2f), null, Vector2.one, 0.1f); }
+
+        static Shader _skinShader;
+
+        // Skin on the Zombies55/Skin shader: wrapped diffuse with a warm terminator, tiled pore normal, face-zone shine and
+        // cavity map, eye-socket tint. Built on MpfbMat so the albedo, tint and smoothness plumbing stay the same.
+        static Material MpfbSkin(string name, string albedo, Color tint, float smooth, float shine, float socket, float desat,
+            Color socketColor, Color sss, float sssStrength, float wrap)
+        {
+            if (_mats.TryGetValue(name, out var cached)) return cached;
+            var mat = MpfbMat(name, albedo, null, null, tint, smooth);
+            if (_skinShader == null) _skinShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/Skin/Skin.shader");
+            if (_skinShader == null) throw new InvalidOperationException("Shader 'Zombies55/Skin' not found.");
+            mat.shader = _skinShader;
+            mat.SetTexture("_SkinZones", Tex("SkinZones_Mask"));
+            mat.SetTexture("_PoreMap", Tex("SkinPore_Normal"));
+            mat.SetFloat("_PoreTiling", 36f);
+            mat.SetFloat("_PoreStrength", 0.8f);
+            mat.SetFloat("_Wrap", wrap);
+            mat.SetColor("_SSSColor", sss);
+            mat.SetFloat("_SSSStrength", sssStrength);
+            mat.SetFloat("_ShineBoost", shine);
+            mat.SetFloat("_CavityStrength", 0.85f);
+            mat.SetColor("_SocketColor", socketColor);
+            mat.SetFloat("_SocketAmount", socket);
+            mat.SetFloat("_Desaturate", desat);
+            mat.EnableKeyword("_NORMALMAP");
+            EditorUtility.SetDirty(mat);
+            return mat;
+        }
+
         // ------------------------------------------------------------------ the characters
 
         static Dictionary<string, Material> CourierMaterials()
         {
             return new Dictionary<string, Material>
             {
-                { "Skin", MpfbMat("Courier_Skin", "Courier_Skin_Albedo", null, null, Color.white, 0.4f) },
+                { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", Color.white, 0.38f, 0.5f, 0.15f, 0f,
+                    new Color(0.55f, 0.4f, 0.38f), new Color(0.62f, 0.16f, 0.08f), 0.7f, 0.5f) },
                 { "Eyes", MpfbMat("Courier_Eyes", "Courier_Eyes_Albedo", null, null, Color.white, 0.75f) },
                 { "Brows", MpfbMat("Courier_Brows", "Courier_Brows_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
                 { "Lashes", MpfbMat("Courier_Lashes", "Courier_Lashes_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
@@ -85,14 +118,16 @@ namespace Zombies55.EditorTools
             };
         }
 
-        static readonly Color CourierJacketTint = new Color(0.6f, 0.66f, 0.66f);
+        static readonly Color CourierJacketTint = new Color(0.4f, 0.45f, 0.43f);
         static readonly Color CourierJeansTint = new Color(0.75f, 0.75f, 0.8f);
 
         static Dictionary<string, Material> HollowMaterials()
         {
             return new Dictionary<string, Material>
             {
-                { "Skin", MpfbMat("Hollow_Skin", "Hollow_Skin_Albedo", null, null, new Color(0.85f, 0.85f, 0.85f), 0.35f) },
+                // Sickly, pale grey with sunken, dark sockets; the wrap tint is a cold grey-violet, not a warm blush.
+                { "Skin", MpfbSkin("Hollow_Skin", "Hollow_Skin_Albedo", new Color(1.12f, 1.18f, 1.3f), 0.3f, 0.3f, 0.9f, 0.45f,
+                    new Color(0.22f, 0.2f, 0.26f), new Color(0.38f, 0.3f, 0.38f), 0.35f, 0.4f) },
                 // Whole eye is tinted red and emissive: the signature read at distance.
                 { "Eyes", MpfbMat("Hollow_Eyes", "Hollow_Eyes_Albedo", null, null, new Color(1f, 0.1f, 0.08f), 0.5f, AlphaMode.Opaque, 0.5f, false,
                     Palette.EnemyEyeRed * 1.6f, true) },
@@ -238,7 +273,7 @@ namespace Zombies55.EditorTools
         {
             var go = BuildMpfb("MPFB_Courier", parent, PlayerControllerPath, false, CourierMaterials());
             var head = HBone(go, HumanBodyBones.Head);
-            var gearLook = new Look { Override = new Dictionary<string, Material> { { "Cap", mTerracotta }, { "Bag", mTerracotta } } };
+            var gearLook = new Look { Override = new Dictionary<string, Material> { { "Cap", CourierGearMat() }, { "Bag", CourierGearMat() } } };
             FitCap(go, head, gearLook);
             FitBackpack(go, gearLook);
             return go;

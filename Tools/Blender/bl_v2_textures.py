@@ -71,14 +71,17 @@ def save(name, suffix, arr, alpha=None, srgb=None):
 
 # ------------------------------------------------------------------ brick
 BRICK_PAL = {
-    "BrickRed": ((0.60, 0.25, 0.18), 0.050),
-    "BrickBrown": ((0.38, 0.22, 0.16), 0.040),
-    "BrickTan": ((0.70, 0.55, 0.38), 0.040),
+    "BrickRed": ((0.60, 0.25, 0.18), 0.040),
+    "BrickBrown": ((0.38, 0.22, 0.16), 0.032),
+    "BrickTan": ((0.66, 0.53, 0.38), 0.012),
 }
+# per-brick value variance and rate of burnt / pale outliers; tan gets a calm bond so it does not alias into a zig-zag
+BRICK_VAR = {"BrickRed": (0.15, 0.07, 0.04), "BrickBrown": (0.14, 0.06, 0.04), "BrickTan": (0.07, 0.02, 0.015)}
 
 
 def make_brick(name, seed):
     base, hue_j = BRICK_PAL[name]
+    vvar, burnt_p, pale_p = BRICK_VAR[name]
     W, H = 1536, 1600
     BW, BH, ROWS, COLS, M = 256, 80, 20, 6, 10
     r = np.random.default_rng(seed)
@@ -93,8 +96,8 @@ def make_brick(name, seed):
     # per-brick randomness
     v_rand = r.normal(0, 1, (ROWS, COLS))
     h_rand = r.normal(0, 1, (ROWS, COLS, 3))
-    burnt = r.random((ROWS, COLS)) < 0.10
-    pale = r.random((ROWS, COLS)) < 0.06
+    burnt = r.random((ROWS, COLS)) < burnt_p
+    pale = r.random((ROWS, COLS)) < pale_p
     tilt_x = r.normal(0, 1, (ROWS, COLS)); tilt_y = r.normal(0, 1, (ROWS, COLS))
     bid_v = v_rand[rowg, col]
     # distance to brick edge in pixels
@@ -105,7 +108,7 @@ def make_brick(name, seed):
     brick = sstep(d, M / 2 - 1.5, M / 2 + 2.5)               # 0 mortar .. 1 brick face
     edge_round = sstep(d, M / 2, M / 2 + 12)                # rounded arris
     # per brick colour
-    bc = np.array(base)[None, None, :] * (1 + 0.20 * bid_v[..., None] + hue_j * h_rand[rowg, col] * np.array([1.0, 0.7, 0.5]))
+    bc = np.array(base)[None, None, :] * (1 + vvar * bid_v[..., None] + hue_j * h_rand[rowg, col] * np.array([1.0, 0.7, 0.5]))
     bc = np.where(burnt[rowg, col][..., None], bc * np.array([0.74, 0.72, 0.74]), bc)
     bc = np.where(pale[rowg, col][..., None], bc * np.array([1.12, 1.15, 1.2]) + 0.03, bc)
     # surface texture on the face

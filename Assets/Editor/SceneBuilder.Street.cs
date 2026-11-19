@@ -405,7 +405,7 @@ namespace Zombies55.EditorTools
 
         static void MakeCar(string model, Vector3 pos, float yaw, Color paint, float dirt)
         {
-            var look = new Look { Car = paint, Dirt = dirt, Override = new Dictionary<string, Material> { { "Glass", CarGlassMat() } } };
+            var look = new Look { Car = paint, Dirt = dirt, Override = new Dictionary<string, Material> { { "Glass", CarGlassMat() }, { "Interior", CarInteriorMat() } } };
             var car = Spawn(model, Sub("Cars"), pos, yaw, look, "ParkedCar");
             FitBox(car, 0.2f);
             var lod = car.AddComponent<LODGroup>();

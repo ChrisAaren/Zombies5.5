@@ -33,12 +33,35 @@ namespace Zombies55.EditorTools
             m.renderQueue = (int)RenderQueue.Transparent;
         }
 
+        static Shader _weatherShader;
+
+        // URP-Lit-compatible material on the WorldWeather shader: world-space facade grime (drips, ground soot, rust bleed)
+        // on vertical faces and, optionally, varied paving slabs with joints, stains and gum on up-facing ones.
+        static Material SurfW(string name, Color color, string tex, Vector2 tiling, float smooth, float grime,
+            float slabs = 0f, float ground = 3f, float rust = 0.3f)
+        {
+            var m = Surf(name, color, tex, tiling, smooth);
+            if (_weatherShader == null) _weatherShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/WorldWeather/WorldWeather.shader");
+            if (_weatherShader == null) throw new InvalidOperationException("Shader 'Zombies55/WorldWeather' not found.");
+            m.shader = _weatherShader;
+            m.SetTexture("_GrimeMask", Tex("FacadeGrime_Mask"));
+            m.SetColor("_GrimeColor", new Color(0.11f, 0.095f, 0.08f, 1f));
+            m.SetFloat("_GrimeAmount", grime);
+            m.SetFloat("_GrimeScale", 0.2f);
+            m.SetFloat("_GroundGrime", ground);
+            m.SetFloat("_SlabMode", slabs);
+            m.SetFloat("_SlabSize", 1.5f);
+            m.SetFloat("_RustAmount", rust);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
         static Material WallMat(Look l)
         {
             string t = l.WallTex;
             if (t == "BrickRed" || t == "BrickBrown" || t == "BrickTan")
-                return Surf("S_Wall_" + t + "_" + Hx(l.Wall), l.Wall, t, new Vector2(2f / 1.5f, 2f / 1.6f), 0.3f);
-            return Meters("Wall", l.Wall, t, 2f, 1f);
+                return SurfW("S_Wall_" + t + "_" + Hx(l.Wall), l.Wall, t, new Vector2(2f / 1.5f, 2f / 1.6f), 0.3f, 1.35f);
+            return SurfW("S_Wall_" + t + "_" + Hx(l.Wall), l.Wall, t, new Vector2(0.5f, 0.5f), 0.3f, 1.0f);
         }
 
         // Window glass: reflective, a touch metallic, see-through enough to show the interior card behind it.
@@ -50,27 +73,50 @@ namespace Zombies55.EditorTools
             var m = LoadOrCreateMat("S_WindowGlass", shader);
             m.SetColor("_BaseColor", new Color(0.04f, 0.07f, 0.09f, 1f));
             m.SetFloat("_Smoothness", 0.98f);
+            m.SetFloat("_FresnelPower", 3.2f);
+            m.SetFloat("_ReflMin", 0.08f);
+            m.SetFloat("_ReflMax", 0.92f);
+            m.SetFloat("_ReflIntensity", 1.3f);
+            m.SetFloat("_InteriorDim", 0.22f);
             m.renderQueue = (int)RenderQueue.Transparent;
             EditorUtility.SetDirty(m);
             _mats["S_WindowGlass"] = m;
             return m;
         }
 
+        // Car glass: the WindowGlass Fresnel shader tuned for a tinted pane: clear face-on (the dim cabin shows), mirror-like at grazing angles.
         static Material CarGlassMat()
         {
             if (_mats.TryGetValue("S_CarGlass", out var cached)) return cached;
-            var m = Surf("S_CarGlass", new Color(0.13f, 0.17f, 0.19f, 0.5f), null, Vector2.one, 0.97f, 0.2f);
-            MakeTransparent(m, true);
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/WindowGlass.shader");
+            var m = LoadOrCreateMat("S_CarGlass", shader);
+            m.SetColor("_BaseColor", new Color(0.05f, 0.08f, 0.08f, 1f));
+            m.SetFloat("_Smoothness", 0.97f);
+            m.SetFloat("_FresnelPower", 2.6f);
+            m.SetFloat("_ReflMin", 0.1f);
+            m.SetFloat("_ReflMax", 0.9f);
+            m.SetFloat("_ReflIntensity", 1.15f);
+            m.SetFloat("_InteriorDim", 0.34f);
+            m.SetFloat("_Waviness", 0.02f);
+            m.renderQueue = (int)RenderQueue.Transparent;
+            EditorUtility.SetDirty(m);
+            _mats["S_CarGlass"] = m;
             return m;
+        }
+
+        // Seats, dash and headliner: a dim warm grey fabric, lighter than the black the building interiors use.
+        static Material CarInteriorMat()
+        {
+            return Surf("S_CarInterior", new Color(0.2f, 0.18f, 0.16f), null, Vector2.one, 0.12f);
         }
 
         // One quad per window selects one cell of the atlas; only the lamp and TV cells carry emission.
         static Material WindowInteriorMat()
         {
             if (_mats.TryGetValue("S_WindowInterior", out var cached)) return cached;
-            var m = Surf("S_WindowInterior", new Color(0.55f, 0.55f, 0.55f), "WindowInteriors", Vector2.one, 0.05f);
+            var m = Surf("S_WindowInterior", new Color(0.95f, 0.95f, 0.95f), "WindowInteriors", Vector2.one, 0.05f);
             m.SetTexture("_EmissionMap", Tex("WindowInteriors_Emission"));
-            m.SetColor("_EmissionColor", new Color(0.4f, 0.4f, 0.4f, 1f));
+            m.SetColor("_EmissionColor", new Color(0.55f, 0.55f, 0.55f, 1f));
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             return m;

@@ -247,7 +247,11 @@ Shader "Zombies55/CarPaint"
 
         Pass
         {
-            // Lightmode matches the Shader
+            Name "GBuffer"
+            Tags
+            {
+                "LightMode" = "UniversalGBuffer"
+            }
 
             // -------------------------------------
             // Render State Commands

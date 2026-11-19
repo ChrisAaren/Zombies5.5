@@ -87,7 +87,7 @@ namespace Zombies55.EditorTools
             switch (slot)
             {
                 case "Wall": return WallMat(l);
-                case "Trim": return Surf("S_Trim_StoneTrim_" + Hx(l.Trim), l.Trim, "StoneTrim", new Vector2(0.5f, 0.5f), 0.22f);
+                case "Trim": return SurfW("S_Trim_StoneTrim_" + Hx(l.Trim), l.Trim, "StoneTrim", new Vector2(0.5f, 0.5f), 0.22f, 0.8f, 0f, 4f, 0.15f);
                 case "Frame": return Meters("Frame", l.Frame, "MetalPainted", 1.5f, 1f);
                 case "Glass": return WindowGlassMat();
                 case "WindowInterior": return WindowInteriorMat();
@@ -104,7 +104,7 @@ namespace Zombies55.EditorTools
                 case "Awning": return Meters("Awning", l.Awning, null, 1f, 0.12f);
                 case "Roof": return Meters("Roof", Palette.RoofGravel, "Roof", 4f, 0.1f);
                 case "Metal": return Meters("Metal", Palette.MetalDark, "MetalPainted", 1.5f, 1f);
-                case "Concrete": return Meters("Concrete", Palette.ConcreteTint, "ConcreteStained", 2f, 1f);
+                case "Concrete": return SurfW("S_Concrete_ConcreteStained_" + Hx(Palette.ConcreteTint), Palette.ConcreteTint, "ConcreteStained", new Vector2(0.5f, 0.5f), 1f, 0.8f, 0f, 2.5f, 0.2f);
                 case "Wood": return Meters("Wood", l.Wood, "Wood", 1f, 0.25f);
                 case "Paint": return Meters("Paint", l.Paint, "MetalPainted", 1.5f, 1f);
                 case "CarPaint": return CarPaintMat(l.Car, l.Dirt);

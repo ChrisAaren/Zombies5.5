@@ -57,6 +57,9 @@ UNITY_DOTS_INSTANCING_START(MaterialPropertyMetadata)
     UNITY_DOTS_INSTANCED_PROP(float , _ClearCoatSmoothness)
     UNITY_DOTS_INSTANCED_PROP(float , _DetailAlbedoMapScale)
     UNITY_DOTS_INSTANCED_PROP(float , _DetailNormalMapScale)
+    UNITY_DOTS_INSTANCED_PROP(float4, _DirtColor)
+    UNITY_DOTS_INSTANCED_PROP(float , _DirtAmount)
+    UNITY_DOTS_INSTANCED_PROP(float , _CoatStrength)
 UNITY_DOTS_INSTANCING_END(MaterialPropertyMetadata)
 
 // Here, we want to avoid overriding a property like e.g. _BaseColor with something like this:
@@ -83,6 +86,10 @@ static float  unity_DOTS_Sampled_ClearCoatSmoothness;
 static float  unity_DOTS_Sampled_DetailAlbedoMapScale;
 static float  unity_DOTS_Sampled_DetailNormalMapScale;
 
+static float4 unity_DOTS_Sampled_DirtColor;
+static float  unity_DOTS_Sampled_DirtAmount;
+static float  unity_DOTS_Sampled_CoatStrength;
+
 void SetupDOTSLitMaterialPropertyCaches()
 {
     unity_DOTS_Sampled_BaseColor            = UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float4, _BaseColor);
@@ -98,6 +105,9 @@ void SetupDOTSLitMaterialPropertyCaches()
     unity_DOTS_Sampled_ClearCoatSmoothness  = UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float , _ClearCoatSmoothness);
     unity_DOTS_Sampled_DetailAlbedoMapScale = UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float , _DetailAlbedoMapScale);
     unity_DOTS_Sampled_DetailNormalMapScale = UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float , _DetailNormalMapScale);
+    unity_DOTS_Sampled_DirtColor = UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float4, _DirtColor);
+    unity_DOTS_Sampled_DirtAmount = UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float , _DirtAmount);
+    unity_DOTS_Sampled_CoatStrength = UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float , _CoatStrength);
 }
 
 #undef UNITY_SETUP_DOTS_MATERIAL_PROPERTY_CACHES
@@ -116,6 +126,9 @@ void SetupDOTSLitMaterialPropertyCaches()
 #define _ClearCoatSmoothness    unity_DOTS_Sampled_ClearCoatSmoothness
 #define _DetailAlbedoMapScale   unity_DOTS_Sampled_DetailAlbedoMapScale
 #define _DetailNormalMapScale   unity_DOTS_Sampled_DetailNormalMapScale
+#define _DirtColor unity_DOTS_Sampled_DirtColor
+#define _DirtAmount unity_DOTS_Sampled_DirtAmount
+#define _CoatStrength unity_DOTS_Sampled_CoatStrength
 
 #endif
 

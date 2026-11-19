@@ -20,6 +20,7 @@ namespace Zombies55
         bool _dead;
         static readonly int Speed = Animator.StringToHash("Speed");
         static readonly int CycleOffset = Animator.StringToHash("CycleOffset");
+        static readonly int StrideScale = Animator.StringToHash("StrideScale");
         static readonly int Attack = Animator.StringToHash("Attack");
         static readonly int Hit = Animator.StringToHash("Hit");
         static readonly int Dead = Animator.StringToHash("Dead");
@@ -40,6 +41,8 @@ namespace Zombies55
             _nextHit = 0f;
             _anim.Rebind();
             _anim.SetFloat(CycleOffset, Random.value);
+            // A scaled body takes proportionally longer strides: play its stride slower so the feet still match the ground speed.
+            _anim.SetFloat(StrideScale, 1f / Mathf.Max(0.5f, transform.lossyScale.y));
             _anim.SetBool(Dead, false);
             _anim.Update(0f);
         }

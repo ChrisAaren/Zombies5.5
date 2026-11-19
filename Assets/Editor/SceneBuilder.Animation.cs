@@ -80,6 +80,21 @@ namespace Zombies55.EditorTools
             return s;
         }
 
+        // Ground speeds of PlayerController (walkSpeed 5, aim scale 0.55, sprintSpeed 8.5); keep in step with its defaults.
+        const float PlayerRunSpeed = 5f;
+        const float PlayerAimSpeed = 2.75f;
+        const float PlayerSprintSpeed = 8.5f;
+
+        // Adds a locomotion clip to a 2D blend tree at (x, z) m/s, authored at `authoredSpeed` m/s, time-scaled to match.
+        static void AddLocoChild(BlendTree tree, string clip, float authoredSpeed, float x, float z)
+        {
+            float speed = Mathf.Sqrt(x * x + z * z);
+            tree.AddChild(LoadClip(clip), new Vector2(x, z));
+            var children = tree.children;
+            children[children.Length - 1].timeScale = speed / authoredSpeed;
+            tree.children = children;
+        }
+
         static void BuildPlayerController(AvatarMask mask)
         {
             var c = NewController(PlayerControllerPath);
@@ -104,13 +119,21 @@ namespace Zombies55.EditorTools
             tree.blendParameter = "MoveX";
             tree.blendParameterY = "MoveZ";
             tree.useAutomaticThresholds = false;
+            // Each clip is placed at the ground speeds the player really moves at and played at the rate that makes the
+            // clip's stride match that speed (child time scale = speed / authored speed), so a foot on the ground does not
+            // slide. The same clip appears at two speeds where the player uses two (jog at the aim speed and at full run).
             tree.AddChild(LoadClip("Idle"), new Vector2(0f, 0f));
-            tree.AddChild(LoadClip("Walk"), new Vector2(0f, 1.6f));
-            tree.AddChild(LoadClip("Jog"), new Vector2(0f, 3.6f));
-            tree.AddChild(LoadClip("Sprint"), new Vector2(0f, 8f));
-            tree.AddChild(LoadClip("WalkBack"), new Vector2(0f, -1.4f));
-            tree.AddChild(LoadClip("StrafeLeft"), new Vector2(-1.6f, 0f));
-            tree.AddChild(LoadClip("StrafeRight"), new Vector2(1.6f, 0f));
+            AddLocoChild(tree, "Walk", 1.6f, 0f, 1.6f);
+            AddLocoChild(tree, "Jog", 3.6f, 0f, PlayerAimSpeed);
+            AddLocoChild(tree, "Jog", 3.6f, 0f, PlayerRunSpeed);
+            AddLocoChild(tree, "Sprint", 8f, 0f, PlayerSprintSpeed);
+            AddLocoChild(tree, "WalkBack", 1.4f, 0f, -1.4f);
+            AddLocoChild(tree, "WalkBack", 1.4f, 0f, -PlayerAimSpeed);
+            AddLocoChild(tree, "StrafeLeft", 1.6f, -1.6f, 0f);
+            AddLocoChild(tree, "StrafeLeft", 1.6f, -PlayerAimSpeed, 0f);
+            AddLocoChild(tree, "StrafeRight", 1.6f, 1.6f, 0f);
+            AddLocoChild(tree, "StrafeRight", 1.6f, PlayerAimSpeed, 0f);
+            loco.iKOnFeet = true;   // the clips' foot goals pin the feet to the ground through the retarget
             loco.speedParameterActive = true;
             loco.speedParameter = "LocoSpeed";
             sm.defaultState = loco;
@@ -178,11 +201,24 @@ namespace Zombies55.EditorTools
             t.AddCondition(AnimatorConditionMode.Equals, value, param);
         }
 
+        // Adds an enemy locomotion clip to the 1D blend tree at `speed` m/s, authored at `authoredSpeed`, time-scaled to match.
+        static void AddEnemyLocoChild(BlendTree tree, string clip, float authoredSpeed, float speed)
+        {
+            tree.AddChild(LoadClip(clip), speed);
+            var children = tree.children;
+            children[children.Length - 1].timeScale = speed / authoredSpeed;
+            tree.children = children;
+        }
+
         static void BuildEnemyController(AvatarMask mask)
         {
             var c = NewController(EnemyControllerPath);
             c.AddParameter("Speed", AnimatorControllerParameterType.Float);
             c.AddParameter("CycleOffset", AnimatorControllerParameterType.Float);
+            c.AddParameter("StrideScale", AnimatorControllerParameterType.Float);
+            var eps = c.parameters;
+            foreach (var p in eps) if (p.name == "StrideScale") p.defaultFloat = 1f;
+            c.parameters = eps;
             c.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
             c.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
             c.AddParameter("Dead", AnimatorControllerParameterType.Bool);
@@ -192,10 +228,18 @@ namespace Zombies55.EditorTools
             tree.blendType = BlendTreeType.Simple1D;
             tree.blendParameter = "Speed";
             tree.useAutomaticThresholds = false;
+            // Agent speeds vary +-8% round the nominal 1.6 / 3.2 / 5.0, so each gait covers a speed range with its clip
+            // time-scaled to the speed (the same clip at the range's two ends): the stride follows the ground speed.
             tree.AddChild(LoadClip("EnemyIdle"), 0f);
-            tree.AddChild(LoadClip("Shamble"), 1.6f);
-            tree.AddChild(LoadClip("EnemyJog"), 3.2f);
-            tree.AddChild(LoadClip("EnemySprint"), 5f);
+            AddEnemyLocoChild(tree, "Shamble", 1.6f, 1.0f);
+            AddEnemyLocoChild(tree, "Shamble", 1.6f, 2.2f);
+            AddEnemyLocoChild(tree, "EnemyJog", 3.2f, 2.4f);
+            AddEnemyLocoChild(tree, "EnemyJog", 3.2f, 4.0f);
+            AddEnemyLocoChild(tree, "EnemySprint", 5f, 4.4f);
+            AddEnemyLocoChild(tree, "EnemySprint", 5f, 5.6f);
+            loco.iKOnFeet = true;   // the clips' foot goals pin the feet to the ground through the retarget
+            loco.speedParameterActive = true;
+            loco.speedParameter = "StrideScale";   // 1 / the body's scale: a bigger body takes longer strides, so it steps slower
             loco.cycleOffsetParameterActive = true;
             loco.cycleOffsetParameter = "CycleOffset";
             sm.defaultState = loco;

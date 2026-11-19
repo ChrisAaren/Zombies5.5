@@ -38,6 +38,9 @@ namespace Zombies55
 
         public Vector3 Velocity => _planarVelocity + Vector3.up * _verticalVelocity;
         public float PlanarSpeed => _planarVelocity.magnitude;
+        // Speed the body really moves at, from the last Move (zero against a wall), in contrast to the intended Velocity.
+        public Vector3 GroundVelocity { get; private set; }
+        public float AimSpeed => walkSpeed * aimSpeedScale;
         public float MaxSpeed => sprintSpeed;
         public bool IsGrounded { get; private set; } = true;
         public bool IsSprinting { get; private set; }
@@ -104,6 +107,8 @@ namespace Zombies55
             _verticalVelocity += gravity * dt;
 
             var flags = _controller.Move((_planarVelocity + Vector3.up * _verticalVelocity) * dt);
+            var actual = _controller.velocity;
+            GroundVelocity = new Vector3(actual.x, 0f, actual.z);
             IsGrounded = (flags & CollisionFlags.Below) != 0;
             if ((flags & CollisionFlags.Above) != 0 && _verticalVelocity > 0f) _verticalVelocity = 0f;
 

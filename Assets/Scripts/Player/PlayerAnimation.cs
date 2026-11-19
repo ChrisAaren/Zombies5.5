@@ -216,18 +216,19 @@ namespace Zombies55
             float dt = Time.deltaTime;
             if (dt <= 0f || _player == null) return;
 
-            // Velocity in the character's own frame, m/s.
-            Vector3 v = _player.Velocity;
-            v.y = 0f;
+            // Velocity the body really has (not the intended one: running into a wall must stop the legs), in the
+            // character's own frame, m/s.
+            Vector3 v = _player.GroundVelocity;
             Vector3 local = _root.InverseTransformDirection(v);
             _anim.SetFloat(_moveX, local.x, moveDamp, dt);
             _anim.SetFloat(_moveZ, local.z, moveDamp, dt);
 
-            // Clips are authored at fixed ground speeds; past the edge of the blend, play faster so the feet keep up.
+            // The blend tree matches stride to speed up to full sprint forward and to the aim speed backwards and sideways;
+            // past that edge, play faster so the feet keep up.
             float speed = new Vector2(local.x, local.z).magnitude;
             float lateral = speed > 0.01f ? Mathf.Abs(local.x) / (Mathf.Abs(local.x) + Mathf.Abs(local.z)) : 0f;
-            float forwardMax = local.z >= 0f ? 8f : 1.4f;
-            float edge = Mathf.Lerp(forwardMax, 1.6f, lateral);
+            float forwardMax = local.z >= 0f ? _player.MaxSpeed : _player.AimSpeed;
+            float edge = Mathf.Lerp(forwardMax, _player.AimSpeed, lateral);
             _anim.SetFloat(_locoSpeed, Mathf.Clamp(speed / edge, 1f, 2f), 0.1f, dt);
 
             // Airborne: briefly off the ground (steps, curbs) does not count.

@@ -116,6 +116,8 @@ Material:
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _HairlineStrength: 0.3
+    - _LipDesat: 0
+    - _LipSmooth: 1
     - _Metallic: 0
     - _MicroStrength: 0.5
     - _MottleAmount: 0.85
@@ -135,6 +137,7 @@ Material:
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
+    - _StubbleDots: 0
     - _StubbleStrength: 0
     - _Surface: 0
     - _WorkflowMode: 1

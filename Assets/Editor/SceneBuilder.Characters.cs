@@ -68,7 +68,9 @@ namespace Zombies55.EditorTools
         }
 
         // Worn canvas gear: the flat terracotta read as a glowing orange block in full sun.
-        static Material CourierGearMat() { return Surf("S_CourierGear", new Color(0.46f, 0.27f, 0.2f), null, Vector2.one, 0.1f); }
+        static Material CourierGearMat() { return Surf("S_CourierGear", new Color(0.33f, 0.215f, 0.16f), null, Vector2.one, 0.1f); }
+
+        static Material CourierWebbingMat() { return Surf("S_CourierWebbing", new Color(0.075f, 0.08f, 0.075f), null, Vector2.one, 0.12f); }
 
         // The cap: faded navy cotton, so it reads as cloth instead of a painted helmet.
         static Material CourierCapMat() { return Surf("S_CourierCap", new Color(0.1f, 0.14f, 0.23f), null, Vector2.one, 0.08f); }
@@ -79,7 +81,8 @@ namespace Zombies55.EditorTools
         // cavity map, eye-socket tint. Built on MpfbMat so the albedo, tint and smoothness plumbing stay the same.
         static Material MpfbSkin(string name, string albedo, Color tint, float smooth, float shine, float socket, float desat,
             Color socketColor, Color sss, float sssStrength, float wrap,
-            float pore = 0.8f, float stubble = 0f, float micro = 0f, float mottle = 0f, float cavity = 0.85f)
+            float pore = 0.8f, float stubble = 0f, float micro = 0f, float mottle = 0f, float cavity = 0.85f,
+            float stubbleDots = 0f, float lipDesat = 0f, float lipSmooth = 1f, float poreTiling = 36f, Color? stubbleColor = null)
         {
             if (_mats.TryGetValue(name, out var cached)) return cached;
             var mat = MpfbMat(name, albedo, null, null, tint, smooth);
@@ -88,7 +91,10 @@ namespace Zombies55.EditorTools
             mat.shader = _skinShader;
             mat.SetTexture("_SkinZones", Tex("SkinZones_Mask"));
             mat.SetTexture("_PoreMap", Tex("SkinPore_Normal"));
-            mat.SetFloat("_PoreTiling", 36f);
+            mat.SetFloat("_PoreTiling", poreTiling);
+            mat.SetFloat("_StubbleDots", stubbleDots);
+            mat.SetFloat("_LipDesat", lipDesat);
+            mat.SetFloat("_LipSmooth", lipSmooth);
             mat.SetFloat("_PoreStrength", 0.8f);
             mat.SetTexture("_SkinZones2", Tex("SkinZones2_Mask"));
             mat.SetFloat("_StubbleStrength", 0f);
@@ -98,7 +104,7 @@ namespace Zombies55.EditorTools
             mat.SetFloat("_StubbleStrength", stubble);
             mat.SetFloat("_HairlineStrength", stubble > 0f ? 0.4f : 0.3f);
             mat.SetFloat("_MottleAmount", mottle);
-            mat.SetColor("_StubbleColor", new Color(0.6f, 0.55f, 0.55f));
+            mat.SetColor("_StubbleColor", stubbleColor ?? new Color(0.6f, 0.55f, 0.55f));
             mat.SetColor("_MottleColor", new Color(0.66f, 0.52f, 0.62f));
             mat.SetFloat("_PoreStrength", pore);
             mat.SetFloat("_Wrap", wrap);
@@ -121,7 +127,8 @@ namespace Zombies55.EditorTools
             return new Dictionary<string, Material>
             {
                 { "Skin", MpfbSkin("Courier_Skin", "Courier_Skin_Albedo", new Color(0.95f, 0.87f, 0.82f), 0.26f, 0.3f, 0.1f, 0.1f,
-                    new Color(0.55f, 0.45f, 0.45f), new Color(0.8f, 0.45f, 0.35f), 0.25f, 0.5f, 1.25f, 0.06f, 0.25f, 0f, 0.25f) },
+                    new Color(0.55f, 0.45f, 0.45f), new Color(0.8f, 0.45f, 0.35f), 0.25f, 0.5f, 1.2f, 0.2f, 0.3f, 0f, 0.25f,
+                    0.55f, 0.6f, 0.4f, 12f, new Color(0.5f, 0.45f, 0.44f)) },
                 { "Eyes", MpfbMat("Courier_Eyes", "Courier_Eyes_Albedo", null, null, Color.white, 0.75f) },
                 { "Brows", MpfbMat("Courier_Brows", "Courier_Brows_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
                 { "Lashes", MpfbMat("Courier_Lashes", "Courier_Lashes_Albedo", null, null, Color.white, 0.2f, AlphaMode.Clip, 0.3f, true) },
@@ -288,7 +295,7 @@ namespace Zombies55.EditorTools
         {
             var go = BuildMpfb("MPFB_Courier", parent, PlayerControllerPath, false, CourierMaterials());
             var head = HBone(go, HumanBodyBones.Head);
-            var gearLook = new Look { Override = new Dictionary<string, Material> { { "Cap", CourierCapMat() }, { "Bag", CourierGearMat() } } };
+            var gearLook = new Look { Override = new Dictionary<string, Material> { { "Cap", CourierCapMat() }, { "Bag", CourierGearMat() }, { "BagStrap", CourierWebbingMat() } } };
             FitCap(go, head, gearLook);
             FitBackpack(go, gearLook);
             return go;
@@ -393,37 +400,13 @@ namespace Zombies55.EditorTools
             }
         }
 
-        const float PackWidth = 0.28f;
-
+        // Char2_Backpack_V2 (Tools/Blender/make_backpack.py): a day-pack with straps draped over the courier's own jacket, authored in
+        // the MPFB_Courier rest pose, so it is placed at the character root and rides the upper-chest bone.
         static void FitBackpack(GameObject go, Look look)
         {
-            var spine2 = UpperTorso(go);
-            var spine = HBone(go, HumanBodyBones.Spine);
-            var neck = HBone(go, HumanBodyBones.Neck);
-            // Torso depth: back surface at the spine; the pack sits behind it.
-            float yMid = Mathf.Lerp(spine.position.y, neck.position.y, 0.68f);
-            // Char2_Backpack mesh: 0.389 wide, 0.507 tall, 0.489 deep, centre (0, 0.044, -0.117) from the pivot. The bag is
-            // flattened to a day-pack's depth and set against the jacket's back.
-            float sx = PackWidth / 0.389f;
-            var scale = new Vector3(sx, sx, sx * PackDepthScale);
-            float back = BackSurfaceZ(go, yMid);
-            var origin = new Vector3(0f, yMid - 0.044f * scale.y, back + PackEmbed - 0.1275f * scale.z);
-            PlaceAccessory("Char2_Backpack", spine2, go.transform, look, scale, origin);
-        }
-
-        const float PackDepthScale = 0.5f;
-        const float PackEmbed = 0.085f;
-
-        // The jacket's back surface (most negative z) at the pack's height, within 10 cm of the spine line, rest pose.
-        static float BackSurfaceZ(GameObject go, float y)
-        {
-            var points = new List<Vector3>();
-            CollectWorldVertices(go, "Top", float.NegativeInfinity, points);
-            float z = float.MaxValue;
-            foreach (var p in points)
-                if (Mathf.Abs(p.x) < 0.1f && Mathf.Abs(p.y - y) < 0.12f) z = Mathf.Min(z, p.z);
-            if (z == float.MaxValue) throw new InvalidOperationException("No jacket vertices at the pack height on " + go.name);
-            return z;
+            var pack = Spawn("Char2_Backpack_V2", UpperTorso(go), Vector3.zero, 0f, look, "Char2_Backpack_V2");
+            foreach (var c in pack.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+            pack.transform.SetPositionAndRotation(go.transform.position, go.transform.rotation);
         }
 
         // ------------------------------------------------------------------ hollow

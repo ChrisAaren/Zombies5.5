@@ -23,6 +23,9 @@ Shader "Zombies55/Skin"
         _SkinZones2("Zones2 (R stubble, G hairline, B brow ridge)", 2D) = "black" {}
         _StubbleColor("Stubble / beard shadow tint", Color) = (0.55,0.5,0.5,1)
         _StubbleStrength("Stubble strength", Range(0,1)) = 0.0
+        _StubbleDots("Stubble speckle (individual hairs) strength", Range(0,1)) = 0.0
+        _LipDesat("Lips: pull toward the skin tone", Range(0,1)) = 0.0
+        _LipSmooth("Lips: smoothness multiplier", Range(0,1)) = 1.0
         _HairlineStrength("Hairline and brow transition", Range(0,1)) = 0.0
         _MottleColor("Mottle (bruise) tint", Color) = (0.5,0.38,0.5,1)
         _MottleAmount("Mottled bruising", Range(0,1)) = 0.0

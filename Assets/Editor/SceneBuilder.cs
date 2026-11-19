@@ -409,6 +409,7 @@ namespace Zombies55.EditorTools
         static void BuildRoadLines()
         {
             var lines = Node("RoadLines", _city, Vector3.zero);
+            BuildRoadGrime(lines);        // tyre wear, oil, patches, cracks, manholes, gutter wash (SceneBuilder.Street.cs)
             BuildV2Markings(lines);       // double yellow centreline, parking lines, stop bars, crosswalks (SceneBuilder.Street.cs)
         }
 

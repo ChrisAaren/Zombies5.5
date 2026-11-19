@@ -116,13 +116,15 @@ Material:
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _HairlineStrength: 0.4
+    - _LipDesat: 0.6
+    - _LipSmooth: 0.4
     - _Metallic: 0
-    - _MicroStrength: 0.25
+    - _MicroStrength: 0.3
     - _MottleAmount: 0
     - _OcclusionStrength: 1
     - _Parallax: 0.005
-    - _PoreStrength: 1.25
-    - _PoreTiling: 36
+    - _PoreStrength: 1.2
+    - _PoreTiling: 12
     - _QueueOffset: 0
     - _ReceiveShadows: 1
     - _SSSStrength: 0.25
@@ -135,7 +137,8 @@ Material:
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
-    - _StubbleStrength: 0.06
+    - _StubbleDots: 0.55
+    - _StubbleStrength: 0.2
     - _Surface: 0
     - _WorkflowMode: 1
     - _Wrap: 0.5
@@ -149,7 +152,7 @@ Material:
     - _SSSColor: {r: 0.8, g: 0.45, b: 0.35, a: 1}
     - _SocketColor: {r: 0.55, g: 0.45, b: 0.45, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
-    - _StubbleColor: {r: 0.6, g: 0.55, b: 0.55, a: 1}
+    - _StubbleColor: {r: 0.5, g: 0.45, b: 0.44, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!114 &5220403905908208486

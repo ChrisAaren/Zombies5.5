@@ -258,7 +258,22 @@ void LitPassFragment(
     half grain = saturate(0.55h + pore2.x * 1.4h + pore.y * 0.6h);
     half stub = zones2.r * _StubbleStrength * (0.55h + 0.6h * grain);
     surfaceData.albedo = lerp(surfaceData.albedo, surfaceData.albedo * _StubbleColor.rgb, saturate(stub));
+    // one or two days of growth: individual dark hair dots over the beard zone
+    {
+        float2 sp = input.uv * 700.0;
+        float2 sc = floor(sp);
+        half h1 = frac(sin(dot(sc, float2(41.3, 289.1))) * 43758.5453);
+        half h2 = frac(sin(dot(sc, float2(127.1, 311.7))) * 24634.6345);
+        half h3 = frac(sin(dot(sc, float2(269.5, 183.3))) * 12345.6789);
+        float2 cell = frac(sp) - 0.5 - (float2(h2, h3) - 0.5) * 0.5;
+        half dot_ = (h1 > 0.45h ? 1.0h : 0.0h) * (1.0h - smoothstep(0.08h, 0.30h, length(cell))) * (0.5h + 0.5h * h2);
+        surfaceData.albedo *= 1.0h - saturate(zones2.r * 1.4h) * _StubbleDots * dot_;
+    }
     surfaceData.albedo *= 1.0h - saturate(zones2.g + zones2.b * 0.7h) * _HairlineStrength * 0.38h;
+    // lips (and the inner lip): less pink, less glossy. Redness picks the lip pixels; the zone alpha is the mouth area.
+    half redness = smoothstep(0.58h, 0.8h, (surfaceData.albedo.r - surfaceData.albedo.g) / max(surfaceData.albedo.r, 0.02h));
+    half lipMask = saturate(max(zones.a * redness, redness));
+    surfaceData.albedo = lerp(surfaceData.albedo, lum.xxx * half3(1.7h, 1.0h, 0.8h), lipMask * 0.85h * _LipDesat);
     // mottled, bruised variation (low-frequency value noise)
     {
         float2 mp = input.uv * 95.0;
@@ -275,6 +290,7 @@ void LitPassFragment(
     surfaceData.albedo *= lerp(1.0h, zones.g, _CavityStrength);
     surfaceData.albedo = lerp(surfaceData.albedo, surfaceData.albedo * _SocketColor.rgb, zones.b * _SocketAmount);
     surfaceData.smoothness = saturate(surfaceData.smoothness * (1.0h - _ShineBoost * 0.5h + _ShineBoost * 1.3h * zones.r));
+    surfaceData.smoothness *= lerp(1.0h, _LipSmooth, saturate(zones.a + redness));
     surfaceData.occlusion *= lerp(1.0h, zones.g, _CavityStrength * 0.5h);
 
 #ifdef LOD_FADE_CROSSFADE

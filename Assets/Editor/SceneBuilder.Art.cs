@@ -33,7 +33,7 @@ namespace Zombies55.EditorTools
                 if (ti.textureType != type) { ti.textureType = type; dirty = true; }
                 bool srgb = !(normal || mask);
                 if (ti.sRGBTexture != srgb && !normal) { ti.sRGBTexture = srgb; dirty = true; }
-                bool decal = path.EndsWith("/Grime_Albedo.png") || path.EndsWith("/RoadMarkings_Albedo.png") || path.EndsWith("/RoadMarkingsV2_Albedo.png") || path.EndsWith("/StreetDirt_Albedo.png") || path.EndsWith("/SideAds_Albedo.png");
+                bool decal = path.EndsWith("/Grime_Albedo.png") || path.EndsWith("/RoadMarkings_Albedo.png") || path.EndsWith("/RoadMarkingsV2_Albedo.png") || path.EndsWith("/RoadGrime_Albedo.png") || path.EndsWith("/StreetDirt_Albedo.png") || path.EndsWith("/SideAds_Albedo.png");
                 bool leaf = path.EndsWith("/LeafCards_Albedo.png");
                 if (leaf && !ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
                 if (leaf && !ti.mipMapsPreserveCoverage) { ti.mipMapsPreserveCoverage = true; ti.alphaTestReferenceValue = 0.5f; dirty = true; }

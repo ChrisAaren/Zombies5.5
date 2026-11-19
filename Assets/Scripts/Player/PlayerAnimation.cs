@@ -39,22 +39,37 @@ namespace Zombies55
         [SerializeField] float curlDistal = 45f;
         [SerializeField] float curlSign = 1f;
         [SerializeField, Range(0f, 1f)] float leftHandCurl = 0.8f;
+        [Tooltip("Left-hand finger curl in degrees (proximal, intermediate, distal) on a handguard, wrapped round it.")]
+        [SerializeField] Vector3 supportCurl = new Vector3(62f, 80f, 55f);
+        [SerializeField] Vector3 supportThumb = new Vector3(40f, 40f, 40f);
+        [SerializeField] Vector3 thumbAxis = new Vector3(0f, 0f, -1f);
+        [Header("Shouldering")]
+        [Tooltip("Shoulder pocket, from the shoulder joint: metres forward, inward (towards the neck) and down.")]
+        [SerializeField] Vector3 pocket = new Vector3(0.10f, 0.06f, 0.0f);
+        [Tooltip("Shooting stance: the chest turns this many degrees to the right of the aim (left shoulder forward) so the support" +
+                 " arm reaches the handguard; the head turns back onto the target and the left collarbone reaches forward.")]
+        [SerializeField] float bladeYaw = 28f;
+        [SerializeField] float clavicleReach = 10f;
+        [Tooltip("Muzzle pitch below the horizon, degrees, when a long gun is carried at low ready.")]
+        [SerializeField] float lowReadyPitch = 40f;
 
         Animator _anim;
         PlayerController _player;
         PlayerHealth _health;
         PlayerWeapons _weapons;
         Transform _root, _spine, _chest;
-        Transform _lUpper, _lLower, _lHand, _rLower, _rHand;
+        Transform _lUpper, _lLower, _lHand, _rUpper, _rLower, _rHand, _lThumb0, _lThumb1, _lThumb2, _lClavicle, _neck, _head;
+        Vector3 _pocketLocal;                   // shoulder pocket in the chest bone's frame (rest pose)
         Quaternion _palmRight, _palmLeft;
         Vector3 _chestUpLocal;                  // the torso's up in the chest bone's frame (rest pose)
         readonly Dictionary<string, GameObject> _guns = new Dictionary<string, GameObject>();
         GameObject _gun;
-        Transform _muzzle, _foregrip;
+        Transform _muzzle, _foregrip, _stock;
         Vector3 _mountRest;
         struct FingerBone { public Transform Bone; public Quaternion Rest; public float Curl; }
         FingerBone[] _rightFingers, _leftFingers;
         float _gripBlend;
+        Quaternion[] _thumbRest;
 
         float _airTime, _jumpedAt = -99f;
         float _upperWeight, _aimBlend, _ikWeight, _kick;
@@ -74,12 +89,21 @@ namespace Zombies55
             _lUpper = _anim.GetBoneTransform(HumanBodyBones.LeftUpperArm);
             _lLower = _anim.GetBoneTransform(HumanBodyBones.LeftLowerArm);
             _lHand = _anim.GetBoneTransform(HumanBodyBones.LeftHand);
+            _rUpper = _anim.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            _lClavicle = _anim.GetBoneTransform(HumanBodyBones.LeftShoulder);
+            _neck = _anim.GetBoneTransform(HumanBodyBones.Neck);
+            _head = _anim.GetBoneTransform(HumanBodyBones.Head);
             _rLower = _anim.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            _lThumb0 = _anim.GetBoneTransform(HumanBodyBones.LeftThumbProximal);
+            _lThumb1 = _anim.GetBoneTransform(HumanBodyBones.LeftThumbIntermediate);
+            _lThumb2 = _anim.GetBoneTransform(HumanBodyBones.LeftThumbDistal);
+            _thumbRest = new[] { _lThumb0.localRotation, _lThumb1.localRotation, _lThumb2.localRotation };
             _rHand = _anim.GetBoneTransform(HumanBodyBones.RightHand);
             // Awake runs before the Animator's first evaluation, so the bones are still in the T-pose.
             _palmRight = PalmFrame(_rHand, _anim.GetBoneTransform(HumanBodyBones.RightMiddleProximal));
             _palmLeft = PalmFrame(_lHand, _anim.GetBoneTransform(HumanBodyBones.LeftMiddleProximal));
             _chestUpLocal = Quaternion.Inverse(_chest.rotation) * transform.up;
+            _pocketLocal = _chest.InverseTransformPoint(_rUpper.position + transform.forward * pocket.x - transform.right * pocket.y - transform.up * pocket.z);
             _moveX = Animator.StringToHash("MoveX");
             _moveZ = Animator.StringToHash("MoveZ");
             _locoSpeed = Animator.StringToHash("LocoSpeed");
@@ -173,6 +197,7 @@ namespace Zombies55
             _gun = null;
             _muzzle = null;
             _foregrip = null;
+            _stock = null;
             foreach (var kv in _guns) if (kv.Value != null) kv.Value.SetActive(false);
             if (def == null || !_guns.TryGetValue(def.ModelName, out _gun) || _gun == null) return;
             _gun.SetActive(true);
@@ -180,6 +205,7 @@ namespace Zombies55
             {
                 if (t.name == "Muzzle") _muzzle = t;
                 else if (t.name == "Foregrip") _foregrip = t;
+                else if (t.name == "Stock") _stock = t;
             }
         }
 
@@ -256,9 +282,81 @@ namespace Zombies55
                 }
                 Rotate(_chest, aimPoint, 1f);
             }
+            // Long guns: the butt goes into the shoulder pocket and the right arm follows the gun, so the stock never sits in
+            // the arm or the chest. The gun turns about the butt until the muzzle is on the aim point.
+            if (_stock != null && _gun != null && !_dead)
+            {
+                float w = _upperWeight;
+                Blade(w);
+                if (w > 0.001f)
+                {
+                    // Low ready: muzzle down in front of the chest; blends into the real aim point as the aim comes up.
+                    Vector3 lowDir = Quaternion.AngleAxis(lowReadyPitch, _root.right) * _root.forward;
+                    Vector3 low = _muzzle.position + lowDir * 10f;
+                    ShoulderGun(w, aim ? Vector3.Lerp(low, aimPoint, _aimBlend) : low);
+                }
+            }
             if (ik > 0.001f) PlaceLeftHand(ik);
             CurlFingers(_rightFingers, _gripBlend);
-            CurlFingers(_leftFingers, Mathf.Max(ik * leftHandCurl, 0f));
+            if (_foregrip != null && _stock != null) CurlSupportHand(ik);
+            else CurlFingers(_leftFingers, Mathf.Max(ik * leftHandCurl, 0f));
+        }
+
+        void CurlSupportHand(float weight)
+        {
+            if (weight <= 0.001f) return;
+            for (int i = 0; i < _leftFingers.Length; i++)
+            {
+                var f = _leftFingers[i];
+                float deg = (i % 3 == 0 ? supportCurl.x : i % 3 == 1 ? supportCurl.y : supportCurl.z) * curlSign;
+                f.Bone.localRotation = Quaternion.Slerp(f.Bone.localRotation, f.Rest * Quaternion.AngleAxis(deg, Vector3.right), weight);
+            }
+            Transform[] thumb = { _lThumb0, _lThumb1, _lThumb2 };
+            float[] deg3 = { supportThumb.x, supportThumb.y, supportThumb.z };
+            for (int i = 0; i < 3; i++)
+                if (thumb[i] != null)
+                    thumb[i].localRotation = Quaternion.Slerp(thumb[i].localRotation, _thumbRest[i] * Quaternion.AngleAxis(deg3[i], thumbAxis), weight);
+        }
+
+        // Chest turned to the right of the aim, head back on it, left collarbone forward (about the torso's up).
+        void Blade(float weight)
+        {
+            Vector3 up = _root.up;
+            _chest.rotation = Quaternion.AngleAxis(bladeYaw * weight, up) * _chest.rotation;
+            if (_lClavicle != null) _lClavicle.rotation = Quaternion.AngleAxis(clavicleReach * weight, up) * _lClavicle.rotation;
+            if (_neck != null) _neck.rotation = Quaternion.AngleAxis(-bladeYaw * 0.45f * weight, up) * _neck.rotation;
+            if (_head != null) _head.rotation = Quaternion.AngleAxis(-bladeYaw * 0.45f * weight, up) * _head.rotation;
+        }
+
+        void ShoulderGun(float weight, Vector3 aimPoint)
+        {
+            Transform g = _gun.transform;
+            Vector3 pocketWorld = _chest.TransformPoint(_pocketLocal);
+            Quaternion rot = g.rotation;
+            Vector3 stockLocal = g.InverseTransformPoint(_stock.position);
+            Vector3 muzzleLocal = g.InverseTransformPoint(_muzzle.position);
+            Vector3 muzzleFwdLocal = g.InverseTransformDirection(_muzzle.forward);
+            // Turn the gun about the butt until the muzzle points at the aim point (the muzzle moves as it turns).
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 muzzleWorld = pocketWorld + rot * (muzzleLocal - stockLocal);
+                Vector3 want = aimPoint - muzzleWorld;
+                if (want.sqrMagnitude < 0.04f) break;
+                rot = Quaternion.FromToRotation(rot * muzzleFwdLocal, want.normalized) * rot;
+            }
+            Vector3 gunPos = pocketWorld - rot * stockLocal;
+            Quaternion rel = Quaternion.Inverse(_rHand.rotation) * g.rotation;
+            Vector3 relPos = _rHand.InverseTransformPoint(g.position);
+            Quaternion handRot = rot * Quaternion.Inverse(rel);
+            Vector3 handPos = gunPos - handRot * relPos;
+            var upperRot = _rUpper.localRotation;
+            var lowerRot = _rLower.localRotation;
+            var handLocal = _rHand.localRotation;
+            SolveTwoBone(_rUpper, _rLower, _rHand, handPos, _rLower.position);
+            _rHand.rotation = handRot;
+            _rUpper.localRotation = Quaternion.Slerp(upperRot, _rUpper.localRotation, weight);
+            _rLower.localRotation = Quaternion.Slerp(lowerRot, _rLower.localRotation, weight);
+            _rHand.localRotation = Quaternion.Slerp(handLocal, _rHand.localRotation, weight);
         }
 
         void RollWrists(float weight)

@@ -76,7 +76,11 @@ def skin_zones(N=1024, seed=900):
     cav -= 0.6 * blob(0.908, 0.512, 0.018, 0.006)                # mouth line
     cav -= 0.5 * blob(0.838, 0.376, 0.016, 0.014) + 0.5 * blob(0.838, 0.650, 0.016, 0.014)   # ears
     sock = np.clip(blob(0.836, 0.478, 0.022, 0.020) + blob(0.836, 0.548, 0.022, 0.020), 0, 1)
-    save("SkinZones", "Mask", np.stack([np.clip(shine, 0, 1), np.clip(cav, 0, 1), sock], -1))
+    # A: lips (the mouth ellipse), so the shader can pull them toward the skin tone and take the gloss off
+    # centred on the pink lip patch of Courier_Skin_Albedo (u 0.910, v 0.517 from the top), feathered edge
+    rr = np.sqrt(((u - 0.910) / 0.0165) ** 2 + ((v - 0.517) / 0.0225) ** 2)
+    lips = 1.0 - sstep(rr, 0.7, 1.2)
+    save("SkinZones", "Mask", np.stack([np.clip(shine, 0, 1), np.clip(cav, 0, 1), sock], -1), alpha=lips)
 
 
 def skin_zones2(N=1024, seed=950):
@@ -87,9 +91,10 @@ def skin_zones2(N=1024, seed=950):
         return np.exp(-(((u - cu) / su) ** 2 + ((v - cv) / sv) ** 2))
     beard = (blob(0.918, 0.512, 0.030, 0.085) + blob(0.903, 0.425, 0.026, 0.040) + blob(0.903, 0.600, 0.026, 0.040)
              + blob(0.895, 0.470, 0.022, 0.030) + blob(0.895, 0.555, 0.022, 0.030) + 0.8 * blob(0.892, 0.512, 0.012, 0.045)
-             + 0.6 * blob(0.86, 0.385, 0.03, 0.02) + 0.6 * blob(0.86, 0.640, 0.03, 0.02))
+             + 0.6 * blob(0.86, 0.385, 0.03, 0.02) + 0.6 * blob(0.86, 0.640, 0.03, 0.02)
+             + 0.55 * blob(0.880, 0.450, 0.030, 0.034) + 0.55 * blob(0.880, 0.575, 0.030, 0.034))   # cheeks
     beard = np.clip(beard, 0, 1)
-    beard *= 1.0 - 0.85 * blob(0.908, 0.512, 0.010, 0.028)       # lips stay clean
+    beard *= 1.0 - 0.9 * blob(0.910, 0.517, 0.013, 0.022)       # lips stay clean
     beard *= 1.0 - 0.9 * blob(0.870, 0.512, 0.025, 0.020)         # nose
     grain = 0.55 + 0.45 * sstep(noise(N, N, 0.4, 40, 500, seed=seed), -0.2, 0.5)
     hair = np.clip(blob(0.750, 0.512, 0.016, 0.075) + 0.8 * blob(0.775, 0.42, 0.022, 0.03) + 0.8 * blob(0.775, 0.605, 0.022, 0.03), 0, 1)

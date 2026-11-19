@@ -314,6 +314,114 @@ namespace Zombies55.EditorTools
             dmr.shadowCastingMode = ShadowCastingMode.Off;
         }
 
+        // Road weathering as one merged decal mesh on the RoadGrime atlas (Tools/Blender/make_road_grime.py, cells as in
+        // AddMarkTile): dirt blotches and gutter wash first, then tyre wear on the wheel paths, oil at the kerbside parking
+        // spots, cracks, patched asphalt and utility cuts, manholes and lids last. All of it sits under the paint markings.
+        static void BuildRoadGrime(Transform lines)
+        {
+            var mat = DecalMat("RoadGrime", "RoadGrime", Color.white);
+            mat.renderQueue = 2990;
+            EditorUtility.SetDirty(mat);
+            var m = new MeshAcc();
+            var rnd = new System.Random(5513);
+            const float y = 0.012f;
+            const float curb = 6f;            // half the road width
+
+            void Segments(System.Action<int, float, float, float, float> each)
+            {
+                for (int axis = 0; axis < 2; axis++)
+                    foreach (float road in RoadCenters)
+                        for (int seg = 0; seg + 1 < RoadCenters.Length; seg++)
+                            each(axis, road, RoadCenters[seg] + 9.6f, RoadCenters[seg + 1] - 9.6f, axis == 0 ? 0f : 90f);
+            }
+            Vector3 P(int axis, float road, float s, float lat) { return axis == 0 ? new Vector3(road + lat, y, s) : new Vector3(s, y, road + lat); }
+            float R(float lo, float hi) { return lo + (float)rnd.NextDouble() * (hi - lo); }
+            float Side(int axis, int side) { return axis == 0 ? (side > 0 ? 0f : 180f) : (side > 0 ? 270f : 90f); }
+
+            // Layer 0: gutter wash, tar seam along the kerb, litter and dust, big soft dirt blotches.
+            Segments((axis, road, a, b, yaw) =>
+            {
+                foreach (int side in new[] { -1, 1 })
+                {
+                    for (float s = a - 1f; s < b + 1f; s += 4f)
+                    {
+                        float cs = s + 2f;
+                        AddMarkTile(m, 9, P(axis, road, cs, side * (curb - 0.8f)), Side(axis, side), 1.6f, 4.04f);
+                        if (rnd.NextDouble() < 0.7) AddMarkTile(m, 14, P(axis, road, cs, side * (curb - 0.6f)), Side(axis, side), 1.2f, 4.04f);
+                        if (rnd.NextDouble() < 0.6) AddMarkTile(m, 10, P(axis, road, cs, side * (curb - 0.7f)), Side(axis, side), 1.4f, 4.04f);
+                        if (rnd.NextDouble() < 0.3) AddMarkTile(m, 15, P(axis, road, cs, side * (curb - 0.8f)), Side(axis, side), 1.6f, 4.04f);
+                    }
+                }
+                for (int k = 0; k < 2; k++)
+                    AddMarkTile(m, 13, P(axis, road, R(a, b), R(-5f, 5f)), R(0f, 360f), R(3.5f, 6f), R(3.5f, 6f));
+            });
+
+            // Layer 1: tyre wear in the driving lanes (wheel paths 1.55 m apart), a few brake skids near the junctions.
+            Segments((axis, road, a, b, yaw) =>
+            {
+                foreach (int lane in new[] { -1, 1 })
+                {
+                    for (float s = a; s < b; s += 4f)
+                    {
+                        if (rnd.NextDouble() < 0.25) continue;
+                        float lat = lane * 1.9f + R(-0.15f, 0.15f);
+                        AddMarkTile(m, rnd.NextDouble() < 0.7 ? 0 : 1, P(axis, road, s + 2f, lat), yaw, 2f, 4.02f);
+                    }
+                    if (rnd.NextDouble() < 0.18)
+                        AddMarkTile(m, 11, P(axis, road, rnd.Next(2) == 0 ? a + 3f : b - 3f, lane * 1.9f), yaw, 2f, 3.2f);
+                }
+            });
+
+            // Layer 2: oil where cars park (and the odd drip trail), cracks and crazing.
+            Segments((axis, road, a, b, yaw) =>
+            {
+                foreach (int side in new[] { -1, 1 })
+                    for (float s = a + 2.5f; s < b - 2f; s += 5.8f)
+                    {
+                        if (rnd.NextDouble() < 0.45) continue;
+                        float lat = side * (4.85f + R(-0.45f, 0.35f));
+                        AddMarkTile(m, 2, P(axis, road, s + R(-0.8f, 0.8f), lat), R(-25f, 25f) + yaw, R(1.2f, 2.0f), R(1.2f, 2.3f));
+                        if (rnd.NextDouble() < 0.5) AddMarkTile(m, 3, P(axis, road, s + R(-0.5f, 0.5f), lat + R(-0.3f, 0.3f)), R(0f, 360f), 1.8f, 1.8f);
+                    }
+                for (int k = 0; k < 4; k++)
+                    AddMarkTile(m, 6, P(axis, road, R(a, b), R(-5.2f, 5.2f)), yaw + (rnd.Next(2) == 0 ? 0f : 90f) + R(-35f, 35f), R(2.2f, 3.6f), R(2.2f, 3.6f));
+                if (rnd.NextDouble() < 0.55) AddMarkTile(m, 12, P(axis, road, R(a, b), R(-4.5f, 4.5f)), R(0f, 360f), R(1.6f, 2.8f), R(1.6f, 2.8f));
+            });
+
+            // Layer 3: patched asphalt, utility trenches across the road, then manholes and steel lids.
+            Segments((axis, road, a, b, yaw) =>
+            {
+                int patches = 1 + rnd.Next(3);
+                for (int k = 0; k < patches; k++)
+                    AddMarkTile(m, 4, P(axis, road, R(a + 1f, b - 1f), R(-4.8f, 4.8f)), yaw + (rnd.Next(2) == 0 ? 0f : 180f) + R(-1.5f, 1.5f), R(0.9f, 2.4f), R(1.4f, 4.6f));
+                if (rnd.NextDouble() < 0.35)
+                    AddMarkTile(m, 5, P(axis, road, R(a + 2f, b - 2f), R(-1.2f, 1.2f)), yaw + 90f + R(-2f, 2f), R(0.8f, 1.3f), R(6f, 10.5f));
+                if (rnd.NextDouble() < 0.5)
+                    AddMarkTile(m, 7, P(axis, road, R(a + 2f, b - 2f), (rnd.Next(2) == 0 ? -1f : 1f) * R(0.9f, 3.0f)), R(0f, 360f), 2f, 2f);
+                if (rnd.NextDouble() < 0.3)
+                    AddMarkTile(m, 8, P(axis, road, R(a + 2f, b - 2f), (rnd.Next(2) == 0 ? -1f : 1f) * R(4.6f, 5.3f)), yaw + (rnd.Next(2) == 0 ? 0f : 90f), 2f, 2f);
+            });
+
+            // The junctions: a few patches and cracks in the middle of each.
+            foreach (float rx in RoadCenters)
+                foreach (float rz in RoadCenters)
+                {
+                    for (int k = 0; k < 3; k++)
+                        AddMarkTile(m, 4, new Vector3(rx + R(-6f, 6f), y, rz + R(-6f, 6f)), (rnd.Next(2) == 0 ? 0f : 90f) + R(-2f, 2f), R(1f, 2.4f), R(1.4f, 3.5f));
+                    for (int k = 0; k < 4; k++)
+                        AddMarkTile(m, 6, new Vector3(rx + R(-7f, 7f), y, rz + R(-7f, 7f)), R(0f, 360f), R(2.5f, 3.6f), R(2.5f, 3.6f));
+                    AddMarkTile(m, 7, new Vector3(rx + R(-3f, 3f), y, rz + R(-3f, 3f)), R(0f, 360f), 2f, 2f);
+                }
+
+            var mesh = SaveMarkMesh("RoadGrime", m);
+            var go = new GameObject("RoadGrime");
+            go.transform.SetParent(lines, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+        }
+
         // ------------------------------------------------------------------ parked cars
 
         static readonly string[] CarModels =

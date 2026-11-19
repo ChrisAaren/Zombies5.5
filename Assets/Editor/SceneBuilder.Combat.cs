@@ -129,9 +129,20 @@ namespace Zombies55.EditorTools
         static readonly Vector3 PistolGripTrim = new Vector3(-2f, 18f, 0f);    // pitch, yaw, roll about the gun's own axes
         static readonly Vector3 LongGripPos = new Vector3(-0.065f, 0.03f, 0.015f);
         static readonly Vector3 LongGripTrim = new Vector3(0f, 104.6f, 0f);
-        // Left-hand palm centre on the gun, in gun space.
+        // Left-hand palm centre on the pistol, in gun space.
         static readonly Vector3 PistolSupportPos = new Vector3(-0.045f, -0.07f, 0.02f);
-        const float HandguardHeight = 0.0f;
+
+        // Per long gun, in gun space (X right, Y up, Z forward, origin at the grip): where the support palm sits (under the
+        // handguard or pump, palm up, fingers across to the gun's right) and the point of the butt that goes into the
+        // shoulder pocket. Heights are the underside of the handguard minus the soft palm.
+        static readonly Dictionary<string, (Vector3 foregrip, Vector3 stock)> LongGunFit = new Dictionary<string, (Vector3, Vector3)>
+        {
+            { "Gun_SMG",     (new Vector3(0f, 0.002f, 0.200f), new Vector3(0f, 0.028f, -0.205f)) },
+            { "Gun_Shotgun", (new Vector3(0f, -0.022f, 0.310f), new Vector3(0f, 0.0f, -0.328f)) },
+            { "Gun_Rifle",   (new Vector3(0f, 0.002f, 0.270f), new Vector3(0f, -0.01f, -0.243f)) },
+            { "Gun_DMR",     (new Vector3(0f, 0.006f, 0.240f), new Vector3(0f, -0.02f, -0.305f)) },
+            { "Gun_LMG",     (new Vector3(0f, 0.006f, 0.250f), new Vector3(0f, -0.02f, -0.297f)) },
+        };
 
         static void BuildCombatPlayer()
         {
@@ -166,7 +177,6 @@ namespace Zombies55.EditorTools
                 gun.transform.localPosition = pistol ? PistolGripPos : LongGripPos;
 
                 // Foregrip: the left palm centre, as a palm frame (Y along the fingers, Z out of the palm).
-                var muzzle = FindDeep(gun.transform, "Muzzle");
                 Transform grip;
                 if (pistol)
                 {
@@ -177,9 +187,10 @@ namespace Zombies55.EditorTools
                 else
                 {
                     // Under the handguard, fingers across to the right, palm up, curling round the barrel.
-                    float z = muzzle != null ? muzzle.localPosition.z * 0.45f : 0.3f;
-                    grip = Node("Foregrip", gun.transform, new Vector3(0f, HandguardHeight, Mathf.Max(0.2f, z)));
+                    var fit = LongGunFit[def.ModelName];
+                    grip = Node("Foregrip", gun.transform, fit.foregrip);
                     grip.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.right);
+                    Node("Stock", gun.transform, fit.stock);
                 }
                 SetLayerRecursive(gun, GameLayers.Player);
                 gun.SetActive(pistol);

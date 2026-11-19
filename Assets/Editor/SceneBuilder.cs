@@ -86,6 +86,8 @@ namespace Zombies55.EditorTools
             BuildPedestrians();
             BuildCamera();
             BuildGame();
+            BuildCombat();
+            BuildEnemies();
 
             MarkStatic(_city);
             MarkStatic(_props);

@@ -168,6 +168,107 @@ def make_proxy(hi):
     return px
 
 
+REMOVAL = {"enabled": False}
+
+
+def mark_hidden_body_faces(hi):
+    """Hidden-body-face removal (config cleanup.hidden_body). Marks body-skin faces of HI that are fully covered by
+    clothing in the int face attribute 'removed_body' (1 = remove from the game mesh).
+
+    Rule: a face is BODY if its material name contains one of hidden_body.body_materials, GARMENT if it contains one
+    of garment_materials (everything else: hair, eyes, teeth... is never touched and never counts as cover).
+    A body face is COVERED when 1 + cone_rays rays from its centre (along the face normal and tilted by
+    cone_angle_deg) ALL hit a garment face within max_cover_distance_m (the garment BVH is built from garment faces only).
+    Covered faces are kept when they lie within opening_band_m of a garment OPENING (a garment boundary edge: cuff,
+    collar, hem, ankle), measured from the face centre and from the normal ray's hit point, so nothing shows through
+    when the cloth moves. The PROXY is built from the full HI before this runs, so skin weights still see a watertight body."""
+    from mathutils.bvhtree import BVHTree
+    from mathutils.kdtree import KDTree
+    H = C.get("hidden_body", {})
+    REMOVAL["enabled"] = bool(H.get("enabled", False))
+    me = hi.data
+    attr = me.attributes.get("removed_body") or me.attributes.new("removed_body", 'INT', 'FACE')
+    if not REMOVAL["enabled"]:
+        return
+    mats = [m.name if m else "" for m in me.materials]
+    is_body = [any(k in n for k in H["body_materials"]) for n in mats]
+    is_garm = [any(k in n for k in H["garment_materials"]) for n in mats]
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    garm = [f for f in bm.faces if is_garm[f.material_index]]
+    body = [f for f in bm.faces if is_body[f.material_index]]
+    verts = [v.co.copy() for v in bm.verts]
+    tris = []
+    for f in garm:
+        vs = [v.index for v in f.verts]
+        for k in range(1, len(vs) - 1):
+            tris.append((vs[0], vs[k], vs[k + 1]))
+    bvh = BVHTree.FromPolygons(verts, tris, epsilon=0.0)
+    # garment openings: boundary edges of garment faces, sampled every <= 1 cm
+    pts = []
+    gset = set(f.index for f in garm)
+    for e in bm.edges:
+        lf = [f for f in e.link_faces if f.index in gset]
+        if len(lf) == 1 and len(e.link_faces) == 1:
+            a, b = e.verts[0].co, e.verts[1].co
+            n = max(1, int((a - b).length / 0.01))
+            for k in range(n + 1):
+                pts.append(a.lerp(b, k / n))
+    kd = KDTree(len(pts))
+    for i, p in enumerate(pts):
+        kd.insert(p, i)
+    kd.balance()
+    maxd = float(H["max_cover_distance_m"])
+    band = float(H["opening_band_m"])
+    ang = math.radians(float(H["cone_angle_deg"]))
+    nray = int(H["cone_rays"])
+    removed, band_kept, uncovered, removed_tris = 0, 0, 0, 0
+    area_removed, area_body = 0.0, 0.0
+    layer = bm.faces.layers.int.get("removed_body") or bm.faces.layers.int.new("removed_body")
+    for f in body:
+        c = f.calc_center_median()
+        n = f.normal.normalized()
+        area_body += f.calc_area()
+        t1 = n.cross(Vector((0, 0, 1)))
+        if t1.length < 1e-3:
+            t1 = n.cross(Vector((1, 0, 0)))
+        t1.normalize()
+        t2 = n.cross(t1)
+        dirs = [n] + [(n * math.cos(ang) + (t1 * math.cos(2 * math.pi * k / nray) + t2 * math.sin(2 * math.pi * k / nray)) * math.sin(ang)).normalized()
+                      for k in range(nray)]
+        o = c + n * 1e-4
+        hit0, ok = None, True
+        for i, d in enumerate(dirs):
+            loc, nrm, idx, dist = bvh.ray_cast(o, d, maxd)
+            if loc is None:
+                ok = False
+                break
+            if i == 0:
+                hit0 = loc
+        if not ok:
+            uncovered += 1
+            continue
+        near = min(kd.find(c)[2], kd.find(hit0)[2]) if len(pts) else 1e9
+        if near < band:
+            band_kept += 1
+            continue
+        f[layer] = 1
+        removed += 1
+        removed_tris += len(f.verts) - 2
+        area_removed += f.calc_area()
+    bm.to_mesh(me)
+    # boundary loops of the mesh once the covered faces are gone (the expected count for the game mesh)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[layer]], context='FACES')
+    loops, bedges = pc.boundary_loops(bm)
+    bm.free()
+    REMOVAL.update({"body_faces": len(body), "garment_faces": len(garm), "removed_faces": removed, "removed_tris": removed_tris,
+                    "kept_open_band_faces": band_kept, "kept_not_covered_faces": uncovered,
+                    "removed_area_m2": round(area_removed, 4), "body_area_m2": round(area_body, 4),
+                    "removed_area_fraction": round(area_removed / max(area_body, 1e-9), 4),
+                    "boundary_loops_after_removal": loops, "garment_opening_samples": len(pts)})
+
+
 def make_game(hi, target_tris):
     g = hi.copy()
     g.data = hi.data.copy()
@@ -177,8 +278,15 @@ def make_game(hi, target_tris):
     bm = bmesh.new()
     bm.from_mesh(g.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    lay = bm.faces.layers.int.get("removed_body")
+    if lay is not None and REMOVAL.get("enabled"):
+        gone = [f for f in bm.faces if f[lay]]
+        bmesh.ops.delete(bm, geom=gone, context='FACES')
+        REMOVAL["faces_deleted_from_game"] = len(gone)
     bm.to_mesh(g.data)
     bm.free()
+    if "removed_body" in g.data.attributes:
+        g.data.attributes.remove(g.data.attributes["removed_body"])
     bpy.ops.object.shade_smooth()
     cur = tri_total(g)
     mod = g.modifiers.new("dec", 'DECIMATE')
@@ -266,11 +374,17 @@ def main():
     info["source_tris"] = tri_total(hi)
     info["source_materials"] = len(hi.data.materials)
     proxy = make_proxy(hi)
+    mark_hidden_body_faces(hi)
+    hi_bm = bmesh.new()
+    hi_bm.from_mesh(hi.data)
+    REMOVAL["boundary_loops_source"] = pc.boundary_loops(hi_bm)[0]
+    hi_bm.free()
     info["proxy_tris"] = tri_total(proxy)
     info["proxy"] = PROXY_STATS
     info["proxy_voxel_size"] = C["proxy_voxel_size"]
     game = make_game(hi, CFG["budget"]["lod0_tris"])
     info["game_tris_pre_bake"] = tri_total(game)
+    info["hidden_body_removal"] = REMOVAL
     info["bake"] = bake(hi, game, CFG["budget"]["texture_size"])
     info["texture_size"] = CFG["budget"]["texture_size"]
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "cleanup.blend"))

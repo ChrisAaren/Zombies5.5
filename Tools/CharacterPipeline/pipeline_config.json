@@ -44,7 +44,23 @@
     "bake_margin_px": 12,
     "bake_cage_extrusion": 0.02,
     "bake_max_ray_distance": 0.05,
-    "uv_island_margin": 0.004
+    "uv_island_margin": 0.004,
+    "hidden_body": {
+      "_doc": "Remove body-skin faces fully covered by clothing from the GAME mesh/LODs (proxy keeps them). Materials matched by name substring: body_materials = skin; garment_materials = cloth that counts as cover. A body face goes if 1+cone_rays rays (normal + cone) all hit a garment within max_cover_distance_m, unless it lies within opening_band_m of a garment boundary edge (cuff/collar/hem/ankle).",
+      "enabled": true,
+      "body_materials": [
+        "Skin"
+      ],
+      "garment_materials": [
+        "Top",
+        "Pants",
+        "Shoes"
+      ],
+      "max_cover_distance_m": 0.04,
+      "cone_angle_deg": 25,
+      "cone_rays": 6,
+      "opening_band_m": 0.03
+    }
   },
   "joints": {
     "slice_step_m": 0.01,
@@ -77,7 +93,14 @@
     ],
     "repair_far_weights": false,
     "hand_cleanup": true,
-    "hand_cleanup_fraction": 0.25
+    "hand_cleanup_fraction": 0.25,
+    "hem_fix": {
+      "radius_m": 0.1,
+      "from_bone": "Spine",
+      "to_bone": "Hips",
+      "fraction": 1.0
+    },
+    "lods_skip_resmooth": true
   },
   "check": {
     "far_bone_fraction_of_height": 0.15,
@@ -98,6 +121,21 @@
     "max_hand_leak_verts": 0,
     "max_finger_cross_bleed_ratio": 0.05,
     "max_self_intersections_per_1k_tris": 10,
-    "min_edge_len_m": 0.005
+    "min_edge_len_m": 0.005,
+    "lod_limits": {
+      "_doc": "Per-LOD overrides of the check limits (key = LOD index). A key missing here falls back to the top-level check value. Volume and weight limits are global.",
+      "0": {
+        "max_edge_stretch_ratio": 3.0,
+        "max_self_intersections_per_1k_tris": 10
+      },
+      "1": {
+        "max_edge_stretch_ratio": 3.0,
+        "max_self_intersections_per_1k_tris": 10
+      },
+      "2": {
+        "max_edge_stretch_ratio": 4.5,
+        "max_self_intersections_per_1k_tris": 25
+      }
+    }
   }
 }

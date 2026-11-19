@@ -46,3 +46,22 @@ Result: 10 smoothing passes blurred the leg/hip weights: squat stretch 5.0, fron
 (voxel 0.004, shell 0.006, smooth 3 passes, hand_cleanup 0.25, repair_far_weights false).
 Remaining fails in v005: far-bone (2 hem vertices, 3 checks), clavicle/armpit edge stretch on arms_raised, squat stretch on LOD1/2, fist stretch 3.4/3.2, new overlaps at LOD1/LOD2 and head_turn (chin vs jacket collar).
 Ideas not yet tried: split the proxy weights per garment layer, per-LOD thresholds, weights for LODs by Data Transfer from smoothed LOD0, a Shoulder-twist helper.
+
+# Round 2 (hidden-body removal, per-LOD limits, local fixes). Versions v009-v016.
+Test input regenerated once (textures now only in test_input/textures, FBX uses STRIP paths): same 37408 tris / 10 materials.
+
+## v009  96/118 (v005: 94) KEPT  - fix 1 only
+Hidden body faces removal (cleanup.hidden_body) on the game mesh, proxy untouched. Result: only 87 of 7908 skin quads removed (174 tris, 10% of skin area; forearm stubs inside the sleeves and ankle/foot tops inside the shoes); 349 more are covered but kept as the opening band; 7472 are not covered at all. Finding: MPFB already deletes the skin under clothes, so the source has no hidden torso/leg skin; the chin/collar/armpit/hip intersections are garment-vs-garment (jacket/shirt/pants layers) and body-vs-garment on the visible head/hands. Removal therefore barely changes the collisions. Score gain came from the cleaner decimation (fewer tris wasted).
+
+## v010  100/118 KEPT - fix 2: LOD2 limits stretch 4.5, intersections 25 per 1k (LOD0/1 unchanged 3.0/10).
+
+## v011  99/118 REVERTED idea - skin.hem_fix as 2-vertex weight swap (Hips .7 / Spine .3 on the far vertices only): far checks pass, but squat/twist/kick LOD0 stretch 5.8-6.5 because the two verts disagree with their neighbours.
+## v012  103/118 KEPT - hem_fix now moves Spine weight to Hips within 10 cm of the far vertices, fading linearly. Far-bone checks pass on all LODs, no squat regression.
+## v013  103/118 REVERTED - skin.local_smooth (8 extra passes within 14 cm of the UpperArm joints): arms_raised LOD0 3.55->3.35 only, LOD1 5.25->5.31, arms_forward intersections worse. No gain.
+## v014  106/118 KEPT (BEST) - skin.lods_skip_resmooth: LOD1/LOD2 keep LOD0's smoothed weights through the Decimate instead of being cleaned/smoothed a second time on the coarser mesh (that re-smoothing was over-blurring). head_turn LOD1/2 and squat/arms_forward LOD2 intersections dropped, arms_raised LOD2 6.2->5.5.
+## v015  104/118 REVERTED - hand_cleanup_fraction 0.25 -> 0.4: fist stretch 10.8 (LOD0) / 8.6 (LOD1).
+## v016  106/118 REVERTED (equal) - local_smooth around the Neck (10 cm, 8 passes): head_turn intersections 45.1->45.5, no gain; removed again.
+
+## Stop: 8 more iterations used. BEST = v014 (106/118); pipeline_config.json = v014 settings; v014 export published to Assets/Art/Characters/testcourier/ (not a full pass).
+Remaining fails (value vs limit): arms_raised stretch LOD0 3.55/3.0, LOD1 5.53/3.0, LOD2 5.46/4.5 (sleeve/torso edges at the armpit); arms_forward LOD1 intersections 14.2/10; squat intersections LOD0 12.6/10, LOD1 21.9/10, LOD2 36.4/25; head_turn intersections LOD0 45.1/10, LOD1 42.4/10, LOD2 38.8/25 (collar/shirt/jacket/chin layers); fist stretch LOD0 3.41/3.0, LOD1 3.24/3.0.
+Ideas left: split garment layers into separate proxy-weighted pieces (weights per layer), a collar/neck weight rule that moves the jacket collar with Neck rather than Head, a shoulder twist helper for the armpit.

@@ -262,3 +262,22 @@ def hand_tips(V, T, W, d, perp_max=0.13, max_r=0.30, min_frac=0.45, merge=0.02, 
     lat = lat / max(np.linalg.norm(lat), 1e-9)
     tips.sort(key=lambda t: float(np.dot(t["pos"], lat)))
     return tips, {"region_verts": int(len(idx)), "max_geodesic": float(maxd), "tips_found": len(tips)}
+
+
+def boundary_loops(bm):
+    """Number of connected boundary-edge components of a bmesh (same definition check.py uses for game/source)."""
+    parent = {}
+
+    def find(x):
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    n = 0
+    for e in bm.edges:
+        if len(e.link_faces) == 1:
+            n += 1
+            a, b = find(e.verts[0].index), find(e.verts[1].index)
+            if a != b:
+                parent[a] = b
+    return len({find(v) for v in list(parent)}), n

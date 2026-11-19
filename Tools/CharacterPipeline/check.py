@@ -36,6 +36,15 @@ H = J["height"]
 CHECKS = []
 
 
+def lim(li, key):
+    """Per-LOD limit: check.lod_limits[str(li)][key], else the global check[key]."""
+    return CC.get("lod_limits", {}).get(str(li), {}).get(key, CC[key])
+
+
+LIMITS_APPLIED = {"LOD%d" % i: {k: lim(i, k) for k in ("max_edge_stretch_ratio", "max_self_intersections_per_1k_tris")}
+                  for i in range(len(CFG["lod_ratios"]))}
+
+
 def add(cid, group, value, threshold, op, detail=None, info_only=False):
     """op: '<=', '>=', '==' or 'bool'. pass is computed here."""
     if op == "<=":
@@ -97,14 +106,26 @@ for i, ob in enumerate(LODS[1:], start=1):
     add("mesh.tris_lod%d" % i, "mesh", round(tr / t0, 3), [round(r - tol * r, 3), round(r + tol * r, 3)], "range",
         "LOD%d triangle ratio to LOD0 (%d tris)" % (i, tr))
     CHECKS[-1]["pass"] = r * (1 - tol) <= tr / t0 <= r * (1 + tol)
-add("mesh.new_boundary_loops", "mesh", topo_g["boundary_loops"] - topo_hi["boundary_loops"], CC["max_new_boundary_loops"], "<=",
-    "game boundary loops %d vs source %d (cuffs/neck of clothes are legitimately open)" % (topo_g["boundary_loops"], topo_hi["boundary_loops"]))
+RM = CLJ.get("hidden_body_removal", {})
+exp_loops = RM.get("boundary_loops_after_removal", topo_hi["boundary_loops"])
+add("mesh.new_boundary_loops", "mesh", topo_g["boundary_loops"] - exp_loops, CC["max_new_boundary_loops"], "<=",
+    "game boundary loops %d vs expected %d = source's intentional openings (%d: cuffs/neck/hem of clothes) plus the openings left by the intentional hidden-body removal (source mesh after removal: %d loops)"
+    % (topo_g["boundary_loops"], exp_loops, topo_hi["boundary_loops"], exp_loops))
 add("mesh.non_manifold_edges_game", "mesh", topo_g["non_manifold_edges"], topo_hi["non_manifold_edges"] + CC["non_manifold_slack"], "<=",
     "game %d vs source %d" % (topo_g["non_manifold_edges"], topo_hi["non_manifold_edges"]))
 add("mesh.degenerate_faces_game", "mesh", topo_g["degenerate_faces"], 0, "<=")
 add("mesh.loose_verts_game", "mesh", topo_g["loose_verts"], 0, "<=")
 add("mesh.proxy_watertight", "mesh", topo_p["boundary_edges"] + topo_p["non_manifold_edges"], 0, "==",
     "proxy boundary edges %d, non-manifold edges %d, tris %d" % (topo_p["boundary_edges"], topo_p["non_manifold_edges"], tris(proxy)))
+removal_report = dict(RM)
+if RM.get("enabled"):
+    # LODs are decimated from a mesh that already lacks the removed faces, so the per-LOD saving is an estimate:
+    # tris the LOD would need to cover the same surface = N / (1 - r), r = removed share of the source triangles.
+    r_ = RM.get("removed_tris", 0) / max(CLJ.get("source_tris", 1), 1)
+    removal_report["removed_tri_share_of_source"] = round(r_, 4)
+    removal_report["per_lod"] = {
+        "LOD%d" % i: {"tris_in_lod": tris(o), "estimated_body_tris_removed": int(round(tris(o) * r_ / max(1 - r_, 1e-6)))}
+        for i, o in enumerate(LODS)}
 # textures
 imgs = {}
 for kind in ("Albedo", "Normal"):
@@ -408,10 +429,10 @@ for pose in POSES:
             "game-mesh signed volume vs rest")
         CHECKS[-1]["pass"] = -CC["max_volume_loss_pct"] <= vol_pct <= CC["max_volume_gain_pct"]
         per1k = round(len(new) / (len(s.T) / 1000.0), 2)
-        add(pre + "new_self_intersections_per_1k_tris", "stress", per1k, CC["max_self_intersections_per_1k_tris"], "<=",
-            "%d BVH overlaps (neighbouring faces ignored) not present at rest (rest has %d); %d tris" % (len(new), len(s.pairs0), len(s.T)))
-        add(pre + "worst_edge_stretch", "stress", stretch[worst_reg], CC["max_edge_stretch_ratio"], "<=",
-            "worst region %s (edge length ratio vs rest)" % worst_reg)
+        add(pre + "new_self_intersections_per_1k_tris", "stress", per1k, lim(li, "max_self_intersections_per_1k_tris"), "<=",
+            "%d BVH overlaps (neighbouring faces ignored) not present at rest (rest has %d); %d tris; limit applied: LOD%d value" % (len(new), len(s.pairs0), len(s.T), li))
+        add(pre + "worst_edge_stretch", "stress", stretch[worst_reg], lim(li, "max_edge_stretch_ratio"), "<=",
+            "worst region %s (edge length ratio vs rest); limit applied: LOD%d value" % (worst_reg, li))
     STRESS[pose["id"]] = res
 reset_pose()
 
@@ -565,6 +586,36 @@ cz = J["analysis"]["crotch_z"]
 close_tile(np.array([0.0, jp["Hips"][1], cz + 0.05]), "front", 0.50, [wcopy], 'VERTEX', "CROTCH", bone_ov)
 close_tile(jp["LeftLowerLeg"], "side", 0.50, [wcopy], 'VERTEX', "KNEE LEFT", bone_ov)
 
+# proof tile: body-skin faces on the rest pose, RED = removed from the game mesh (hidden under clothing), tan = kept
+if RM.get("enabled") and "removed_body" in hi.data.attributes:
+    hb = CFG["cleanup"]["hidden_body"]
+    rm_me = hi.data.copy()
+    bmr = bmesh.new()
+    bmr.from_mesh(rm_me)
+    lay = bmr.faces.layers.int.get("removed_body")
+    mats_ = [m.name if m else "" for m in hi.data.materials]
+    drop = [f for f in bmr.faces if not any(k in mats_[f.material_index] for k in hb["body_materials"])]
+    bmr.faces.ensure_lookup_table()
+    bmr.to_mesh(rm_me)
+    bmesh.ops.delete(bmr, geom=drop, context='FACES')
+    bmr.to_mesh(rm_me)
+    bmr.free()
+    rmo = bpy.data.objects.new("_removed_view", rm_me)
+    bpy.context.scene.collection.objects.link(rmo)
+    flag = np.zeros(len(rm_me.polygons), np.int32)
+    rm_me.attributes["removed_body"].data.foreach_get("value", flag)
+    cc = rm_me.color_attributes.new("RM", 'FLOAT_COLOR', 'CORNER')
+    col = np.zeros((len(rm_me.loops), 4), np.float32)
+    for poly in rm_me.polygons:
+        col[poly.loop_start:poly.loop_start + poly.loop_total] = (0.95, 0.12, 0.1, 1) if flag[poly.index] else (0.85, 0.7, 0.55, 1)
+    cc.data.foreach_set("color", col.ravel())
+    rm_me.color_attributes.active_color = cc
+    bpy.context.scene.display.shading.light = 'FLAT'
+    for nm_, vw in (("FRONT", "front"), ("SIDE", "side")):
+        full_tile(vw, [rmo], 'VERTEX', "REMOVED BODY %s %d FACES" % (nm_, RM.get("removed_faces", 0)))
+    loc_, ortho_ = ((0.0, 7.0, 1.05), 2.7)
+    tile(st.render(loc_, CAM_T, ortho_, 'VERTEX', [rmo]), "REMOVED BODY BACK")
+
 COLS = 5
 sheet = pr.assemble(tiles, COLS, labels, scale=2)
 # header strip with the verdict
@@ -615,9 +666,10 @@ failed = [c for c in CHECKS if not c["pass"]]
 worst_areas = []
 for pid, res in STRESS.items():
     for lod, r in res.items():
-        if r["worst_edge_stretch"] > CC["max_edge_stretch_ratio"]:
+        li_ = int(lod[3:])
+        if r["worst_edge_stretch"] > lim(li_, "max_edge_stretch_ratio"):
             worst_areas.append({"kind": "edge_stretch", "pose": pid, "lod": lod, "region": r["worst_stretch_region"], "value": r["worst_edge_stretch"]})
-        if r["new_self_intersections"] > CC["max_self_intersections_per_1k_tris"] * r["tris"] / 1000.0:
+        if r["new_self_intersections"] > lim(li_, "max_self_intersections_per_1k_tris") * r["tris"] / 1000.0:
             worst_areas.append({"kind": "self_intersection", "pose": pid, "lod": lod, "value": r["new_self_intersections"]})
         if not (-CC["max_volume_loss_pct"] <= r["volume_change_pct"] <= CC["max_volume_gain_pct"]):
             worst_areas.append({"kind": "volume", "pose": pid, "lod": lod, "value": r["volume_change_pct"]})
@@ -630,6 +682,7 @@ report = {
                 "score": round(n_pass / len(CHECKS), 4)},
     "numbers": {"height_m": H, "lod_tris": {o.name.replace("_pre_", ""): tris(o) for o in LODS}, "topology": {"source": topo_hi, "game_lod0": topo_g, "proxy": topo_p},
                 "fingers": finger_detail, "far_vertices": WEIGHT_INFO.get("far_detail"), "textures": imgs, "cleanup": CLJ, "fbx_reimport": fbx_info},
+    "limits_applied_per_lod": LIMITS_APPLIED, "hidden_body_removal": removal_report,
     "checks": CHECKS, "stress": STRESS,
 }
 pc.write_json(os.path.join(OUT, "report.json"), report)

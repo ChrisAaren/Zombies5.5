@@ -78,7 +78,47 @@ def repair_far_weights(ob):
     return fixed
 
 
-def smooth_weights(ob, patterns, passes, factor):
+def hem_fix(ob, cfg):
+    """Local correction after smoothing. Vertices whose strongest bone is farther than the far-bone limit mark a
+    problem spot (jacket-hem verts that heat weighting tied to Spine). Within cfg.radius_m of those vertices the
+    weight on cfg.from_bone is moved to cfg.to_bone, fading out linearly with distance, so neighbours stay consistent
+    (v011 changed the two vertices alone and the squat/twist stretched)."""
+    bn = [b.name for b in arm.data.bones]
+    HA = np.array([b.head_local[:] for b in arm.data.bones])
+    TA = np.array([b.tail_local[:] for b in arm.data.bones])
+    names = {vg.index: vg.name for vg in ob.vertex_groups}
+    P = np.array([v.co[:] for v in ob.data.vertices])
+    lim = CFG["check"]["far_bone_fraction_of_height"] * P[:, 2].max()
+    seeds = []
+    for v in ob.data.vertices:
+        if not v.groups:
+            continue
+        g = max(v.groups, key=lambda x: x.weight)
+        i = bn.index(names[g.group])
+        ab = TA[i] - HA[i]
+        t = np.clip((P[v.index] - HA[i]) @ ab / max(float(ab @ ab), 1e-12), 0, 1)
+        if np.linalg.norm(P[v.index] - (HA[i] + ab * t)) > lim:
+            seeds.append(v.index)
+    if not seeds:
+        return 0
+    r = float(cfg["radius_m"])
+    d = np.min(np.linalg.norm(P[:, None, :] - P[seeds][None], axis=2), axis=1)
+    src, dst = ob.vertex_groups[cfg["from_bone"]], ob.vertex_groups[cfg["to_bone"]]
+    moved = 0
+    for vi in np.nonzero(d < r)[0].tolist():
+        try:
+            w = src.weight(vi)
+        except RuntimeError:
+            continue
+        k = float(cfg["fraction"]) * (1.0 - d[vi] / r)
+        mv = w * k
+        src.add([vi], w - mv, 'REPLACE')
+        dst.add([vi], mv, 'ADD')
+        moved += 1
+    return moved
+
+
+def smooth_weights(ob, patterns, passes, factor, mask=None):
     """Laplacian smoothing of the listed groups (substring match) over the mesh edges. The total weight held by
     the smoothed groups at each vertex is preserved, so all other groups (fingers!) are untouched."""
     me = ob.data
@@ -102,7 +142,8 @@ def smooth_weights(ob, patterns, passes, factor):
         np.add.at(acc, ed[:, 0], W2[ed[:, 1]])
         np.add.at(acc, ed[:, 1], W2[ed[:, 0]])
         avg = acc / np.maximum(deg, 1)[:, None]
-        W2 = np.where(deg[:, None] > 0, (1 - factor) * W2 + factor * avg, W2)
+        upd = (deg > 0) if mask is None else ((deg > 0) & mask)
+        W2 = np.where(upd[:, None], (1 - factor) * W2 + factor * avg, W2)
     m1 = W2.sum(axis=1)
     W2 *= (mass0 / np.maximum(m1, 1e-9))[:, None]
     changed = np.nonzero(np.abs(W2 - Wm).max(axis=1) > 1e-5)[0]
@@ -147,17 +188,34 @@ def hand_cleanup(ob):
     return moved
 
 
-def finish_weights(ob):
+def finish_weights(ob, is_lod=False):
+    # LODs inherit LOD0's already cleaned/smoothed weights through the Decimate; skin.lods_skip_resmooth skips a second pass
+    skip = is_lod and SC.get("lods_skip_resmooth")
     select_only(ob)
     bpy.ops.object.vertex_group_clean(group_select_mode='ALL', limit=float(SC["clean_below"]), keep_single=True)
-    if SC.get("hand_cleanup"):
+    if SC.get("hand_cleanup") and not skip:
         info.setdefault("hand_cleanup_verts", {})[ob.name] = hand_cleanup(ob)
     bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=int(SC["max_influences"]))
     if SC.get("repair_far_weights"):
         info.setdefault("far_repaired", {})[ob.name] = repair_far_weights(ob)
-    if SC["smooth_passes"] and SC["smooth_groups"]:
+    if SC["smooth_passes"] and SC["smooth_groups"] and not skip:
         smooth_weights(ob, SC["smooth_groups"], int(SC["smooth_passes"]), float(SC["smooth_factor"]))
         bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=int(SC["max_influences"]))
+    if SC.get("local_smooth") and not skip:
+        ls = SC["local_smooth"]
+        P_ = np.array([v.co[:] for v in ob.data.vertices])
+        mask = np.zeros(len(P_), bool)
+        for side in ("Left", "Right", ""):
+            bone = arm.data.bones.get(side + ls["center_bone"])
+            if bone is None:
+                continue
+            c = np.array(bone.head_local[:])
+            mask |= np.linalg.norm(P_ - c, axis=1) < float(ls["radius_m"])
+        smooth_weights(ob, SC["smooth_groups"], int(ls["passes"]), float(SC["smooth_factor"]), mask)
+        bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=int(SC["max_influences"]))
+        info.setdefault("local_smooth_verts", {})[ob.name] = int(mask.sum())
+    if SC.get("hem_fix") and not skip:
+        info.setdefault("hem_fixed", {})[ob.name] = hem_fix(ob, SC["hem_fix"])
     bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL', lock_active=False)
 
 
@@ -213,7 +271,7 @@ for i, r in enumerate(ratios[1:], start=1):
     mod.ratio = float(r)
     mod.use_collapse_triangulate = True
     bpy.ops.object.modifier_apply(modifier=mod.name)
-    finish_weights(o)
+    finish_weights(o, True)
     am = o.modifiers.new("Armature", 'ARMATURE')
     am.object = arm
     o.parent = arm

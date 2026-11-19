@@ -3,7 +3,7 @@
 Stand-in for an external sculpt. Uses MPFB (CC0 MakeHuman assets), so run WITHOUT --factory-startup:
   "C:\Program Files\Blender Foundation\Blender 5.2\blender.exe" -b --python Tools/CharacterPipeline/make_test_input.py
 
-Output: Tools/CharacterPipeline/test_input/testcourier_source.fbx (+ textures/ next to it, plus a .blend copy).
+Output: Tools/CharacterPipeline/test_input/testcourier_source.fbx (textures live ONLY in test_input/textures/; the FBX stores bare file names and importers find them by recursive search; plus a .blend copy).
 Body, clothes, hair, brows, lashes, eyes, teeth and tongue are joined into ONE mesh with 8+ materials.
 """
 import bpy, os, sys, math, traceback
@@ -76,7 +76,7 @@ def main():
     bpy.ops.export_scene.fbx(
         filepath=out, use_selection=True, apply_scale_options='FBX_SCALE_ALL', axis_forward='-Z', axis_up='Y',
         bake_space_transform=True, apply_unit_scale=True, mesh_smooth_type='FACE', object_types={'MESH'},
-        path_mode='COPY', embed_textures=False)
+        path_mode='STRIP', embed_textures=False)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "testcourier_source.blend"), copy=True)
     print("EXPORTED", out, os.path.getsize(out))
 

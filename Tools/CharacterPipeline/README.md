@@ -17,8 +17,8 @@ latest folder. Per-stage logs: `vNNN/log_stageN.txt`. Env `BLENDER` overrides th
 
 | script | does | reads | writes |
 |---|---|---|---|
-| `make_test_input.py` (NO `--factory-startup`, needs MPFB) | generates the unrigged A-pose test character, one joined mesh, 10 materials | MPFB assets | `test_input/testcourier_source.fbx` (+`.fbm/`, `textures/`, `.blend`) |
-| `cleanup.py --character --source --out` | stage 1: apply transforms, face -Y, feet on z=0, scale; watertight voxel PROXY; decimated, UV-unwrapped GAME mesh with baked albedo + normal | source | `cleanup.blend` (HI, PROXY, `<name>_LOD0`), `cleanup.json`, `textures/*.png` |
+| `make_test_input.py` (NO `--factory-startup`, needs MPFB) | generates the unrigged A-pose test character, one joined mesh, 10 materials | MPFB assets | `test_input/testcourier_source.fbx` (+ `textures/`, `.blend`; textures exist ONCE in `textures/`, the FBX stores bare names with `path_mode='STRIP'` and importers find them by recursive search) |
+| `cleanup.py --character --source --out` | stage 1: apply transforms, face -Y, feet on z=0, scale; watertight voxel PROXY (from the full mesh); hidden body faces removed (see below); decimated, UV-unwrapped GAME mesh with baked albedo + normal | source | `cleanup.blend` (HI, PROXY, `<name>_LOD0`), `cleanup.json`, `textures/*.png` |
 | `joints.py --out` | stage 2: crotch/armpit/neck/ankle from slices, arm axis + wrist from perpendicular sections, fingertips from geodesic maxima; standard proportions where ambiguous (`estimated`) | `cleanup.blend` | `joints.json` (pos, confidence, method per joint, hand parameters) |
 | `skeleton.py --out` | stage 3: deform-only armature via `Tools/Blender/bl_skeleton.build_armature_from_joints` (same names/parents/rolls as the project skeleton), left/right mirrored | `joints.json` | `skeleton.blend`, `skeleton.json` |
 | `skin.py --character --out` | stage 4: auto weights on PROXY, Data Transfer to the game mesh, hand cleanup, smoothing, 4 influences, normalize, LOD1/LOD2 by Decimate, FBX export | `skeleton.blend` | `skin.blend`, `skin.json`, `export/<name>.fbx` + textures |
@@ -39,6 +39,17 @@ Unity scale: FBX export uses `FBX_SCALE_ALL`, `apply_unit_scale`, axes -Z forwar
 - `check`: `far_bone_fraction_of_height`, `weight_sum_tolerance`, `mirror_tolerance_m`, `max_volume_loss_pct/gain_pct`,
   `max_edge_stretch_ratio`, `min_edge_len_m`, `max_self_intersections_per_1k_tris`, `max_hand_leak_verts`,
   `max_finger_cross_bleed_ratio`, `max_new_boundary_loops`, `tile_px`.
+
+## Hidden body face removal (`cleanup.hidden_body`)
+Game mesh and LODs only; the PROXY is built from the full mesh first, so automatic weights still see a watertight body.
+Rule: faces whose material name contains an entry of `body_materials` (skin) are BODY, `garment_materials` (Top, Pants, Shoes) are cover; hair/eyes/teeth are never touched.
+A body face is removed when 1 + `cone_rays` rays from its centre (normal + `cone_angle_deg` cone) all hit a garment within `max_cover_distance_m`, unless it lies within `opening_band_m` of a garment boundary edge (cuff, collar, hem, ankle). `removed_body` face attribute is kept on HI for the sheet tiles (REMOVED BODY front/side/back, red = removed). `report.json.hidden_body_removal` lists faces/tris/area removed, kept band faces and an estimated per-LOD saving; `mesh.new_boundary_loops` compares against source loops plus the loops the removal leaves. Note: the MPFB test character already lacks skin under its clothes, so only about 87 faces are removed there.
+
+## Per-LOD limits (`check.lod_limits`)
+`check.lod_limits["0"|"1"|"2"]` override `max_edge_stretch_ratio` and `max_self_intersections_per_1k_tris` per LOD (missing key = global value). Defaults: LOD0/LOD1 3.0 and 10; LOD2 (lowest detail) 4.5 and 25. Volume and weight limits are global. `report.json.limits_applied_per_lod` lists what was used, and each stress check detail names its LOD limit.
+
+## Other skin options
+`skin.hem_fix` (moves one bone's weight to another within a radius of far-bone vertices), `skin.local_smooth` (extra smoothing near a joint), `skin.lods_skip_resmooth` (LODs keep LOD0's smoothed weights).
 
 ## Reading `report.json`
 `overall_pass`, `summary` (`failed_ids`, `worst_areas` = poses/regions over a limit, `score` = passed/total),

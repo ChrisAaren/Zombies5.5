@@ -54,7 +54,7 @@ namespace Zombies55
                 HipSpread = 3.5f, AimSpread = 0.1f, Range = 200f, HeadshotMultiplier = 3f, RecoilPitch = 3f, RecoilYaw = 0.6f,
                 ModelName = "Gun_DMR" },
             new WeaponDefinition { Id = "atlas", DisplayName = "Atlas LMG", Cost = 3000, Mode = FireMode.Auto,
-                Damage = 44, RoundsPerMinute = 600, MagazineSize = 75, MaxReserve = 300, ReloadSeconds = 4.0f,
+                Damage = 44, RoundsPerMinute = 600, MagazineSize = 75, MaxReserve = 300, ReloadSeconds = 2.9f,
                 HipSpread = 3.2f, AimSpread = 1.0f, RecoilPitch = 1.0f, RecoilYaw = 0.7f, ModelName = "Gun_LMG" },
         };
 

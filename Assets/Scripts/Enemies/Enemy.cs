@@ -23,6 +23,12 @@ namespace Zombies55
         [SerializeField] float windupSeconds = 0.45f;
         [SerializeField] float recoverSeconds = 0.5f;
         [SerializeField] float attackCooldown = 1.1f;
+        [Tooltip("Forward root slide over the lunge (the clip is in place): metres, between lungeStart and lungeEnd seconds into the attack.")]
+        [SerializeField] float lungeMeters = 0.75f;
+        [SerializeField] float lungeStart = 0.32f;
+        [SerializeField] float lungeEnd = 0.50f;
+        [Tooltip("The lunge never carries the body closer than this to the player.")]
+        [SerializeField] float lungeStopDistance = 0.9f;
         [SerializeField] float attackDamage = PlayerHealth.MeleeDamage;
 
         [Header("Damage")]
@@ -56,6 +62,7 @@ namespace Zombies55
 #pragma warning restore CS0067
 
         NavMeshAgent _agent;
+        float _lungeTotal, _lungeDone;
         Collider[] _colliders;
         EnemyAnimation _anim;
         RoundManager _owner;
@@ -210,6 +217,8 @@ namespace Zombies55
                         _stateTimer = 0f;
                         _agent.isStopped = true;
                         _agent.velocity = Vector3.zero;
+                        _lungeTotal = Mathf.Min(lungeMeters, Mathf.Max(0f, dist - lungeStopDistance));
+                        _lungeDone = 0f;
                         if (_anim != null) _anim.PlayAttack();
                     }
                     CheckStuck(dt, dist > 3f, false);
@@ -218,6 +227,7 @@ namespace Zombies55
                 case State.Windup:
                     _stateTimer += dt;
                     Face(toPlayer, dt);
+                    Lunge(_stateTimer);
                     if (_stateTimer >= windupSeconds)
                     {
                         if (dist <= hitRange && PlayerHealth.Instance.IsAlive) Strike(player, toPlayer);
@@ -229,6 +239,7 @@ namespace Zombies55
 
                 case State.Recover:
                     _stateTimer += dt;
+                    Lunge(windupSeconds + _stateTimer);
                     if (_stateTimer >= recoverSeconds)
                     {
                         _state = State.Chase;
@@ -237,6 +248,17 @@ namespace Zombies55
                     }
                     break;
             }
+        }
+
+        // The attack clip has no root motion: the body slides forward over the lunge, eased in and out.
+        void Lunge(float attackTime)
+        {
+            if (_lungeTotal <= 0f || !_agent.enabled) return;
+            float p = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(lungeStart, lungeEnd, attackTime));
+            float step = _lungeTotal * p - _lungeDone;
+            if (step <= 0f) return;
+            _lungeDone += step;
+            _agent.Move(transform.forward * step);
         }
 
         void Strike(Transform player, Vector3 toPlayer)

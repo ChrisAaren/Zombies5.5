@@ -10,7 +10,8 @@ namespace Zombies55
     {
         public const int SlotCount = 2;
 
-        const float SwapSeconds = 0.35f;
+        // The WeaponSwap clip is 0.47 s (14 frames at 30 fps); the model changes at frame 6.
+        const float SwapSeconds = 0.47f;
         const float FireBufferSeconds = 0.12f;
 
         public static PlayerWeapons Instance { get; private set; }
@@ -27,6 +28,10 @@ namespace Zombies55
         // Extras for the rest of the combat layer.
         public float LastFireTime { get; private set; } = -999f;
         public bool IsSwapping => Time.time < _swapEnd;
+        // Pump shotgun tube load (when its clips exist): shells go in one at a time and firing interrupts the reload.
+        public bool IsTubeLoading => IsReloading && _tube;
+        public bool TubeMoreShells => _tubeMore;
+        public float TubeSpeed => _tubeSpeed;
         public float AimBlend => _aimBlend;
 
 #pragma warning disable CS0067 // raised by the implementation
@@ -49,6 +54,10 @@ namespace Zombies55
         float _reloadStart;
         float _reloadDuration;
         int _reloadStage;
+        bool _tube, _tubeMore;
+        int _tubeStage, _tubeShellsLeft;
+        float _tubeSpeed = 1f, _tubeStageStart, _tubeTotal, _tubeElapsedBase;
+        float _tubeStartLen, _tubeShellLen, _tubeEndLen;
         float _bloom;
         float _lastShotTime = -999f;
         float _aimBlend;
@@ -120,6 +129,7 @@ namespace Zombies55
                 if (i == ActiveSlot)
                 {
                     IsReloading = false;
+                    _tube = false;
                     ReloadProgress = 0f;
                     SyncAmmo();
                 }
@@ -159,6 +169,7 @@ namespace Zombies55
             else if (IsReloading && !active)
             {
                 _reloadStart += dt; // time passes only while running
+                _tubeStageStart += dt;
             }
 
             UpdateSpread(def, dt);
@@ -196,6 +207,8 @@ namespace Zombies55
 
             bool want = def.Mode == FireMode.Auto ? held : Time.time <= _fireBufferUntil;
             if (!want) return;
+            // Firing interrupts a tube reload as soon as there is a shell in the gun.
+            if (IsReloading && _tube && _mag[ActiveSlot] > 0 && !IsSwapping) CancelTubeReload();
             if (IsReloading || IsSwapping) return;
             if (_player != null && _player.IsSprinting) return;
             if (Time.time < _nextFireTime) return;
@@ -228,12 +241,72 @@ namespace Zombies55
             _reloadStart = Time.time;
             _reloadDuration = Mathf.Max(0.2f, def.ReloadSeconds);
             _reloadStage = 0;
+            _tube = false;
+            if (def.Mode == FireMode.Pump && _pose != null && _pose.TubeClipsPresent) BeginTubeReload(def);
             CombatAudio.Instance?.PlayReloadStage(0);
+        }
+
+        void BeginTubeReload(WeaponDefinition def)
+        {
+            _pose.TubeClipLengths(out _tubeStartLen, out _tubeShellLen, out _tubeEndLen);
+            int missing = Mathf.Min(def.MagazineSize - _mag[ActiveSlot], _res[ActiveSlot]);
+            // Clip speed that lands a full tube on ReloadSeconds, within the 0.8-1.3 playback range.
+            float fullClip = _tubeStartLen + _tubeEndLen + _tubeShellLen * def.MagazineSize;
+            _tubeSpeed = Mathf.Clamp(fullClip / Mathf.Max(0.2f, def.ReloadSeconds), 0.8f, 1.3f);
+            _tube = true;
+            _tubeStage = 0;
+            _tubeShellsLeft = missing;
+            _tubeMore = missing > 1;
+            _tubeStageStart = Time.time;
+            _tubeElapsedBase = 0f;
+            _tubeTotal = (_tubeStartLen + _tubeEndLen + _tubeShellLen * missing) / _tubeSpeed;
+        }
+
+        void CancelTubeReload()
+        {
+            IsReloading = false;
+            ReloadProgress = 0f;
+            _tube = false;
+        }
+
+        // Start clip, then one shell clip per shell (the round is added when its clip ends), then the pump.
+        void UpdateTubeReload()
+        {
+            float stageLen = (_tubeStage == 0 ? _tubeStartLen : _tubeStage == 1 ? _tubeShellLen : _tubeEndLen) / _tubeSpeed;
+            float done = _tubeElapsedBase + (Time.time - _tubeStageStart);
+            ReloadProgress = Mathf.Clamp01(done / Mathf.Max(0.01f, _tubeTotal));
+            if (Time.time - _tubeStageStart < stageLen) return;
+            _tubeElapsedBase += stageLen;
+            _tubeStageStart += stageLen;
+            if (_tubeStage == 0)
+            {
+                _tubeStage = 1;
+                CombatAudio.Instance?.PlayReloadStage(1);
+            }
+            else if (_tubeStage == 1)
+            {
+                int slot = ActiveSlot;
+                _mag[slot]++;
+                _res[slot]--;
+                _tubeShellsLeft--;
+                SyncAmmo();
+                CombatAudio.Instance?.PlayReloadStage(1);
+                _tubeMore = _tubeShellsLeft > 1;
+                if (_tubeShellsLeft <= 0) _tubeStage = 2;
+            }
+            else
+            {
+                IsReloading = false;
+                ReloadProgress = 0f;
+                _tube = false;
+                CombatAudio.Instance?.PlayReloadStage(2);
+            }
         }
 
         void UpdateReload()
         {
             if (!IsReloading) return;
+            if (_tube) { UpdateTubeReload(); return; }
             ReloadProgress = Mathf.Clamp01((Time.time - _reloadStart) / _reloadDuration);
             if (_reloadStage == 0 && ReloadProgress > 0.5f)
             {
@@ -263,6 +336,7 @@ namespace Zombies55
         {
             ActiveSlot = slot;
             IsReloading = false;
+            _tube = false;
             ReloadProgress = 0f;
             _bloom = 0f;
             _fireBufferUntil = 0f;

@@ -98,6 +98,8 @@ namespace Zombies55.EditorTools
         {
             "Idle", "Walk", "Jog", "Sprint", "WalkBack", "StrafeLeft", "StrafeRight", "Fall",
             "AimPistol", "AimRifle", "HoldRifleLow", "EnemyIdle", "Shamble", "EnemyJog", "EnemySprint",
+            "Run", "AimWalk", "AimWalkBack", "AimStrafeLeft", "AimStrafeRight", "AimWalkFL", "AimWalkFR", "AimWalkBL", "AimWalkBR",
+            "PistolCarry", "ShotgunLoadShell",
         };
 
         // MPFB_Courier and MPFB_Hollow: Humanoid, avatar from the T-pose model. Each Anim_*: Humanoid, avatar created from the

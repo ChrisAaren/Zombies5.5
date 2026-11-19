@@ -269,3 +269,30 @@ Quick verification list in Play Mode: (a) jog at full speed and count foot conta
 - [S19] Pump shotgun loading: https://www.ammoland.com/2026/07/the-valhalla-drill-mastering-speed-reloads-with-shotguns/ , https://www.shootingillustrated.com/content/5-must-know-drills-for-your-home-defense-shotgun/
 - [S20] Recoil handling and shoulder pocket: https://boondocksfta.com/2021/09/tips-to-improve-your-defensive-shooting/ , https://flatlinefiberco.com/how-to-manage-rifle-recoil-for-smoother-shooting/ , https://g2precision.com/science-recoil-management-ar15/
 - [S21] Zombie locomotion: https://mocaponline.com/blogs/mocap-news/horror-game-animation-guide , https://www.animationshopee.com/post/choose-zombie-animation-clips-complete-movement-set
+
+---
+
+## Clip contract v2 (orchestrator, for the animation pass)
+The Blender clip agent produces exactly these files; the Unity systems agent consumes exactly these names.
+All are `Assets/Art/Animations/Anim_<Name>.fbx`: armature-only, on `bl_skeleton`, 30 fps, in place
+(no net XZ root travel), seamless where looping. Speeds are the in-game speeds they will be played at
+(time-scale them by at most ±15%). Foot plants must hold with Foot IK on.
+
+| Clip | Loop | Speed / length | Notes |
+|---|---|---|---|
+| `Run` | yes | 5.0 m/s, ~190 steps/min | the default move; replaces time-scaled Jog at 5.0 |
+| `Sprint` | yes | **8.5 m/s** (retuned from 8.0) | |
+| `AimWalk` | yes | 2.0 m/s forward | no flight phase; ~2.4 cm peak-to-peak bob; rolling heel-to-toe; slight knee bend |
+| `AimWalkBack` | yes | 2.0 m/s | |
+| `AimStrafeLeft`, `AimStrafeRight` | yes | 2.0 m/s | side-steps, no scissor-crossing |
+| `AimWalkFL`, `AimWalkFR`, `AimWalkBL`, `AimWalkBR` | yes | 2.0 m/s diagonals | hips twist toward the travel direction, chest stays toward the aim |
+| `JumpStart` | no | ~0.17 s | **no 0.2 s pre-crouch**; push-off only |
+| `PistolCarry` | yes | upper body | compressed/low-ready pistol carry while moving: both hands, gun close to the chest, muzzle down-forward. Replaces the swinging one-handed pistol |
+| `WeaponSwap` | no | 0.45 s (14 frames) | upper body; the model switch happens at **frame 6** |
+| `ShotgunLoadStart`, `ShotgunLoadShell`, `ShotgunLoadEnd` | no / yes / no | ~0.35 s, ~0.70 s per shell, ~0.45 s with pump | tube loading; the shell clip loops once per shell |
+| `Shamble` | yes | 1.6 m/s, **~105 steps/min** | uneven rhythm, heel/toe drag on one foot, head and shoulder lag |
+| `EnemyAttack` | no | 1.1 s, contact at 0.45 s | a longer anticipation hold; root slide is applied by Unity code (0.6–0.9 m), not in the clip |
+
+The existing clips (Idle, Walk, Jog, WalkBack, StrafeLeft/Right, Fall, Land, AimPistol, AimRifle,
+HoldRifleLow, ReloadPistol, ReloadRifle, Death, EnemyIdle, EnemyJog, EnemySprint, EnemyHit,
+EnemyDeath) stay; improve them in place only where the gap analysis says so.

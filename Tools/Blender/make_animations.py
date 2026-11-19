@@ -339,7 +339,7 @@ def set_pose_only(c, cfg):
 
 # ============================================================================ foot cycle model
 HEEL = (-0.06, -0.085)
-BALL = (0.13, -0.085)
+BALL = (0.125, -0.085)
 FWD2 = Vector((0.0, -1.0))
 
 
@@ -356,8 +356,10 @@ class FootCycle:
     Hermite blend with matching velocity at both ends plus clearance."""
 
     def __init__(self, side, beta, g, center, phases, clear=0.10, peak=0.5, swing_pitch=0.0,
-                 arc=0.0, cross=0.0, toe_swing=-6.0):
+                 arc=0.0, cross=0.0, toe_swing=-6.0, yaw=0.0):
         self.s = SIDE[side][1]
+        a_ = rad(yaw)
+        self.fw = Vector((math.sin(a_), -math.cos(a_)))
         self.beta = beta; self.g = Vector(g); self.clear = clear; self.peak = peak
         self.swing_pitch = swing_pitch; self.arc = arc; self.cross = cross; self.toe_swing = toe_swing
         self.phases = phases        # list of (pivot 'heel'|'ball', phi0, phi1, u0, u1)
@@ -375,17 +377,17 @@ class FootCycle:
                 phi = lerp(p0, p1, smooth(t))
                 piv_w = pos + self.g * (uu - u0)
                 rv = rot2((-prel[0], -prel[1]), phi)
-                ank = piv_w + FWD2 * rv[0]
+                ank = piv_w + self.fw * rv[0]
                 toe = max(0.0, -phi) if piv == 'ball' else 0.0
                 return ank, rv[1], phi, toe
             # advance pivot to start of next phase (phi == 0 at switch): ankle -> new pivot
             t = 1.0
             piv_w = pos + self.g * (u1 - u0)
             rv = rot2((-prel[0], -prel[1]), p1)
-            ank = piv_w + FWD2 * rv[0]
+            ank = piv_w + self.fw * rv[0]
             nxt = self.phases[i + 1][0]
             nrel = HEEL if nxt == 'heel' else BALL
-            pos = ank + FWD2 * nrel[0]
+            pos = ank + self.fw * nrel[0]
         raise RuntimeError
 
     def stance(self, u):
@@ -443,7 +445,9 @@ class Loco:
                  reach=0.995, drop=0.0, stab=0.8, look=0.0, neck=0.0, head=0.0,
                  swing_f=18.0, swing_b=22.0, elbow0=24.0, elbow1=8.0, ab0=7.0, xab=4.0, armlag=0.04,
                  curl=0.3, thumb=0.2, wrist=6.0, post=None, toe_swing=-6.0, armmode="swing",
-                 lagS=0.03, lagC=0.06, extra_yaw=0.0, fore=False)
+                 lagS=0.03, lagC=0.06, extra_yaw=0.0, fore=False,
+                 clearL=None, clearR=None, swing_pitchL=None, swing_pitchR=None, toe_swingL=None, toe_swingR=None,
+                 push_back_frac=None)
         d.update(kw)
         self.__dict__.update(d)
         self.dur = self.T / FPS
@@ -455,8 +459,13 @@ class Loco:
         for sd, b in (('L', bl), ('R', br)):
             s = SIDE[sd][1]
             ph = make_phases(b, self.strike, self.u1 * b / 0.62 if self.u1 < 0.2 else self.u1, self.u2 * b / 0.62 if False else self.u2, self.push, self.back, self.fore)
-            self.feet[sd] = FootCycle(sd, b, gv, (s * self.width, self.cy), ph, clear=self.clear, peak=self.peak,
-                                      swing_pitch=self.swing_pitch, arc=self.arc, cross=self.cross, toe_swing=self.toe_swing)
+            ov = lambda base, a, bb: (a if sd == 'L' else bb) if (a if sd == 'L' else bb) is not None else base
+            self.feet[sd] = FootCycle(sd, b, gv, (s * self.width, self.cy), ph,
+                                      clear=ov(self.clear, self.clearL, self.clearR), peak=self.peak,
+                                      swing_pitch=ov(self.swing_pitch, self.swing_pitchL, self.swing_pitchR),
+                                      arc=self.arc, cross=self.cross,
+                                      toe_swing=ov(self.toe_swing, self.toe_swingL, self.toe_swingR),
+                                      yaw=s * self.toeout)
         if self.bob_peak is None:
             self.bob_peak = self.beta / 2 if self.beta > 0.5 else self.beta / 2 + 0.25
         self.z0 = None
@@ -523,6 +532,8 @@ class Loco:
             p = i / n
             c = self.body(p)
             c["hip_tz"] = self.bob(p)
+            if self.post:
+                self.post(self, c, p)
             Dh, Ph = hips_xform(c)
             for sd in "LR":
                 u = self.fph(sd, p)
@@ -547,6 +558,57 @@ class Loco:
         if self.post:
             self.post(self, c, p)
         return c
+
+
+def slide_max(lo, cfg=None):
+    """Max planted-point slide (m/s) at integer frames, heel/ball points with z < 4 mm in two consecutive frames."""
+    cfg = cfg or {"legs": "ik"}
+    exp = Vector((lo.g.x, lo.g.y, 0.0)) / lo.T
+    prev = None; worst = 0.0
+    for fr in range(lo.T + 1):
+        c = lo.channels(float(fr % lo.T))
+        D, P = solve(c, cfg)
+        cur = {}
+        for sd in "LR":
+            nm = SIDE[sd][0]; ft = nm + "Foot"; x = HEAD[ft].x
+            for pn, y in (("h", 0.08), ("b", -0.105)):
+                cur[sd + pn] = P[ft] + D[ft] @ (Vector((x, y, 0.0)) - HEAD[ft])
+        if prev:
+            for k in cur:
+                if cur[k].z < 0.004 and prev[k].z < 0.004:
+                    d = cur[k] - prev[k]
+                    worst = max(worst, (Vector((d.x, d.y, 0)) - exp).length * FPS)
+        prev = cur
+    return worst
+
+
+def tuned(**kw):
+    """Loco with stance fraction nudged (within +-2%) so no frame sits on a marginal lift-off (foot slide <= 0.04 m/s)."""
+    best = None
+    b0 = kw.get("beta", 0.62)
+    bl, br = kw.get("betaL"), kw.get("betaR")
+    for off in (0.0, 0.004, -0.004, 0.008, -0.008, 0.012, -0.012, 0.016, -0.016, 0.02, -0.02):
+        k = dict(kw); k["beta"] = b0 + off
+        if bl: k["betaL"] = bl + off
+        if br: k["betaR"] = br + off
+        lo = Loco(**k)
+        sl = slide_max(lo, {"legs": "ik"})
+        if best is None or sl < best[0]:
+            best = (sl, lo)
+        if sl <= 0.04:
+            return lo
+    if bl and br:
+        grid = [i * 0.006 for i in range(-5, 6)]
+        for oa in grid:
+            for ob in grid:
+                k = dict(kw); k["betaL"] = bl + oa; k["betaR"] = br + ob
+                lo = Loco(**k)
+                sl = slide_max(lo, {"legs": "ik"})
+                if sl < best[0]:
+                    best = (sl, lo)
+                if sl <= 0.04:
+                    return lo
+    return best[1]
 
 
 def knee_stats(loco, cfg=None):
@@ -936,6 +998,87 @@ def check_fk(cl):
     return round(max((ARM.pose.bones[n].head - P[n]).length for n in NAMES), 6)
 
 
+def loco_metrics(cl):
+    """Cadence, step, stance %, knee/hip ranges, bob, pelvis, from the solved pose (no bake needed)."""
+    lo = cl["loco"]; cfg = cl["cfg"]; N = lo.T
+    sub = 8
+    S = N * sub
+    dirv = Vector((lo.dir[0], lo.dir[1]))
+    samples = []
+    for i in range(S):
+        f = i / sub
+        c = lo.channels(f)
+        D, P = solve(c, cfg)
+        rec = {"c": c, "hipz": P["Hips"].z, "f": f}
+        for sd in "LR":
+            nm = SIDE[sd][0]
+            ft = nm + "Foot"; x = HEAD[ft].x
+            pts = [P[ft] + D[ft] @ (Vector((x, y, 0.0)) - HEAD[ft]) for y in (0.08, -0.105)]
+            zmin = min(p.z for p in pts)
+            lowp = min(pts, key=lambda p: p.z)
+            hip = P[nm + "UpperLeg"]; kn = P[nm + "LowerLeg"]; an = P[ft]
+            a = (kn - hip).normalized(); b = (an - kn).normalized()
+            knee = math.degrees(math.acos(clamp(a.dot(b), -1, 1)))
+            hipfl = math.degrees(math.atan2(hip.y - kn.y, hip.z - kn.z))
+            rec[sd] = dict(contact=zmin < 0.003, knee=knee, hip=hipfl, pt=lowp, ank=an)
+        samples.append(rec)
+    out = {}
+    out["cadence_spm"] = round(3600.0 / N, 1)
+    st = {}
+    for sd in "LR":
+        st[sd] = sum(1 for r in samples if r[sd]["contact"]) / S * 100
+    out["stance_pct"] = (round(st["L"], 1), round(st["R"], 1))
+    # touchdown positions in the ground frame
+    td = {}
+    for sd in "LR":
+        for i in range(S):
+            if samples[i][sd]["contact"] and not samples[i - 1][sd]["contact"]:
+                t = samples[i]["f"] / FPS
+                p = samples[i][sd]["pt"]
+                w = Vector((p.x, p.y)) + dirv * lo.speed * t
+                td[sd] = (t, w)
+                break
+    if len(td) == 2:
+        # step: touchdown of R after L, projected on travel dir; compensate the other foot's own movement
+        (tl, wl), (tr, wr) = td["L"], td["R"]
+        d = (wr - wl).dot(dirv)
+        out["step_m"] = round(abs(d) if abs(d) < lo.speed * N / FPS * 0.9 else lo.speed * N / FPS - abs(d), 3)
+    else:
+        out["step_m"] = None
+    out["step_nominal_m"] = round(lo.speed * N / FPS / 2.0, 3)
+    sw = [r for r in samples]
+    kn_swing = max(r[sd]["knee"] for r in samples for sd in "LR" if not r[sd]["contact"])
+    kn_stance = [r[sd]["knee"] for r in samples for sd in "LR" if r[sd]["contact"]]
+    out["knee_swing_peak"] = round(kn_swing, 1)
+    out["knee_stance_peak"] = round(max(kn_stance), 1) if kn_stance else None
+    mids = []; tds = []
+    for sd in "LR":
+        idx = [i for i in range(S) if samples[i][sd]["contact"]]
+        if idx:
+            # contiguous stance run containing the first touchdown
+            st0 = next(i for i in range(S) if samples[i][sd]["contact"] and not samples[i - 1][sd]["contact"])
+            run_ = [st0]
+            j = (st0 + 1) % S
+            while samples[j][sd]["contact"] and len(run_) < S:
+                run_.append(j); j = (j + 1) % S
+            tds.append(samples[st0][sd]["knee"])
+            mids.append(samples[run_[len(run_) // 2]][sd]["knee"])
+    out["knee_touchdown"] = round(sum(tds) / len(tds), 1) if tds else None
+    out["knee_midstance"] = round(sum(mids) / len(mids), 1) if mids else None
+    out["knee_min"] = round(min(r[sd]["knee"] for r in samples for sd in "LR"), 1)
+    out["hip_flex_range"] = (round(min(r[sd]["hip"] for r in samples for sd in "LR"), 1),
+                             round(max(r[sd]["hip"] for r in samples for sd in "LR"), 1))
+    hz = [r["hipz"] for r in samples]
+    out["bob_pp_cm"] = round((max(hz) - min(hz)) * 100, 1)
+    rz = [r["c"]["hip_rz"] for r in samples]; ry = [r["c"]["hip_ry"] for r in samples]
+    out["pelvis_rot_pp_deg"] = round(max(rz) - min(rz), 1)
+    out["pelvis_obl_pp_deg"] = round(max(ry) - min(ry), 1)
+    flight = sum(1 for r in samples if not r["L"]["contact"] and not r["R"]["contact"]) / S * 100
+    out["flight_pct"] = round(flight, 1)
+    out["double_support_pct"] = round(sum(1 for r in samples if r["L"]["contact"] and r["R"]["contact"]) / S * 100, 1)
+    return out
+
+
 def run(names, preview=True, export=True):
     setup_scene()
     if preview:
@@ -950,8 +1093,17 @@ def run(names, preview=True, export=True):
         sl = measure_slide(cl)
         if sl:
             info["slide"] = sl; info["feet_dist"] = feet_min_dist(cl)
+            info["metrics"] = loco_metrics(cl)
         if cl.get("gunframe"):
             report_hands(cl)
+            miss = 0.0
+            for fr_ in range(cl["frames"] + 1):
+                c_ = cl["fn"](float(fr_ % cl["frames"]) if cl["loop"] else float(fr_))
+                D_, P_ = solve(c_, cl["cfg"])
+                for sd_ in "LR":
+                    nm_ = SIDE[sd_][0] + "Hand"
+                    miss = max(miss, (P_[nm_] - Vector((c_[sd_ + "Wx"], c_[sd_ + "Wy"], c_[sd_ + "Wz"]))).length)
+            info["wrist_ik_miss_max_m"] = round(miss, 4)
         if export:
             info["fbx"] = export_fbx(nm)
         if preview:
@@ -997,34 +1149,74 @@ def lerp_ch(a, b, t):
 
 
 # ---------------------------------------------------------------- locomotion
-JOG = Loco(T=20, speed=3.6, beta=0.34, strike=8, u1=0.04, u2=0.17, push=34, clear=0.14, peak=0.5, swing_pitch=-8,
+JOG = tuned(T=20, speed=3.6, beta=0.34, strike=8, u1=0.04, u2=0.17, push=34, clear=0.14, peak=0.5, swing_pitch=-8,
            width=0.075, arc=0.0, cy=0.05, toeout=3, bobA=0.034, sway=0.02, yaw=9, tilt=2, lean=9, cr=0.9,
            swing_f=38, swing_b=42, elbow0=88, elbow1=12, ab0=9, xab=7, curl=0.7, thumb=0.5, wrist=0,
            reach=0.985, stab=0.75, look=4, toe_swing=-12, armlag=0.02)
-SPRINT = Loco(T=15, speed=8.0, beta=0.22, strike=12, push=45, clear=0.27, peak=0.55, swing_pitch=-18, fore=True,
-              width=0.06, arc=0.0, cy=0.20, toeout=2, bobA=0.04, sway=0.015, yaw=12, tilt=1.5, lean=22, cr=1.0,
-              swing_f=55, swing_b=60, elbow0=90, elbow1=10, ab0=6, xab=6, curl=0.85, thumb=0.6, wrist=0,
-              reach=1.0, stab=0.8, look=14, toe_swing=-20, armlag=0.02, neck=-6)
-WALKB = Loco(T=30, speed=1.4, dir=(0, 1), back=True, beta=0.64, strike=14, u1=0.08, u2=0.42, push=14, clear=0.08,
+WALKB = tuned(T=30, speed=1.4, dir=(0, 1), back=True, beta=0.64, strike=14, u1=0.08, u2=0.42, push=14, clear=0.08,
              peak=0.5, swing_pitch=-4, width=0.10, arc=0.01, cy=0.02, bobA=0.03, sway=0.03, yaw=4, yaw_sign=-1, tilt=3,
              lean=-1, swing_f=12, swing_b=10, elbow0=20, elbow1=5, reach=0.995, stab=0.8, look=-1, toe_swing=-10)
 
 
 def strafe(dirx):
-    return Loco(T=18, speed=1.6, dir=(dirx, 0), beta=0.58, strike=0, u1=0.05, u2=0.42, push=14, clear=0.07, peak=0.5,
+    return tuned(T=18, speed=1.6, dir=(dirx, 0), beta=0.58, strike=0, u1=0.05, u2=0.42, push=14, clear=0.07, peak=0.5,
                 swing_pitch=0, width=0.105, arc=0.0, cross=0.16, cy=0.04, toeout=4, bobA=0.022, sway=0.025, yaw=2.5,
                 tilt=3, lean=3, swing_f=8, swing_b=8, elbow0=30, elbow1=4, ab0=9, xab=2, reach=0.99, stab=0.8,
                 look=1, toe_swing=-4)
 
 
-loco_clip("Walk", Loco(T=27, speed=1.6, beta=0.62, strike=16, u1=0.08, u2=0.40, push=26, clear=0.10, peak=0.45,
-                       swing_pitch=3, width=0.10, bobA=0.04, sway=0.03, yaw=5, tilt=3, lean=3, swing_f=18,
+loco_clip("Walk", tuned(T=27, speed=1.6, beta=0.62, strike=16, u1=0.08, u2=0.40, push=26, clear=0.10, peak=0.45,
+                       swing_pitch=3, width=0.10, bobA=0.025, sway=0.03, yaw=4, tilt=4, lean=3, swing_f=18,
                        swing_b=24, elbow0=24, elbow1=9, reach=0.998, stab=0.8, look=2))
 loco_clip("Jog", JOG)
-loco_clip("Sprint", SPRINT)
 loco_clip("WalkBack", WALKB)
 loco_clip("StrafeLeft", strafe(1))
 loco_clip("StrafeRight", strafe(-1))
+
+
+# ---------------------------------------------------------------- contract v2 locomotion
+RUN = tuned(T=19, speed=5.0, beta=0.32, strike=8, u1=0.04, u2=0.16, push=40, clear=0.11, peak=0.5, swing_pitch=-8,
+           width=0.075, arc=0.0, cy=0.08, toeout=3, bobA=0.018, sway=0.02, yaw=8, tilt=2, lean=11, cr=0.9,
+           swing_f=42, swing_b=46, elbow0=88, elbow1=12, ab0=9, xab=7, curl=0.7, thumb=0.5, wrist=0,
+           reach=1.0, stab=0.8, look=5, toe_swing=-12, armlag=0.02)
+SPRINT = tuned(T=14, speed=8.5, beta=0.22, strike=12, push=45, clear=0.28, peak=0.55, swing_pitch=-18, fore=True,
+              width=0.06, arc=0.0, cy=0.20, toeout=2, bobA=0.04, sway=0.015, yaw=12, tilt=1.5, lean=16, cr=1.0,
+              swing_f=55, swing_b=60, elbow0=90, elbow1=10, ab0=6, xab=6, curl=0.85, thumb=0.6, wrist=0,
+              reach=1.0, stab=0.8, look=10, toe_swing=-20, armlag=0.02, neck=-4)
+loco_clip("Run", RUN)
+loco_clip("Sprint", SPRINT)
+
+AIM = dict(speed=2.0, beta=0.58, strike=14, u1=0.08, u2=0.42, push=30, clear=0.065, peak=0.5, swing_pitch=-2,
+           width=0.10, arc=0.01, cy=0.08, toeout=5, bobA=0.012, bob_peak=0.32, sway=0.02, yaw=3, tilt=2.5, lean=4,
+           cr=0.8, swing_f=6, swing_b=6, elbow0=55, elbow1=4, ab0=9, xab=2, curl=0.7, thumb=0.5, wrist=0, reach=0.995,
+           drop=0.0, stab=0.95, look=0, toe_swing=-6)
+
+
+def aim_loco(T=22, **kw):
+    d = dict(AIM); d["T"] = T; d.update(kw)
+    return tuned(**d)
+
+
+def diag(dx, dy, twist):
+    back = dy > 0
+    lo = aim_loco(T=22, dir=(dx, dy), extra_yaw=twist, cross=0.10, yaw_sign=(-1.0 if back else 1.0),
+                  lean=(2 if back else 4), back=back, strike=(12 if back else 14), push=(28 if back else 30),
+                  cy=(-0.02 if back else 0.08), swing_pitch=(-4 if back else -2), post=lambda S, c, p, tw=twist: c.update(
+                      sp_rz=c["sp_rz"] - 0.35 * tw, ch_rz=c["ch_rz"] - 0.5 * tw))
+    return lo
+
+
+_h = 0.7071
+loco_clip("AimWalk", aim_loco(22, dir=(0, -1)))
+loco_clip("AimWalkBack", aim_loco(22, dir=(0, 1), back=True, yaw_sign=-1.0, lean=2, strike=12, push=28, cy=-0.02, swing_pitch=-4,
+                                   u2=0.42, toe_swing=-10, look=-1))
+for _nm, _dir in (("AimStrafeLeft", 1), ("AimStrafeRight", -1)):
+    loco_clip(_nm, aim_loco(22, dir=(_dir, 0), beta=0.54, cy=0.04, strike=0, u1=0.05, u2=0.42, push=12, cross=0.24, swing_pitch=0,
+                            yaw=2.5, lean=3, width=0.105, toe_swing=-4))
+loco_clip("AimWalkFL", diag(_h, -_h, 18))
+loco_clip("AimWalkFR", diag(-_h, -_h, -18))
+loco_clip("AimWalkBL", diag(_h, _h, -18))
+loco_clip("AimWalkBR", diag(-_h, _h, 18))
 
 
 # ---------------------------------------------------------------- idle
@@ -1033,11 +1225,11 @@ def idle_pose(f, N=120):
     c = new_ch()
     sh = math.sin(TAU * p)
     br = math.sin(TAU * 2 * p - 0.6)
-    c["hip_tx"] = 0.02 * sh
-    c["hip_tz"] = -0.012 - 0.004 * math.cos(TAU * p)
-    c["hip_ry"] = -1.6 * sh
-    c["hip_rz"] = 0.8 * math.sin(TAU * p + 0.8)
-    c["sp_ry"] = 1.0 * sh; c["ch_ry"] = 0.8 * sh
+    c["hip_tx"] = 0.032 * sh
+    c["hip_tz"] = -0.012 - 0.007 * math.cos(TAU * p) - 0.004 * abs(sh)
+    c["hip_ry"] = -2.6 * sh
+    c["hip_rz"] = 1.2 * math.sin(TAU * p + 0.8)
+    c["sp_ry"] = 1.9 * sh; c["ch_ry"] = 1.5 * sh
     c["sp_rz"] = -0.5 * math.sin(TAU * p + 0.8 - 0.3)
     c["ch_rx"] = 1.1 * br + 1.0; c["sp_rx"] = 0.5 * br + 0.5
     c["hd_ry"] = 1.5 * math.sin(TAU * p + 0.4)
@@ -1062,34 +1254,24 @@ CLIPS["Idle"]["cfg"] = {"legs": "ik"}
 
 # ---------------------------------------------------------------- jump / fall / land
 def jump_keys():
-    k = Keys(idle_pose(0))
+    """Push-off only (no pre-crouch): starts already in the drive, ~0.17 s."""
     b = idle_pose(0)
-    # stand
-    k.key(0.0, b)
-    # anticipation crouch (arms swing back)
-    cr = dict(b)
-    cr.update(hip_tz=-0.22, hip_ty=0.10, hip_rx=14, sp_rx=10, ch_rx=8, hd_rx=-12, stab=0.7,
-              Laf=-38, Raf=-38, Laa=14, Raa=14, Lae=22, Rae=22, Lc=0.35, Rc=0.35)
-    k.keys.append((0.20, cr))
-    # drive: extend, arms swing up, rise onto the balls of the feet
+    k = Keys(b)
+    dr = dict(b)
+    dr.update(hip_tz=-0.09, hip_ty=0.045, hip_rx=10, sp_rx=7, ch_rx=5, hd_rx=-8, stab=0.7,
+              Laf=30, Raf=30, Laa=14, Raa=14, Lae=20, Rae=20, Lc=0.35, Rc=0.35)
+    stand_feet(dr, 0.115, 0.04, 0.115, 0.04, 8, 8)
+    k.keys.append((0.0, dr))
     ex = dict(b)
     ex.update(hip_tz=0.0, hip_ty=-0.01, hip_rx=4, sp_rx=-2, ch_rx=-4, hd_rx=-4, stab=0.7,
               Laf=70, Raf=70, Laa=18, Raa=18, Lae=18, Rae=18)
     for sd in "LR":
-        s = SIDE[sd][1]
-        a = ball_ank(0.105 * s, -0.10, -42)
+        s_ = SIDE[sd][1]
+        a = ball_ank(0.105 * s_, -0.10, -42)
         ex[sd + "Ax"], ex[sd + "Ay"], ex[sd + "Az"] = a
         ex[sd + "Fp"] = -42; ex[sd + "T"] = 36
-    k.keys.append((0.30, ex))
-    # lift off, legs tuck a little
-    up = dict(ex)
-    up.update(hip_tz=0.035, hip_rx=2, Laf=105, Raf=100, Laa=28, Raa=28, Lae=14, Rae=14, hd_rx=-2)
-    for sd, (x, y, z) in (('L', (0.11, -0.04, 0.22)), ('R', (-0.11, 0.07, 0.19))):
-        up[sd + "Ax"], up[sd + "Ay"], up[sd + "Az"] = x, y, z
-        up[sd + "Fp"] = -30; up[sd + "T"] = 10
-    k.keys.append((0.40, up))
-    # airborne rising pose = start of Fall
-    k.keys.append((0.50, fall_pose(0)))
+    k.keys.append((0.07, ex))
+    k.keys.append((5 / 30.0, fall_pose(0)))
     return k
 
 
@@ -1130,21 +1312,22 @@ def land_keys():
     k.keys.append((0.07, t1))
     # deep absorb: heels down, hips back and down, torso folds, arms forward
     ab = dict(b)
-    ab.update(hip_tz=-0.30, hip_ty=0.12, hip_rx=22, sp_rx=14, ch_rx=10, hd_rx=-14, stab=0.7,
+    ab.update(hip_tz=-0.22, hip_ty=0.10, hip_rx=18, sp_rx=12, ch_rx=9, hd_rx=-14, stab=0.7,
               Laf=42, Raf=42, Laa=30, Raa=30, Lae=34, Rae=34, Lc=0.2, Rc=0.2)
     stand_feet(ab, 0.15, 0.04, 0.15, 0.04, 12, 12)
-    k.keys.append((0.19, ab))
+    k.keys.append((0.15, ab))
     mid = dict(b)
     mid.update(hip_tz=-0.12, hip_ty=0.05, hip_rx=10, sp_rx=7, ch_rx=5, hd_rx=-6, Laf=18, Raf=18, Laa=18, Raa=18, Lae=24, Rae=24)
     stand_feet(mid, 0.125, 0.035, 0.125, 0.035, 9, 9)
-    k.keys.append((0.34, mid))
+    k.keys.append((0.28, mid))
     end = idle_pose(0)
+    k.keys.append((0.40, end))
     k.keys.append((0.50, end))
     return k
 
 
 _jk = jump_keys()
-add_clip("JumpStart", 15, False, _jk.fn())
+add_clip("JumpStart", 5, False, _jk.fn())
 add_clip("Fall", 30, True, fall_pose)
 _lk = land_keys()
 add_clip("Land", 15, False, _lk.fn())
@@ -1279,15 +1462,19 @@ def reload_pistol():
     hf = unit(-0.2, -0.4, -0.9); hd = unit(0.9, 0.1, -0.1)
     k.keys.append((0.0, aim_pistol(0)))
     st(0.16, O1, a1, u1, -0.08, 10, -2, left=(O1 + V3((0.10, -0.02, -0.08)), unit(0.4, -0.8, -0.2), unit(0.8, 0, 0.5)), lc=0.4)
-    st(0.40, O1, a1, u1, -0.10, 14, 12, left=(hip, hf, hd), lc=0.35)
-    st(0.52, O1, a1, u1, -0.10, 14, 14, left=(hip, hf, hd), lc=0.85)
+    st(0.40, O1, a1, u1, -0.10, 12, 1, left=(hip, hf, hd), lc=0.35)
+    st(0.52, O1, a1, u1, -0.10, 12, 2, left=(hip, hf, hd), lc=0.85)
     mag = O1 - u1 * 0.12 + a1 * 0.01
     lf_up = unit(0.1, -0.3, 0.9)
-    st(0.80, O1, a1, u1, -0.10, 13, 8, left=(mag - u1 * 0.06, lf_up, unit(0.8, 0, 0.3)), lc=0.85)
-    st(0.92, O1, a1, u1, -0.10, 13, 8, left=(mag + u1 * 0.012, lf_up, unit(0.8, 0, 0.3)), lc=0.9)
-    st(1.00, O1, a1, u1, -0.09, 12, 6, left=(mag + u1 * 0.012, lf_up, unit(0.8, 0, 0.3)), lc=0.5)
+    st(0.80, O1, a1, u1, -0.10, 12, 0, left=(mag - u1 * 0.06, lf_up, unit(0.8, 0, 0.3)), lc=0.85)
+    st(0.92, O1, a1, u1, -0.10, 12, 0, left=(mag + u1 * 0.012, lf_up, unit(0.8, 0, 0.3)), lc=0.9)
+    st(1.00, O1, a1, u1, -0.09, 11, -1, left=(mag + u1 * 0.012, lf_up, unit(0.8, 0, 0.3)), lc=0.5)
+    r1 = a1.cross(u1)
+    sl = O1 + a1 * (-0.015) + u1 * 0.062 - r1 * 0.030          # rear of the slide, support side
+    st(1.07, O1, a1, u1, -0.09, 11, -1, left=(sl, a1 * 0.9 + u1 * 0.1, u1), lc=0.8)
+    st(1.12, O1, a1, u1, -0.09, 11, -1, left=(sl - a1 * 0.05, a1 * 0.9 + u1 * 0.1, u1), lc=0.9)   # slide release
     a2 = unit(0, -0.99, 0.12); u2 = orth(V3((0, 0, 1)), a2)
-    st(1.18, V3((-0.02, -0.40, 1.52)), a2, u2, -0.07, 9, -2)
+    st(1.24, V3((-0.02, -0.40, 1.52)), a2, u2, -0.07, 8, -2)
     k.keys.append((1.40, aim_pistol(0)))
     return k
 
@@ -1315,18 +1502,18 @@ def reload_rifle():
     mw = BL + aL * 0.335 - uL * 0.14      # magwell
     magf = unit(0.1, -0.2, 0.9); magd = unit(0.9, 0.0, 0.2)
     k.keys.append((0.0, aim_rifle(0)))
-    st(0.35, BL, aL, uL, -0.07, 12, -25, 14)
-    st(0.62, BL, aL, uL, -0.08, 14, -22, 18, left=(mw, magf, magd), lc=0.9)
-    st(0.80, BL, aL, uL, -0.08, 14, -22, 18, left=(mw - uL * 0.07, magf, magd), lc=0.9)
-    st(1.05, BL, aL, uL, -0.10, 16, -22, 16, left=(hip + V3((0, -0.02, 0.05)), hf, hd), lc=0.4)
-    st(1.25, BL, aL, uL, -0.10, 16, -22, 16, left=(hip, hf, hd), lc=0.9)
-    st(1.60, BL, aL, uL, -0.09, 15, -22, 18, left=(mw - uL * 0.08, magf, magd), lc=0.9)
-    st(1.74, BL, aL, uL, -0.09, 15, -22, 18, left=(mw + uL * 0.015, magf, magd), lc=0.95)
+    st(0.35, BL, aL, uL, -0.07, 12, -25, 7)
+    st(0.62, BL, aL, uL, -0.08, 14, -22, 9, left=(mw, magf, magd), lc=0.9)
+    st(0.80, BL, aL, uL, -0.08, 14, -22, 9, left=(mw - uL * 0.07, magf, magd), lc=0.9)
+    st(1.05, BL, aL, uL, -0.10, 16, -22, 8, left=(hip + V3((0, -0.02, 0.05)), hf, hd), lc=0.4)
+    st(1.25, BL, aL, uL, -0.10, 16, -22, 8, left=(hip, hf, hd), lc=0.9)
+    st(1.60, BL, aL, uL, -0.09, 15, -22, 9, left=(mw - uL * 0.08, magf, magd), lc=0.9)
+    st(1.74, BL, aL, uL, -0.09, 15, -22, 9, left=(mw + uL * 0.015, magf, magd), lc=0.95)
     chp = BL + aL * 0.26 + V3((0.045, 0, 0.055))
     cf = unit(-0.3, -0.5, 0.1); cd = unit(0.2, 0.3, 0.9)
-    st(1.92, BL, aL, uL, -0.08, 14, -24, 16, left=(chp, cf, cd), lc=0.8)
-    st(2.02, BL, aL, uL, -0.08, 14, -24, 16, left=(chp + V3((0, 0.07, 0.0)), cf, cd), lc=0.8)
-    st(2.10, BL, aL, uL, -0.08, 13, -26, 14, left=(chp, cf, cd), lc=0.3)
+    st(1.92, BL, aL, uL, -0.08, 14, -24, 8, left=(chp, cf, cd), lc=0.8)
+    st(2.02, BL, aL, uL, -0.08, 14, -24, 8, left=(chp + V3((0, 0.07, 0.0)), cf, cd), lc=0.8)
+    st(2.10, BL, aL, uL, -0.08, 13, -26, 7, left=(chp, cf, cd), lc=0.3)
     k.keys.append((2.30, aim_rifle(0)))
     return k
 
@@ -1335,6 +1522,140 @@ _k = reload_pistol()
 add_clip("ReloadPistol", 42, False, _k.fn(), cfg=W_CFG, gun=pistol_spec(*PISTOL0), gunframe=PISTOL0)
 _k = reload_rifle()
 add_clip("ReloadRifle", 69, False, _k.fn(), cfg=W_CFG, gun=rifle_spec(*RIFLE0), gunframe=RIFLE0)
+
+
+# ---------------------------------------------------------------- contract v2 weapon clips
+def lerp_v(a, b, t):
+    return a + (b - a) * t
+
+
+def pistol_carry(f, N=60):
+    """Compressed ready: both hands, elbows in, gun close to the chest, muzzle down-forward."""
+    p = f / N
+    br = math.sin(TAU * p)
+    c = new_ch()
+    torso(c, tz=-0.025 + 0.002 * br, ty=0.02, lean=5 + 0.3 * br, yaw=0, head=-2)
+    O, a, u = PISTOLCARRY0
+    O = O + V3((0.0015 * math.sin(TAU * 2 * p), 0.0, 0.003 * math.sin(TAU * p + 1.0)))
+    pistol_hands(c, O, a, u)
+    for sd in "LR":
+        c[sd + "Ex"] = SIDE[sd][1] * 0.15; c[sd + "Ey"] = 0.7; c[sd + "Ez"] = -1.0
+    set_leg(c, 'L', (0.115, -0.04, 0.085), yaw=7)
+    set_leg(c, 'R', (-0.115, 0.07, 0.085), yaw=8)
+    c["Lshu"] = 1 * br; c["Rshu"] = 1 * br
+    return c
+
+
+_ca = unit(0, -0.95, -0.28)
+PISTOLCARRY0 = (V3((-0.015, -0.30, 1.30)), _ca, orth(V3((0, 0, 1)), _ca))
+add_clip("PistolCarry", 60, True, pistol_carry, cfg=W_CFG, gun=pistol_spec(*PISTOLCARRY0), gunframe=PISTOLCARRY0)
+
+
+def gun_state(base, B, a, u, tz, lean, yaw, head, left=None, lc=0.85, roll=0.0, ty=0.02, lspec=0.62):
+    c = dict(base)
+    torso(c, tz=tz, ty=ty, lean=lean, yaw=yaw, head=head, roll=roll)
+    rifle_right(c, B, a, u)
+    if left is None:
+        rifle_left(c, B, a, u, lspec)
+    else:
+        lp, lf, ld = left
+        put_hand(c, 'L', lp, lf, ld, lc, 0.6)
+    return c
+
+
+def weapon_swap():
+    base = hold_low(0)
+    k = Keys(base)
+    k.keys.append((0.0, hold_low(0)))
+    # frames 0-6: gun dropped down and across to the hip, support hand goes to the belt
+    a1 = unit(0.20, -0.62, -0.76); u1 = orth(V3((0, 0, 1)), a1)
+    k.keys.append((3 / 30.0, gun_state(base, V3((-0.11, 0.02, 1.26)), a1, u1, -0.06, 8, -12, 2, lspec=0.45)))
+    a2 = unit(0.12, -0.30, -0.95); u2 = orth(V3((0, 0, 1)), a2)
+    k.keys.append((6 / 30.0, gun_state(base, V3((-0.20, 0.05, 1.08)), a2, u2, -0.10, 10, -10, 3,
+                                       left=(V3((0.10, -0.20, 1.06)), unit(0.1, -0.5, -0.8), unit(0.9, 0.0, 0.2)), lc=0.4)))   # model switch here
+    # frames 6-14: the new weapon rises across the body into the low-ready
+    a3 = unit(0.10, -0.55, -0.82); u3 = orth(V3((0, 0, 1)), a3)
+    k.keys.append((9 / 30.0, gun_state(base, V3((-0.14, 0.02, 1.26)), a3, u3, -0.07, 7, -14, 1, lspec=0.40)))
+    k.keys.append((13 / 30.0, hold_low(0)))
+    return k
+
+
+_k = weapon_swap()
+add_clip("WeaponSwap", 14, False, _k.fn(), cfg=W_CFG, gun=rifle_spec(*RIFLELOW0), gunframe=RIFLELOW0)
+CLIPS["WeaponSwap"]["switch_frame"] = 6
+
+# shotgun: tube loading from below, gun held up across the chest, eyes up
+_sa = unit(0.02, -0.72, 0.69)
+SG_LOAD = (V3((-0.14, 0.03, 1.10)), _sa, orth(V3((0, 0, 1)), _sa))
+SG_BELT = V3((0.24, 0.0, 1.00))
+SG_YAW = -22
+
+
+def sg_port():
+    B, a, u = SG_LOAD
+    return B + a * 0.30 - u * 0.075
+
+
+def sg_state(left_pos, lc, tz=-0.07, head=2, lf=None, ld=None):
+    base = aim_rifle(0)
+    Bq, aq, uq = SG_LOAD
+    return gun_state(base, Bq, aq, uq, tz, 11, SG_YAW, head,
+                     left=(left_pos, lf if lf is not None else unit(0.15, -0.25, 0.95),
+                           ld if ld is not None else unit(0.9, 0.1, 0.1)), lc=lc)
+
+
+def sg_hover(lc=0.5):
+    return sg_state(sg_port() - SG_LOAD[2] * 0.055 + V3((0, 0.0, -0.02)), lc)
+
+
+def shotgun_start():
+    base = aim_rifle(0)
+    k = Keys(base)
+    k.keys.append((0.0, aim_rifle(0)))
+    am = unit(0.01, -0.86, 0.38); um = orth(V3((0, 0, 1)), am)
+    mid = gun_state(base, V3((-0.13, 0.02, 1.28)), am, um, -0.05, 9, -30, 4, lspec=0.55)
+    k.keys.append((0.14, mid))
+    k.keys.append((11 / 30.0, sg_hover()))
+    return k
+
+
+def shotgun_shell():
+    k = Keys(sg_hover(), periodic=True)
+    port = sg_port(); u = SG_LOAD[2]
+    k.keys.append((0.0, sg_hover(0.5)))
+    k.keys.append((0.18, sg_state(lerp_v(port - u * 0.055, SG_BELT, 0.45), 0.35)))
+    k.keys.append((0.30, sg_state(SG_BELT, 0.30, lf=unit(-0.2, -0.5, -0.8), ld=unit(0.9, 0.1, 0.2))))
+    k.keys.append((0.37, sg_state(SG_BELT, 0.85, lf=unit(-0.2, -0.5, -0.8), ld=unit(0.9, 0.1, 0.2))))
+    k.keys.append((0.51, sg_state(lerp_v(port - u * 0.055, SG_BELT, 0.40), 0.85)))
+    k.keys.append((0.62, sg_state(port - u * 0.03, 0.85, tz=-0.075)))
+    k.keys.append((0.70, sg_hover(0.5)))
+    return k
+
+
+def shotgun_end():
+    base = aim_rifle(0)
+    k = Keys(base)
+    B, a, u = SG_LOAD
+    k.keys.append((0.0, sg_hover()))
+    pump_pos = B + a * 0.50 - u * 0.045
+    k.keys.append((0.08, sg_state(pump_pos, 0.8, lf=unit(0.1, -0.9, -0.2), ld=unit(0.8, 0.0, 0.5))))
+    am = unit(0.01, -0.86, 0.38); um = orth(V3((0, 0, 1)), am)
+    Bm = V3((-0.12, 0.01, 1.30))
+    pm = Bm + am * 0.42 - um * 0.045
+    k.keys.append((0.18, gun_state(base, Bm, am, um, -0.06, 9, -28, 3, left=(pm, unit(0.1, -0.9, -0.2), unit(0.8, 0.0, 0.5)), lc=0.8)))   # rack back
+    ah = unit(0.02, -0.96, 0.25)
+    k.keys.append((0.30, gun_state(base, V3((-0.11, 0.02, 1.42)), ah, orth(V3((0, 0, 1)), ah),
+                                   -0.04, 8, -32, 6, left=(V3((-0.12, -0.33, 1.38)), unit(0.1, -0.9, -0.2), unit(0.8, 0.0, 0.5)), lc=0.8)))   # rack forward
+    k.keys.append((14 / 30.0, aim_rifle(0)))
+    return k
+
+
+_k = shotgun_start()
+add_clip("ShotgunLoadStart", 11, False, _k.fn(), cfg=W_CFG, gun=rifle_spec(*RIFLE0), gunframe=RIFLE0)
+_k = shotgun_shell()
+add_clip("ShotgunLoadShell", 21, True, _k.fn(), cfg=W_CFG, gun=rifle_spec(*SG_LOAD), gunframe=SG_LOAD)
+_k = shotgun_end()
+add_clip("ShotgunLoadEnd", 14, False, _k.fn(), cfg=W_CFG, gun=rifle_spec(*SG_LOAD), gunframe=SG_LOAD)
 
 
 # ---------------------------------------------------------------- ground fit (for collapses)
@@ -1473,14 +1794,14 @@ def enemy_loco(**kw):
     d = dict(armmode="swing", post=shamble_post, arm_rel_dummy=None)
     d.pop("arm_rel_dummy")
     d.update(kw)
-    return Loco(**d)
+    return tuned(**d)
 
 
-SHAMBLE = enemy_loco(T=26, speed=1.6, betaL=0.70, betaR=0.58, offR=0.47, strike=8, u1=0.07, u2=0.45, push=12,
-                     clear=0.07, peak=0.55, swing_pitch=-4, width=0.11, arc=0.02, cy=0.05, toeout=12, bobA=0.028,
+SHAMBLE = enemy_loco(T=34, speed=1.6, betaL=0.63, betaR=0.55, offR=0.465, strike=8, u1=0.07, u2=0.45, push=12,
+                     clear=0.07, clearL=0.07, clearR=0.07, swing_pitchL=-12, toe_swingL=-4, peak=0.5, swing_pitch=-4, width=0.11, arc=0.02, cy=0.05, toeout=12, bobA=0.028,
                      sway=0.05, yaw=7, tilt=5, lean=14, cr=0.3, swing_f=52, swing_b=-18, elbow0=62, elbow1=7,
                      ab0=15, xab=1, curl=0.5, thumb=0.1, wrist=12, stab=0.15, neck=20, head=6, reach=0.99,
-                     toe_swing=-10, beta=0.64)
+                     toe_swing=-10, beta=0.6)
 ENJOG = enemy_loco(T=20, speed=3.2, beta=0.36, strike=6, u1=0.04, u2=0.17, push=32, clear=0.14, peak=0.5,
                    swing_pitch=-6, width=0.08, cy=0.07, toeout=6, bobA=0.034, sway=0.03, yaw=10, tilt=3, lean=16, cr=0.5,
                    swing_f=45, swing_b=-5, elbow0=70, elbow1=14, ab0=14, xab=5, curl=0.5, thumb=0.1, wrist=10,
@@ -1515,10 +1836,12 @@ def attack_keys():
     w.update(Lw2=-20, Rw2=-20)
     set_leg(w, 'L', (0.13, -0.06, 0.085), yaw=14)
     set_leg(w, 'R', (-0.13, 0.17, 0.085), yaw=20)
-    k.keys.append((0.22, w))
+    k.keys.append((0.14, w))
     w2 = dict(w)
     w2.update(hip_ty=0.17, hip_tz=-0.12, ch_rx=-10, hip_rz=16, ch_rz=-26, Laf=140, Raf=140, hd_rx=-14)
-    k.keys.append((0.34, w2))
+    wm = lerp_ch(w, w2, 0.55)
+    k.keys.append((0.24, wm))
+    k.keys.append((0.33, w2))
     # contact: lunge forward, arms swiped down and across, claws open
     ct = dict(e0)
     ct.update(hip_ty=-0.26, hip_tz=-0.16, hip_rx=14, sp_rx=14, ch_rx=14, nk_rx=24, hd_rx=4, hip_rz=-12, ch_rz=14, sp_rz=6,

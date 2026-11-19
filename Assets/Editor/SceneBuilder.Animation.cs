@@ -20,7 +20,7 @@ namespace Zombies55.EditorTools
             EnsureFolder(ControllerDir);
             var mask = BuildUpperMask();
             BuildPlayerController(mask);
-            BuildEnemyController(mask);
+            BuildEnemyController(BuildFlinchMask());
             AssetDatabase.SaveAssets();
         }
 
@@ -31,6 +31,31 @@ namespace Zombies55.EditorTools
             {
                 mask = new AvatarMask { name = "UpperBody" };
                 AssetDatabase.CreateAsset(mask, UpperMaskPath);
+            }
+            foreach (AvatarMaskBodyPart part in Enum.GetValues(typeof(AvatarMaskBodyPart)))
+            {
+                if (part == AvatarMaskBodyPart.LastBodyPart) continue;
+                // Body (hips and spine) stays with the base layer, so the run bob, pelvis rotation and torso counter-rotation
+                // come through while a gun is held. The spine is aimed in PlayerAnimation.LateUpdate.
+                bool on = part == AvatarMaskBodyPart.Head
+                    || part == AvatarMaskBodyPart.LeftArm || part == AvatarMaskBodyPart.RightArm
+                    || part == AvatarMaskBodyPart.LeftFingers || part == AvatarMaskBodyPart.RightFingers
+                    || part == AvatarMaskBodyPart.LeftHandIK || part == AvatarMaskBodyPart.RightHandIK;
+                mask.SetHumanoidBodyPartActive(part, on);
+            }
+            EditorUtility.SetDirty(mask);
+            return mask;
+        }
+
+        // The enemy flinch replaces the spine too (0.37 s), so it keeps Body in its mask.
+        static AvatarMask BuildFlinchMask()
+        {
+            const string path = ControllerDir + "/Flinch.mask";
+            var mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(path);
+            if (mask == null)
+            {
+                mask = new AvatarMask { name = "Flinch" };
+                AssetDatabase.CreateAsset(mask, path);
             }
             foreach (AvatarMaskBodyPart part in Enum.GetValues(typeof(AvatarMaskBodyPart)))
             {
@@ -80,10 +105,29 @@ namespace Zombies55.EditorTools
             return s;
         }
 
-        // Ground speeds of PlayerController (walkSpeed 5, aim scale 0.55, sprintSpeed 8.5); keep in step with its defaults.
+        // Ground speeds of PlayerController (walkSpeed 5, aim scale 0.40, sprintSpeed 8.5); keep in step with its defaults.
         const float PlayerRunSpeed = 5f;
-        const float PlayerAimSpeed = 2.75f;
+        const float PlayerAimSpeed = 2.0f;
         const float PlayerSprintSpeed = 8.5f;
+
+        static bool ClipExists(string name)
+        {
+            return System.IO.File.Exists(AnimDir + "/Anim_" + name + ".fbx");
+        }
+
+        // Adds a state only when its clip file exists (the v2 clips come from the Blender pass); null otherwise.
+        static AnimatorState AddClipStateIfExists(AnimatorStateMachine sm, string name, string clip, Vector3 pos)
+        {
+            return ClipExists(clip) ? AddClipState(sm, name, clip, pos) : null;
+        }
+
+        // Adds a locomotion child only when the clip exists; returns whether it did.
+        static bool AddLocoChildIfExists(BlendTree tree, string clip, float authoredSpeed, float x, float z)
+        {
+            if (!ClipExists(clip)) return false;
+            AddLocoChild(tree, clip, authoredSpeed, x, z);
+            return true;
+        }
 
         // Adds a locomotion clip to a 2D blend tree at (x, z) m/s, authored at `authoredSpeed` m/s, time-scaled to match.
         static void AddLocoChild(BlendTree tree, string clip, float authoredSpeed, float x, float z)
@@ -108,6 +152,11 @@ namespace Zombies55.EditorTools
             c.AddParameter("WeaponType", AnimatorControllerParameterType.Int);   // 0 pistol set, 1 long-gun set
             c.AddParameter("Aiming", AnimatorControllerParameterType.Bool);
             c.AddParameter("Reloading", AnimatorControllerParameterType.Bool);
+            c.AddParameter("GroundSpeed", AnimatorControllerParameterType.Float);   // real planar speed, m/s
+            c.AddParameter("Moving", AnimatorControllerParameterType.Bool);         // moving with the pistol down (PistolCarry)
+            c.AddParameter("Swap", AnimatorControllerParameterType.Trigger);
+            c.AddParameter("TubeLoad", AnimatorControllerParameterType.Bool);       // shotgun tube reload in progress
+            c.AddParameter("MoreShells", AnimatorControllerParameterType.Bool);     // another shell follows the current one
             var ps = c.parameters;
             foreach (var p in ps) if (p.name == "LocoSpeed" || p.name == "ReloadSpeed") p.defaultFloat = 1f;
             c.parameters = ps;
@@ -122,17 +171,34 @@ namespace Zombies55.EditorTools
             // Each clip is placed at the ground speeds the player really moves at and played at the rate that makes the
             // clip's stride match that speed (child time scale = speed / authored speed), so a foot on the ground does not
             // slide. The same clip appears at two speeds where the player uses two (jog at the aim speed and at full run).
+            // The v2 clips (Run, AimWalk*) are authored at the speed they play at; where a file is missing the old clip is
+            // time-scaled to that speed instead (the walk at the 2 m/s aim speed is x1.25, still a walk).
+            bool hasRun = ClipExists("Run");
             tree.AddChild(LoadClip("Idle"), new Vector2(0f, 0f));
             AddLocoChild(tree, "Walk", 1.6f, 0f, 1.6f);
-            AddLocoChild(tree, "Jog", 3.6f, 0f, PlayerAimSpeed);
-            AddLocoChild(tree, "Jog", 3.6f, 0f, PlayerRunSpeed);
-            AddLocoChild(tree, "Sprint", 8f, 0f, PlayerSprintSpeed);
+            if (!AddLocoChildIfExists(tree, "AimWalk", PlayerAimSpeed, 0f, PlayerAimSpeed))
+                AddLocoChild(tree, "Walk", 1.6f, 0f, PlayerAimSpeed);
+            if (hasRun)
+            {
+                AddLocoChild(tree, "Jog", 3.6f, 0f, 3.6f);
+                AddLocoChild(tree, "Run", PlayerRunSpeed, 0f, PlayerRunSpeed);
+            }
+            else AddLocoChild(tree, "Jog", 3.6f, 0f, PlayerRunSpeed);
+            AddLocoChild(tree, "Sprint", hasRun ? PlayerSprintSpeed : 8f, 0f, PlayerSprintSpeed);
             AddLocoChild(tree, "WalkBack", 1.4f, 0f, -1.4f);
-            AddLocoChild(tree, "WalkBack", 1.4f, 0f, -PlayerAimSpeed);
+            if (!AddLocoChildIfExists(tree, "AimWalkBack", PlayerAimSpeed, 0f, -PlayerAimSpeed))
+                AddLocoChild(tree, "WalkBack", 1.4f, 0f, -PlayerAimSpeed);
             AddLocoChild(tree, "StrafeLeft", 1.6f, -1.6f, 0f);
-            AddLocoChild(tree, "StrafeLeft", 1.6f, -PlayerAimSpeed, 0f);
+            if (!AddLocoChildIfExists(tree, "AimStrafeLeft", PlayerAimSpeed, -PlayerAimSpeed, 0f))
+                AddLocoChild(tree, "StrafeLeft", 1.6f, -PlayerAimSpeed, 0f);
             AddLocoChild(tree, "StrafeRight", 1.6f, 1.6f, 0f);
-            AddLocoChild(tree, "StrafeRight", 1.6f, PlayerAimSpeed, 0f);
+            if (!AddLocoChildIfExists(tree, "AimStrafeRight", PlayerAimSpeed, PlayerAimSpeed, 0f))
+                AddLocoChild(tree, "StrafeRight", 1.6f, PlayerAimSpeed, 0f);
+            float diag = PlayerAimSpeed * 0.70710678f;
+            AddLocoChildIfExists(tree, "AimWalkFL", PlayerAimSpeed, -diag, diag);
+            AddLocoChildIfExists(tree, "AimWalkFR", PlayerAimSpeed, diag, diag);
+            AddLocoChildIfExists(tree, "AimWalkBL", PlayerAimSpeed, -diag, -diag);
+            AddLocoChildIfExists(tree, "AimWalkBR", PlayerAimSpeed, diag, -diag);
             loco.iKOnFeet = true;   // the clips' foot goals pin the feet to the ground through the retarget
             loco.speedParameterActive = true;
             loco.speedParameter = "LocoSpeed";
@@ -146,9 +212,13 @@ namespace Zombies55.EditorTools
             var t = Link(loco, jump, 0.05f); t.AddCondition(AnimatorConditionMode.If, 0f, "Jump");
             t = Link(loco, fall, 0.15f); t.AddCondition(AnimatorConditionMode.If, 0f, "Airborne");
             t = Link(jump, fall, 0.12f, 0.8f); t.AddCondition(AnimatorConditionMode.If, 0f, "Airborne");
+            // Landing while moving (over 1 m/s) goes straight back to locomotion: the stationary Land clip would stop the legs
+            // while the body keeps going. PlayerAnimation adds a procedural pelvis dip instead.
+            t = Link(jump, loco, 0.1f, 0.3f); t.AddCondition(AnimatorConditionMode.IfNot, 0f, "Airborne"); t.AddCondition(AnimatorConditionMode.Greater, 1f, "GroundSpeed");
+            t = Link(fall, loco, 0.08f); t.AddCondition(AnimatorConditionMode.IfNot, 0f, "Airborne"); t.AddCondition(AnimatorConditionMode.Greater, 1f, "GroundSpeed");
             t = Link(jump, land, 0.1f, 0.3f); t.AddCondition(AnimatorConditionMode.IfNot, 0f, "Airborne");
             t = Link(fall, land, 0.06f); t.AddCondition(AnimatorConditionMode.IfNot, 0f, "Airborne");
-            Link(land, loco, 0.2f, 0.5f);
+            Link(land, loco, 0.2f, 0.35f);
             t = Link(land, jump, 0.05f); t.AddCondition(AnimatorConditionMode.If, 0f, "Jump");
             t = Link(land, fall, 0.1f); t.AddCondition(AnimatorConditionMode.If, 0f, "Airborne");
             t = LinkAny(sm, death, 0.15f); t.AddCondition(AnimatorConditionMode.If, 0f, "Dead");
@@ -187,6 +257,48 @@ namespace Zombies55.EditorTools
             t = Link(longLow, pistol, 0.2f); CondInt(t, "WeaponType", 0);
             t = Link(longAim, pistol, 0.2f); CondInt(t, "WeaponType", 0);
             t = Link(rlLong, pistol, 0.2f); CondInt(t, "WeaponType", 0);
+
+            // ---- v2 upper-body states, each added only when its clip exists
+            var carry = AddClipStateIfExists(usm, "PistolCarry", "PistolCarry", new Vector3(300f, -100f));
+            if (carry != null)
+            {
+                t = Link(pistol, carry, 0.15f); Cond(t, "Moving", true); Cond(t, "Aiming", false); CondInt(t, "WeaponType", 0);
+                t = Link(carry, pistol, 0.12f); Cond(t, "Aiming", true);
+                t = Link(carry, pistol, 0.15f); Cond(t, "Moving", false);
+                t = Link(carry, rlPistol, 0.12f); Cond(t, "Reloading", true); CondInt(t, "WeaponType", 0);
+                t = Link(carry, longLow, 0.2f); CondInt(t, "WeaponType", 1); Cond(t, "Aiming", false);
+                t = Link(carry, longAim, 0.2f); CondInt(t, "WeaponType", 1); Cond(t, "Aiming", true);
+            }
+
+            var swap = AddClipStateIfExists(usm, "WeaponSwap", "WeaponSwap", new Vector3(900f, 0f));
+            if (swap != null)
+            {
+                t = LinkAny(usm, swap, 0.08f); t.AddCondition(AnimatorConditionMode.If, 0f, "Swap");
+                t = Link(swap, pistol, 0.1f, 0.88f); CondInt(t, "WeaponType", 0);
+                t = Link(swap, longLow, 0.1f, 0.88f); CondInt(t, "WeaponType", 1);
+            }
+
+            var loadStart = AddClipStateIfExists(usm, "ShotgunLoadStart", "ShotgunLoadStart", new Vector3(600f, 250f));
+            var loadShell = AddClipStateIfExists(usm, "ShotgunLoadShell", "ShotgunLoadShell", new Vector3(800f, 250f));
+            var loadEnd = AddClipStateIfExists(usm, "ShotgunLoadEnd", "ShotgunLoadEnd", new Vector3(1000f, 250f));
+            if (loadStart != null && loadShell != null && loadEnd != null)
+            {
+                foreach (var ls in new[] { loadStart, loadShell, loadEnd }) { ls.speedParameterActive = true; ls.speedParameter = "ReloadSpeed"; }
+                foreach (var from in new[] { longLow, longAim })
+                {
+                    t = Link(from, loadStart, 0.12f); Cond(t, "TubeLoad", true);
+                }
+                // Firing (anything that ends the reload) drops TubeLoad: back to the hold, from any tube state.
+                foreach (var from in new[] { loadStart, loadShell, loadEnd })
+                {
+                    t = Link(from, longAim, 0.1f); Cond(t, "TubeLoad", false); Cond(t, "Aiming", true);
+                    t = Link(from, longLow, 0.12f); Cond(t, "TubeLoad", false); Cond(t, "Aiming", false);
+                }
+                Link(loadStart, loadShell, 0.05f, 0.97f);
+                t = Link(loadShell, loadShell, 0.05f, 0.97f); Cond(t, "MoreShells", true);
+                t = Link(loadShell, loadEnd, 0.05f, 0.97f); Cond(t, "MoreShells", false);
+                Link(loadEnd, longLow, 0.15f, 0.97f);
+            }
 
             EditorUtility.SetDirty(c);
         }

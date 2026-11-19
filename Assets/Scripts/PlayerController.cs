@@ -13,11 +13,19 @@ namespace Zombies55
         [Header("Movement")]
         [SerializeField] float walkSpeed = 5f;
         [SerializeField] float sprintSpeed = 8.5f;
-        [SerializeField] float acceleration = 40f;
+        [Tooltip("m/s^2 while speeding up (0 to run speed in about 0.28 s).")]
+        [SerializeField] float acceleration = 18f;
+        [Tooltip("m/s^2 while slowing down or reversing (run speed to 0 in about 0.19 s).")]
+        [SerializeField] float deceleration = 26f;
+        [Tooltip("Max turn rate in degrees per second while facing the camera (aiming / firing).")]
         [SerializeField] float turnSpeed = 900f;
+        [Tooltip("SmoothDampAngle time (s) for turning towards the move direction.")]
+        [SerializeField] float turnSmoothTime = 0.07f;
+        [Tooltip("SmoothDampAngle time (s) for facing the camera while aiming: snappy, so the gun follows the mouse.")]
+        [SerializeField] float aimTurnSmoothTime = 0.03f;
 
         [Header("Combat")]
-        [SerializeField] float aimSpeedScale = 0.55f;
+        [SerializeField] float aimSpeedScale = 0.40f;
         [SerializeField] float combatStanceSeconds = 0.5f;
 
         [Header("Jump")]
@@ -35,11 +43,15 @@ namespace Zombies55
         float _lastGroundedTime = -1f;
         float _lastJumpPressedTime = -1f;
         bool _wasGrounded = true;
+        float _yawVelocity;
 
         public Vector3 Velocity => _planarVelocity + Vector3.up * _verticalVelocity;
         public float PlanarSpeed => _planarVelocity.magnitude;
         // Speed the body really moves at, from the last Move (zero against a wall), in contrast to the intended Velocity.
         public Vector3 GroundVelocity { get; private set; }
+        // Change of the intended planar velocity (m/s^2) and the turn rate (deg/s, positive = clockwise from above) this frame.
+        public Vector3 PlanarAcceleration { get; private set; }
+        public float YawRate { get; private set; }
         public float AimSpeed => walkSpeed * aimSpeedScale;
         public float MaxSpeed => sprintSpeed;
         public bool IsGrounded { get; private set; } = true;
@@ -77,18 +89,28 @@ namespace Zombies55
             IsSprinting = sprint && wish.sqrMagnitude > 0.01f;
             float targetSpeed = sprint ? sprintSpeed : walkSpeed;
             if (aiming) targetSpeed *= aimSpeedScale;
-            _planarVelocity = Vector3.MoveTowards(_planarVelocity, wish * targetSpeed, acceleration * dt);
+            // Inertia: gentle build-up, quicker braking (also used when the wish direction reverses).
+            Vector3 wishVelocity = wish * targetSpeed;
+            float rate = wishVelocity.sqrMagnitude > _planarVelocity.sqrMagnitude + 1e-4f ? acceleration : deceleration;
+            Vector3 before = _planarVelocity;
+            _planarVelocity = Vector3.MoveTowards(_planarVelocity, wishVelocity, rate * dt);
+            PlanarAcceleration = (_planarVelocity - before) / dt;
 
+            float currentYaw = transform.eulerAngles.y;
+            float yawBefore = currentYaw;
             if (combat)
             {
-                var face = Quaternion.Euler(0f, yaw, 0f);
-                transform.rotation = Quaternion.RotateTowards(transform.rotation, face, turnSpeed * dt);
+                float newYaw = Mathf.SmoothDampAngle(currentYaw, yaw, ref _yawVelocity, aimTurnSmoothTime, turnSpeed, dt);
+                transform.rotation = Quaternion.Euler(0f, newYaw, 0f);
             }
             else if (wish.sqrMagnitude > 0.01f)
             {
-                var face = Quaternion.LookRotation(wish, Vector3.up);
-                transform.rotation = Quaternion.RotateTowards(transform.rotation, face, turnSpeed * dt);
+                float goal = Quaternion.LookRotation(wish, Vector3.up).eulerAngles.y;
+                float newYaw = Mathf.SmoothDampAngle(currentYaw, goal, ref _yawVelocity, turnSmoothTime, Mathf.Infinity, dt);
+                transform.rotation = Quaternion.Euler(0f, newYaw, 0f);
             }
+            else _yawVelocity = 0f;
+            YawRate = Mathf.DeltaAngle(yawBefore, transform.eulerAngles.y) / dt;
 
             // Jump with coyote time and input buffering.
             if (IsGrounded) _lastGroundedTime = Time.time;

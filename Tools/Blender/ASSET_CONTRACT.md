@@ -182,3 +182,50 @@ brand or trademarked gun copies); 1.5-4k triangles.
 - Hair and headwear stay separate rigid meshes, re-fitted to the new head, with the same pivot as
   the head joint (neck base at the `Head` bone head): `Char_HairShort`, `Char_HairLong`, `Char_Cap`,
   `Char_Hood`. `Char_Backpack` is re-fitted to the new back, with its pivot at the top center of its back face.
+
+## Character v2: humanoid (supersedes the 6-bone `Char_Body`)
+- **Skeleton:** `Tools/Blender/bl_skeleton.py` is the only definition: 51 bones with Unity Humanoid
+  names (Hips, Spine, Chest, Neck, Head, Left/Right Shoulder, UpperArm, LowerArm, Hand, five
+  three-bone fingers, UpperLeg, LowerLeg, Foot, Toes). The rest pose is a **T-pose**. Build the
+  armature by calling `bl_skeleton.build_armature()`; never hand-make bones.
+- **`Characters/Char_Human.fbx`**: the courier and the base for everyone. One continuous skinned
+  mesh (12-25k tris) with clothing modeled in, weighted to that skeleton (max 4 influences, smooth
+  joint falloff, edge loops at every joint). Slots: `Skin`, `EyeWhite`, `Iris` (iris + pupil),
+  `Brow`, `Hair` (if any is modeled in), `Top`, `Pants`, `Shoe`. Grounded realism: adult
+  proportions, readable anatomy, separated fingers, real eyes and eyelids, a shaped nose, lips and
+  ears. Textures in `Assets/Art/Textures/Characters/`: `Skin_Albedo/Normal`, `Cloth_*`,
+  `Denim_*`, `Leather_*`.
+- **Accessories:** separate rigid meshes, re-fitted to Char_Human, with the pivot at the `Head`
+  bone head or the `Chest` bone head: `Char2_HairShort`, `Char2_HairLong`, `Char2_Cap`,
+  `Char2_Hood`, `Char2_Backpack`.
+- **Animations:** `Assets/Art/Animations/Anim_<Name>.fbx`, one clip per file. Armature only (no
+  mesh), built from `bl_skeleton`, 30 fps, **in place** (no net root travel), with loops seamless.
+  Each clip's speed is the one listed, so Unity can match the blend without foot sliding.
+  - Player:
+    - **Locomotion:** Idle (loop), Walk (1.6 m/s), Jog (3.6), Sprint (8.0), WalkBack (1.4),
+      StrafeLeft (1.6), StrafeRight (1.6).
+    - **Jumping:** JumpStart, Fall (loop), Land.
+    - **Weapon handling:** AimPistol (loop, two-handed), AimRifle (loop, shouldered),
+      HoldRifleLow (loop, ready while moving), ReloadPistol (1.4 s), ReloadRifle (2.3 s).
+    - **Death.**
+  - Enemy: EnemyIdle (loop, hunched), Shamble (1.6), EnemyJog (3.2), EnemySprint (5.0),
+    EnemyAttack (1.1 s, contact at 0.45 s), EnemyHit (0.35 s), EnemyDeath.
+  - Fingers: curl into a grip for every aim, hold or reload clip; a relaxed curl elsewhere.
+
+## Districts (buyable map areas)
+- `Props/Barrier_FencePanel` (3.0 w x 2.6 h): posts and frame (`Metal`), a chain-link infill on a
+  new `Fence` slot (alpha-cutout texture `Textures/Fence_Albedo.png`), and concrete feet
+  (`Concrete`).
+- `Props/Barrier_Jersey` (2.0 x 0.8 x 0.6): `Concrete` with a `Hazard` stripe.
+- `Props/Gate_Terminal` (0.5 x 1.3 x 0.4): a post with an emissive `KioskScreen`.
+- `Props/Barrier_Sign` (1.2 x 0.6): a plate (`Paint`, `Hazard`).
+
+## Gritty urban look (environment pass)
+Grounded, weathered city realism, our own design: worn and stained materials, street clutter,
+overhead utility wires, fire escapes, haze. Original shop names and signage only; no real brands
+and no landmarks from any existing game. New texture sets (tileable, same rules as above):
+`BrickWorn`, `ConcreteStained`, `AsphaltWorn` (oil stains, patch seams, tire wear),
+`PlasterDirty`, `MetalPainted`, `Grime` (overlay/decal), `RoadMarkings`.
+New props: `FireEscape_Floor` (one 3.2 m-tall floor segment, mounts on a facade bay), `UtilityPole` +
+`Wire` (a sag curve, 1 m along X, to be scaled), `Dumpster`, `TrashBags`, `NewsBox`, `Manhole`, `StormGrate`,
+`Storefront_Sign_<1..6>` (original fictional shop names), `AC_WindowUnit`.

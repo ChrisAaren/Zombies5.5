@@ -16,6 +16,11 @@ This is simply a game that can be used for testing purposes, something to build 
 3. Run **Tools > Zombies 5.5 > Build Scene** once.
 4. Press Play.
 
+## Building the game
+
+1. Open the project and run **Tools > Zombies 5.5 > Build Scene** (only needed once per clone).
+2. Open **File > Build Profiles**, select your platform, and click **Build**.
+
 ## Controls
 
 | Action | Keyboard / mouse | Gamepad |

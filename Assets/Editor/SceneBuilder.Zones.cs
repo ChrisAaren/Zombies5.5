@@ -95,16 +95,20 @@ namespace Zombies55.EditorTools
             var path = TextureDir + "/Fence_Albedo.png";
             var ti = AssetImporter.GetAtPath(path) as TextureImporter;
             if (ti == null) return;
-            if (ti.alphaIsTransparency && ti.mipMapsPreserveCoverage && ti.alphaSource == TextureImporterAlphaSource.FromInput) return;
+            if (ti.alphaIsTransparency && ti.mipMapsPreserveCoverage && ti.anisoLevel >= 8 && ti.filterMode == FilterMode.Trilinear
+                && ti.alphaSource == TextureImporterAlphaSource.FromInput) return;
             ti.alphaSource = TextureImporterAlphaSource.FromInput;
             ti.alphaIsTransparency = true;
             ti.mipMapsPreserveCoverage = true;
             ti.alphaTestReferenceValue = 0.5f;
+            ti.anisoLevel = 8;
+            ti.filterMode = FilterMode.Trilinear;
             ti.wrapMode = TextureWrapMode.Repeat;
             ti.SaveAndReimport();
             _tex.Remove("Fence_Albedo");
         }
 
+        // Chain-link, near: alpha-tested (crisp wires, cutout shadows).
         static Material ZoneFenceMat()
         {
             var m = Surf("S_Fence", Color.white, null, Vector2.one, 0.45f, 0.5f);
@@ -118,6 +122,36 @@ namespace Zombies55.EditorTools
             m.EnableKeyword("_ALPHATEST_ON");
             m.SetOverrideTag("RenderType", "TransparentCutout");
             m.renderQueue = (int)RenderQueue.AlphaTest;
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        // Chain-link, far: the same texture alpha-BLENDED. The mesh is about 1.5 cm in pitch, so past ~10 m a cutout turns into
+        // sub-pixel holes: a dotted pattern that crawls under TAA jitter, and the holes write depth so SSAO and depth of field speckle
+        // the background seen through them. The blended version filters through the mip chain instead, and reads as a faint haze.
+        static Material ZoneFenceFarMat()
+        {
+            var m = Surf("S_FenceFar", new Color(0.5f, 0.52f, 0.54f, 0.7f), null, Vector2.one, 0.3f, 0.3f);
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(TextureDir + "/Fence_Albedo.png");
+            m.SetTexture("_BaseMap", tex);
+            m.SetTextureScale("_BaseMap", Vector2.one);
+            m.SetFloat("_Surface", 1f);
+            m.SetFloat("_Blend", 0f);
+            m.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            m.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            m.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
+            m.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
+            m.SetFloat("_ZWrite", 0f);
+            m.SetFloat("_AlphaClip", 0f);
+            m.SetFloat("_Cull", 0f);
+            m.DisableKeyword("_ALPHATEST_ON");
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.SetOverrideTag("RenderType", "Transparent");
+            m.renderQueue = (int)RenderQueue.Transparent;
+            m.SetShaderPassEnabled("ShadowCaster", false);
+            m.SetShaderPassEnabled("DepthOnly", false);
+            m.SetShaderPassEnabled("DepthNormals", false);
+            m.SetShaderPassEnabled("MotionVectors", false);
             EditorUtility.SetDirty(m);
             return m;
         }
@@ -136,7 +170,36 @@ namespace Zombies55.EditorTools
                     dst[i] = n == "Fence" ? ZoneFenceMat() : CombatSlotMat(n, _zoneLook);
                 }
                 r.sharedMaterials = dst;
+                if (System.Array.Exists(dst, x => x != null && x.name == "S_Fence")) { if (r is MeshRenderer mrn) AddFenceFarLod(mrn, dst); }
             }
+        }
+
+        // LOD0 is the renderer as built (cutout fence); LOD1 is a copy of it whose fence slot is blended and which casts no shadow.
+        // Cross-faded, so the swap does not pop.
+        static void AddFenceFarLod(MeshRenderer near, Material[] nearMats)
+        {
+            var root = near.gameObject;
+            var mf = near.GetComponent<MeshFilter>();
+            if (mf == null) return;
+            var far = new GameObject("FenceFar");
+            far.transform.SetParent(root.transform, false);
+            far.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
+            var fr = far.AddComponent<MeshRenderer>();
+            var mats = (Material[])nearMats.Clone();
+            for (int i = 0; i < mats.Length; i++) if (mats[i] != null && mats[i].name == "S_Fence") mats[i] = ZoneFenceFarMat();
+            fr.sharedMaterials = mats;
+            fr.shadowCastingMode = ShadowCastingMode.Off;
+            far.isStatic = root.isStatic;
+            var lg = root.GetComponent<LODGroup>();
+            if (lg == null) lg = root.AddComponent<LODGroup>();
+            lg.SetLODs(new[]
+            {
+                new LOD(0.2f, new Renderer[] { near }),
+                new LOD(0.0f, new Renderer[] { fr }),
+            });
+            lg.fadeMode = LODFadeMode.CrossFade;
+            lg.animateCrossFading = true;
+            lg.RecalculateBounds();
         }
 
         static GameObject ZoneSpawn(string model, Transform parent, Vector3 localPos, float localYaw, string name)

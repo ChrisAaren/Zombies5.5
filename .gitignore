@@ -156,3 +156,4 @@ crashlytics-build.properties
 # Blender staging output (imported into Assets by Unity tasks) and Python caches
 /Tools/Blender/staging/
 __pycache__/
+/benchmark.json

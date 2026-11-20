@@ -91,6 +91,19 @@ namespace Zombies55
             return true;
         }
 
+        // Benchmark and debug: own every district without paying.
+        public void UnlockAll()
+        {
+            Init();
+            for (int i = 0; i < _owned.Length; i++)
+            {
+                if (_owned[i]) continue;
+                _owned[i] = true;
+                OwnedCount++;
+            }
+            if (_barriers != null) Refresh(false);
+        }
+
         void Refresh(bool animate)
         {
             foreach (var b in _barriers)

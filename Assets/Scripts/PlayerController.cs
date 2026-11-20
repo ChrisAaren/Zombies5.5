@@ -138,8 +138,17 @@ namespace Zombies55
             _wasGrounded = IsGrounded;
         }
 
+        // Set by BenchmarkRunner: drives the player along a fixed path instead of reading input.
+        public static bool ScriptedInput;
+        public static Vector2 ScriptedMove;
+        public static bool ScriptedSprint;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() { ScriptedInput = false; ScriptedMove = default; ScriptedSprint = false; }
+
         static Vector2 ReadMove()
         {
+            if (ScriptedInput) return ScriptedMove;
             Vector2 v = Vector2.zero;
             var kb = Keyboard.current;
             if (kb != null)
@@ -156,6 +165,7 @@ namespace Zombies55
 
         static bool ReadSprint()
         {
+            if (ScriptedInput) return ScriptedSprint;
             var kb = Keyboard.current;
             var pad = Gamepad.current;
             return (kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed))

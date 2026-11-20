@@ -45,6 +45,13 @@ namespace Zombies55
         float _aim, _aimTarget;
         float _recoilPitch, _recoilYaw, _recoilVelPitch, _recoilVelYaw;
 
+        // Set by BenchmarkRunner: yaw and pitch come from here instead of mouse or stick.
+        public static bool ScriptedLook;
+        public static float ScriptedYaw, ScriptedPitch;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() { ScriptedLook = false; }
+
         public bool IsAiming => _aimTarget > 0.5f;
         public float AimBlend => _aim;
 
@@ -105,7 +112,12 @@ namespace Zombies55
             _recoilYaw = Mathf.SmoothDamp(_recoilYaw, 0f, ref _recoilVelYaw, recoilRecoverTime, float.PositiveInfinity, dt);
             float sens = Mathf.Lerp(1f, GameSettings.AimSensitivity, _aim);
 
-            if (state == RunState.Running)
+            if (state == RunState.Running && ScriptedLook)
+            {
+                _yaw = ScriptedYaw;
+                _pitch = ScriptedPitch;
+            }
+            else if (state == RunState.Running)
             {
                 Vector2 look = Vector2.zero;
                 var mouse = Mouse.current;

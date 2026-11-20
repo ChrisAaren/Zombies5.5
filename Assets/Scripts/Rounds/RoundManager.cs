@@ -15,6 +15,13 @@ namespace Zombies55
 
         public static RoundManager Instance { get; private set; }
 
+        // Benchmark mode: ignore the round table, keep MaxAlive enemies in the world at all times.
+        public static bool BenchmarkMode;
+        const int BenchmarkRound = 10;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => BenchmarkMode = false;
+
         [Header("Setup (filled by the scene builder)")]
         [Tooltip("Inactive enemy cloned into the pool.")]
         [SerializeField] Enemy enemyTemplate;
@@ -87,6 +94,18 @@ namespace Zombies55
             var loop = GameLoop.Instance;
             if (loop == null || loop.State != RunState.Running) return;
             float dt = Time.deltaTime;
+
+            if (BenchmarkMode)
+            {
+                if (Round == 0) { Round = BenchmarkRound; InBreak = false; _started = true; RoundStarted?.Invoke(Round); }
+                _spawnTimer -= dt;
+                if (_spawnTimer <= 0f && AliveCount < MaxAlive && _free.Count > 0)
+                {
+                    if (TrySpawn()) { AliveCount++; RemainingThisRound = Mathf.Max(RemainingThisRound, AliveCount); _spawnTimer = 0.05f; }
+                    else _spawnTimer = 0.25f;
+                }
+                return;
+            }
 
             if (InBreak)
             {

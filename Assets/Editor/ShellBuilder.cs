@@ -450,8 +450,11 @@ namespace Zombies55.EditorTools
 
             // Graphics
             var gfx = (RectTransform)tabPanels[3].transform;
-            firsts[3] = AddToggleRow(gfx, SettingId.DepthOfField, "DEPTH OF FIELD", new Vector2(0f, 90f), 1200f, 70f);
-            AddToggleRow(gfx, SettingId.LensFlare, "LENS FLARE", new Vector2(0f, 0f), 1200f, 70f);
+            firsts[3] = AddToggleRow(gfx, SettingId.DepthOfField, "DEPTH OF FIELD", new Vector2(0f, 190f), 1200f, 70f);
+            AddToggleRow(gfx, SettingId.LensFlare, "LENS FLARE", new Vector2(0f, 100f), 1200f, 70f);
+            AddStepperRow(gfx, SettingId.FrameRate, "FRAME RATE", new Vector2(0f, 10f), 1200f, 70f, false);
+            AddToggleRow(gfx, SettingId.VSync, "VSYNC", new Vector2(0f, -80f), 1200f, 70f);
+            AddToggleRow(gfx, SettingId.FpsCounter, "FPS COUNTER", new Vector2(0f, -170f), 1200f, 70f);
 
             var reset = CreateButton(cardRt, "ResetButton", "RESET TO DEFAULTS", new Vector2(-250f, -385f), new Vector2(440f, 80f), 34f);
             var back = CreateButton(cardRt, "BackButton", "BACK", new Vector2(250f, -385f), new Vector2(440f, 80f), 38f);

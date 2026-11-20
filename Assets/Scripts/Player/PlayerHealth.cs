@@ -12,6 +12,12 @@ namespace Zombies55
 
         public const float MeleeDamage = 20f;
 
+        // Benchmark mode: the player cannot be hurt, so the run never ends.
+        public static bool GodMode;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => GodMode = false;
+
         [SerializeField] float maxHealth = 100f;
         [Tooltip("Seconds after a hit during which further damage is ignored.")]
         [SerializeField] float invulnerableSeconds = 0.25f;
@@ -79,7 +85,7 @@ namespace Zombies55
 
         public void TakeDamage(DamageInfo info)
         {
-            if (!IsAlive) return;
+            if (!IsAlive || GodMode) return;
             var loop = GameLoop.Instance;
             if (loop != null && loop.State == RunState.Lost) return;
             if (Time.time < _invulnerableUntil) return;

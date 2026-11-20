@@ -113,7 +113,21 @@ namespace Zombies55.EditorTools
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
             CleanupSlotMaterials();
+            BakeOcclusion(scene);
             Debug.Log("Zombies 5.5 scene built");
+        }
+
+        // Baked Umbra occlusion for the static city: down a street the buildings hide every block behind them, so the camera stops
+        // culling, sorting and drawing (and casting shadows for) geometry it cannot see; moving objects (enemies, cars in play) are
+        // occlusion-tested against it too. The data asset sits next to the scene.
+        static void BakeOcclusion(Scene scene)
+        {
+            StaticOcclusionCulling.Clear();
+            bool ok = StaticOcclusionCulling.Compute();
+            Debug.Log("Occlusion bake " + (ok ? "done" : "FAILED") + ", data " + StaticOcclusionCulling.umbraDataSize + " bytes");
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene, ScenePath);
+            AssetDatabase.SaveAssets();
         }
 
         // ------------------------------------------------------------------ materials
@@ -809,7 +823,9 @@ namespace Zombies55.EditorTools
             camData.antialiasing = AntialiasingMode.TemporalAntiAliasing;
             camData.antialiasingQuality = AntialiasingQuality.High;
             var taa = camData.taaSettings;
-            taa.contrastAdaptiveSharpening = 0.45f;   // restores the facade detail TAA softens at 20-60 m
+            taa.contrastAdaptiveSharpening = 0.35f;   // restores the facade detail TAA softens at 20-60 m (more than this amplifies far shimmer)
+            taa.baseBlendFactor = 0.97f;              // longer history: thin far geometry (fences, wires, window frames) stops crawling
+            taa.jitterScale = 0.5f;                   // half-pixel jitter: the history resolves with less frame-to-frame swing
             taa.mipBias = 0f;
             camData.taaSettings = taa;
 

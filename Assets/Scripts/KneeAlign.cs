@@ -9,8 +9,14 @@ namespace Zombies55
     // over the foot, the direction of the toes, the way a real knee tracks over the second toe.
     public static class KneeAlign
     {
+        public static bool Disabled; // benchmark experiments only
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => Disabled = false;
+
         public static void Apply(Animator anim, Transform frame)
         {
+            if (Disabled) return;
             Leg(anim, frame, HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot, HumanBodyBones.LeftToes);
             Leg(anim, frame, HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg, HumanBodyBones.RightFoot, HumanBodyBones.RightToes);
         }

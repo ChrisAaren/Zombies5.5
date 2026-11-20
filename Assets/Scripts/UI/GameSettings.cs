@@ -13,6 +13,7 @@ namespace Zombies55
         CrosshairThickness, CrosshairOpacity, CrosshairOutline, CrosshairDot, CrosshairDynamic,
         MusicVolume, SfxVolume,
         DepthOfField, LensFlare,
+        FrameRate, VSync, FpsCounter,
     }
 
     // Player-facing settings, stored in PlayerPrefs. Loads lazily on first read.
@@ -50,6 +51,9 @@ namespace Zombies55
             new Def("Zombies55.SfxVolume", 0f, 1f, 0.9f),
             new Def(Prefix + "DepthOfField", 0f, 1f, 1f),
             new Def(Prefix + "LensFlare", 0f, 1f, 1f),
+            new Def(Prefix + "FrameRate", 0f, 3f, 3f), // index into FrameRateValues; default 120
+            new Def(Prefix + "VSync", 0f, 1f, 1f),
+            new Def(Prefix + "FpsCounter", 0f, 1f, 0f),
         };
 
         public static readonly string[] StyleNames =
@@ -57,6 +61,8 @@ namespace Zombies55
 
         public static readonly string[] ColorNames =
             { "WHITE", "YELLOW", "GREEN", "CYAN", "MAGENTA", "RED", "ORANGE", "TEAL" };
+
+        public static readonly int[] FrameRateValues = { 30, 60, 90, 120 };
 
         static readonly Color[] ColorValues =
         {
@@ -95,6 +101,7 @@ namespace Zombies55
                 || i == (int)SettingId.InvertY || i == (int)SettingId.CrosshairOutline
                 || i == (int)SettingId.CrosshairDot || i == (int)SettingId.CrosshairDynamic
                 || i == (int)SettingId.DepthOfField || i == (int)SettingId.LensFlare
+                || i >= (int)SettingId.FrameRate
                 ? Mathf.Round(v) : v;
         }
 
@@ -134,7 +141,8 @@ namespace Zombies55
         public static void SetInt(SettingId id, int value) => SetFloat(id, value);
 
         // Number of choices for a stepper setting.
-        public static int OptionCount(SettingId id) => id == SettingId.CrosshairColor ? ColorNames.Length : StyleNames.Length;
+        public static int OptionCount(SettingId id) =>
+            id == SettingId.CrosshairColor ? ColorNames.Length : id == SettingId.FrameRate ? FrameRateValues.Length : StyleNames.Length;
 
         public static string Format(SettingId id)
         {
@@ -144,6 +152,9 @@ namespace Zombies55
             {
                 case SettingId.CrosshairStyle: return StyleNames[Mathf.Clamp(GetInt(id), 0, StyleNames.Length - 1)];
                 case SettingId.CrosshairColor: return ColorNames[Mathf.Clamp(GetInt(id), 0, ColorNames.Length - 1)];
+                case SettingId.FrameRate: return FrameRateValues[Mathf.Clamp(GetInt(id), 0, FrameRateValues.Length - 1)].ToString(ci);
+                case SettingId.VSync:
+                case SettingId.FpsCounter:
                 case SettingId.InvertY:
                 case SettingId.CrosshairOutline:
                 case SettingId.CrosshairDot:
@@ -206,6 +217,11 @@ namespace Zombies55
 
         public static bool DepthOfField { get => GetBool(SettingId.DepthOfField); set => SetBool(SettingId.DepthOfField, value); }
         public static bool LensFlare { get => GetBool(SettingId.LensFlare); set => SetBool(SettingId.LensFlare, value); }
+
+        public static int FrameRateIndex { get => GetInt(SettingId.FrameRate); set => SetInt(SettingId.FrameRate, value); }
+        public static int FrameRateCap => FrameRateValues[Mathf.Clamp(FrameRateIndex, 0, FrameRateValues.Length - 1)];
+        public static bool VSync { get => GetBool(SettingId.VSync); set => SetBool(SettingId.VSync, value); }
+        public static bool FpsCounter { get => GetBool(SettingId.FpsCounter); set => SetBool(SettingId.FpsCounter, value); }
 
         public static float MusicVolume { get => GetFloat(SettingId.MusicVolume); set => SetFloat(SettingId.MusicVolume, value); }
         public static float SfxVolume { get => GetFloat(SettingId.SfxVolume); set => SetFloat(SettingId.SfxVolume, value); }

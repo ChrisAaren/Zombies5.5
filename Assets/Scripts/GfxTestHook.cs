@@ -32,7 +32,7 @@ namespace Zombies55
                 else if (string.Equals(args[i], "-gfxOut", StringComparison.OrdinalIgnoreCase)) outDir = args[i + 1];
             }
             if (script == null) return;
-            var go = new GameObject("GfxTestHook") { hideFlags = HideFlags.HideAndDontSave };
+            var go = new GameObject("GfxTestHook") { hideFlags = HideFlags.HideInHierarchy };
             UnityEngine.Object.DontDestroyOnLoad(go);
             var r = go.AddComponent<Runner>();
             r.Script = script; r.OutDir = outDir ?? Application.persistentDataPath;

@@ -66,7 +66,9 @@ namespace Zombies55
             return; // the Editor's Game view is not a display
 #else
             if (Application.isBatchMode) return;
-            var go = new GameObject("DisplayManager") { hideFlags = HideFlags.HideAndDontSave };
+            foreach (var stale in Resources.FindObjectsOfTypeAll<DisplayHost>())
+                if (stale != null && stale.gameObject.scene.IsValid()) UnityEngine.Object.Destroy(stale.gameObject);
+            var go = new GameObject("DisplayManager") { hideFlags = HideFlags.HideInHierarchy };
             UnityEngine.Object.DontDestroyOnLoad(go);
             s_Host = go.AddComponent<DisplayHost>();
             Startup();

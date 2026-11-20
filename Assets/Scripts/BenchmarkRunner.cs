@@ -112,7 +112,7 @@ namespace Zombies55
             if (Active) return;
             Active = true;
             Pending = null; Note = null;
-            var go = new GameObject("BenchmarkRunner") { hideFlags = HideFlags.HideAndDontSave };
+            var go = new GameObject("BenchmarkRunner") { hideFlags = HideFlags.HideInHierarchy };
             DontDestroyOnLoad(go);
             var r = go.AddComponent<BenchmarkRunner>();
             r._opt = options; r._seconds = options.Seconds; r._fromMenu = true;
@@ -121,7 +121,7 @@ namespace Zombies55
         // Also callable from the Editor (script eval) to test the benchmark in Play mode.
         public static void Begin(float seconds)
         {
-            var go = new GameObject("BenchmarkRunner") { hideFlags = HideFlags.HideAndDontSave };
+            var go = new GameObject("BenchmarkRunner") { hideFlags = HideFlags.HideInHierarchy };
             DontDestroyOnLoad(go);
             go.AddComponent<BenchmarkRunner>()._seconds = seconds;
         }

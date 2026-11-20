@@ -22,7 +22,7 @@ namespace Zombies55
             for (int i = 0; i < args.Length - 1; i++)
                 if (string.Equals(args[i], "-displayTest", StringComparison.OrdinalIgnoreCase)) script = args[i + 1];
             if (script == null) return;
-            var go = new GameObject("DisplayTestHook") { hideFlags = HideFlags.HideAndDontSave };
+            var go = new GameObject("DisplayTestHook") { hideFlags = HideFlags.HideInHierarchy };
             UnityEngine.Object.DontDestroyOnLoad(go);
             go.AddComponent<Runner>().Script = script;
         }

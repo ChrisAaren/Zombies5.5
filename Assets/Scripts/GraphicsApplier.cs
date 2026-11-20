@@ -38,7 +38,7 @@ namespace Zombies55
         public static int AppliedAoRenderer { get; private set; } = -1;
 
         UniversalRenderPipelineAsset _clone;
-        RenderPipelineAsset _original;   // the project's asset of the level the clone replaced
+        RenderPipelineAsset[] _project;   // the project's own pipeline asset of every quality level, recorded at first boot
         int _cloneLevel = -1;
         int _originalLevel = -1;
         bool _dirty;
@@ -52,7 +52,9 @@ namespace Zombies55
         static void Boot()
         {
             if (s_Instance != null) return;
-            var go = new GameObject("GraphicsApplier") { hideFlags = HideFlags.HideAndDontSave };
+            foreach (var stale in Resources.FindObjectsOfTypeAll<GraphicsApplier>())
+                if (stale != null && stale.gameObject.scene.IsValid()) Destroy(stale.gameObject);
+            var go = new GameObject("GraphicsApplier") { hideFlags = HideFlags.HideInHierarchy };
             DontDestroyOnLoad(go);
             s_Instance = go.AddComponent<GraphicsApplier>();
         }
@@ -65,7 +67,8 @@ namespace Zombies55
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.playModeStateChanged += OnPlayMode;
 #endif
-            _originalLevel = QualitySettings.GetQualityLevel();
+            if (_originalLevel < 0) _originalLevel = QualitySettings.GetQualityLevel();
+            RecordProjectAssets();
             ApplyAll();
         }
 
@@ -98,15 +101,63 @@ namespace Zombies55
         // Puts the project's own pipeline assets and quality level back (matters in the Editor, where QualitySettings is project state).
         void Restore()
         {
-            if (_clone != null)
-            {
-                if (QualitySettings.GetQualityLevel() == _cloneLevel) QualitySettings.renderPipeline = _original;
-                Destroy(_clone);
-                _clone = null;
-            }
+            PutProjectAssetsBack();
             _cloneLevel = -1;
             if (_originalLevel >= 0) QualitySettings.SetQualityLevel(_originalLevel, false);
             Asset = null;
+        }
+
+        // A project asset is safe to assign: alive, not one of our runtime clones, and (in the Editor) persistent on disk.
+        static bool IsProjectAsset(RenderPipelineAsset a)
+        {
+            if (a == null || a.name.EndsWith(" (runtime)", StringComparison.Ordinal)) return false;
+#if UNITY_EDITOR
+            if (!UnityEditor.EditorUtility.IsPersistent(a)) return false;
+#endif
+            return true;
+        }
+
+        void RecordProjectAssets()
+        {
+            int n = QualitySettings.names.Length;
+            if (_project == null || _project.Length != n) _project = new RenderPipelineAsset[n];
+            for (int i = 0; i < n; i++)
+            {
+                var a = QualitySettings.GetRenderPipelineAssetAt(i);
+                if (IsProjectAsset(a)) _project[i] = a;
+            }
+        }
+
+        RenderPipelineAsset ProjectAssetFor(int level)
+        {
+            if (_project != null && level >= 0 && level < _project.Length && IsProjectAsset(_project[level])) return _project[level];
+            return null;
+        }
+
+        // Puts the recorded project asset back on every level that holds our clone (whichever level is current), destroys the clone,
+        // then returns to the level that was current.
+        void PutProjectAssetsBack()
+        {
+            if (_clone == null) return;
+            int current = QualitySettings.GetQualityLevel();
+            int n = QualitySettings.names.Length;
+            for (int i = 0; i < n; i++)
+            {
+                if (!object.ReferenceEquals(QualitySettings.GetRenderPipelineAssetAt(i), _clone)) continue;
+                var proj = ProjectAssetFor(i);
+                if (proj == null)
+                {
+                    var def = GraphicsSettings.defaultRenderPipeline;
+                    proj = IsProjectAsset(def) ? def : null;
+                }
+                if (proj == null) { Debug.LogWarning("[Graphics] no project pipeline asset recorded for quality level " + i); continue; }
+                if (QualitySettings.GetQualityLevel() != i) QualitySettings.SetQualityLevel(i, false);
+                QualitySettings.renderPipeline = proj;
+            }
+            if (QualitySettings.GetQualityLevel() != current) QualitySettings.SetQualityLevel(current, false);
+            Destroy(_clone);
+            _clone = null;
+            _cloneLevel = -1;
         }
 
         // Applies everything now. Safe to call at any time and any number of times.
@@ -142,23 +193,17 @@ namespace Zombies55
             if (qi >= 0 && qi != QualitySettings.GetQualityLevel())
             {
                 // Give the level we leave its own asset back before switching, so returning to it later finds the project asset.
-                if (_clone != null)
-                {
-                    QualitySettings.renderPipeline = _original;
-                    Destroy(_clone);
-                    _clone = null;
-                    _cloneLevel = -1;
-                }
+                PutProjectAssetsBack();
                 QualitySettings.SetQualityLevel(qi, true);
                 _lastMip = -1;   // the level reset the texture limit
             }
             int level = QualitySettings.GetQualityLevel();
             if (_clone == null || _cloneLevel != level)
             {
-                var source = QualitySettings.renderPipeline as UniversalRenderPipelineAsset
+                var source = ProjectAssetFor(level) as UniversalRenderPipelineAsset
+                             ?? (IsProjectAsset(QualitySettings.renderPipeline) ? QualitySettings.renderPipeline as UniversalRenderPipelineAsset : null)
                              ?? GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
                 if (source == null) return;
-                _original = QualitySettings.renderPipeline;
                 _clone = Instantiate(source);
                 _clone.name = source.name + " (runtime)";
                 _clone.hideFlags = HideFlags.DontSave;

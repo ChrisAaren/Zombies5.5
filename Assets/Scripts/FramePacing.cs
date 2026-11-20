@@ -60,7 +60,9 @@ namespace Zombies55
         static void Boot()
         {
             if (s_Instance != null) return;
-            var go = new GameObject("FramePacing") { hideFlags = HideFlags.HideAndDontSave };
+            foreach (var stale in Resources.FindObjectsOfTypeAll<FramePacing>())
+                if (stale != null && stale.gameObject.scene.IsValid()) Destroy(stale.gameObject);
+            var go = new GameObject("FramePacing") { hideFlags = HideFlags.HideInHierarchy };
             DontDestroyOnLoad(go);
             s_Instance = go.AddComponent<FramePacing>();
             s_Instance.useGUILayout = false;   // the counter uses GUI.Label only: skip the per-frame IMGUI layout pass

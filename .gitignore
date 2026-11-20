@@ -149,3 +149,6 @@ crashlytics-build.properties
 
 # Character pipeline version folders (regenerable; each character keeps its log.md in git)
 /Tools/CharacterPipeline/work/*/v*/
+
+# Mocap retarget output (regenerable; research only, not used by the game)
+/Tools/Blender/mocap/out/

@@ -324,6 +324,13 @@ namespace Zombies55
         static string Line(string label, string value, string pos = "<pos=290>") => label + pos + "<color=#" + Acc + ">" + value + "</color>\n";
         static string Dim(string t) => "<alpha=#B0>" + t + "<alpha=#FF>\n";
 
+        // "render scale probe: 272 fps at full scale, 212 fps at 60% (-22%)" -> "Render-scale test: 272 fps at 100%, 212 fps at 60%"
+        static string ProbeText(string how)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(how, @"(\d+) fps at full scale, (\d+) fps at (\d+)%");
+            return m.Success ? "Render-scale test: " + m.Groups[1].Value + " fps at 100%, " + m.Groups[2].Value + " fps at " + m.Groups[3].Value + "%" : how;
+        }
+
         void BuildDetails(BenchmarkResult r)
         {
             var t = new StringBuilder();
@@ -345,14 +352,16 @@ namespace Zombies55
 
             var sy = new StringBuilder();
             sy.Append(Head("SYSTEM"));
-            sy.Append(Dim("Graphics card (" + (r.vramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB, " + r.api + ")"));
-            sy.Append(r.gpu).Append('\n');
-            sy.Append(Dim("Processor (" + r.cores + " threads)"));
-            sy.Append(r.cpu).Append('\n');
-            sy.Append(Line("Memory", (r.ramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB", "<pos=130>"));
-            sy.Append(Line("Display", r.display, "<pos=130>"));
-            sy.Append(Line("Resolution", r.resolution + (r.renderResolution != r.resolution ? " (rendered " + r.renderResolution + ")" : ""), "<pos=130>"));
-            sy.Append(Line("Mode", r.mode + ", " + r.refresh, "<pos=130>"));
+            const string P = "<pos=120>";
+            sy.Append(Line("Graphics card", r.gpu, P));
+            sy.Append(Line("Video memory", (r.vramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB", P));
+            sy.Append(Line("Graphics API", r.api, P));
+            sy.Append(Line("Processor", r.cpu.Replace("(R)", "").Replace("(TM)", "").Replace(" Processor", "").Replace("  ", " ").Trim(), P));
+            sy.Append(Line("Threads", r.cores.ToString(), P));
+            sy.Append(Line("Memory", (r.ramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB", P));
+            sy.Append(Line("Display", r.display, P));
+            sy.Append(Line("Resolution", r.resolution + (r.renderResolution != r.resolution ? " (rendered " + r.renderResolution + ")" : ""), P));
+            sy.Append(Line("Mode", r.mode + ", " + r.refresh, P));
             sy.Append("<size=40%> </size>\n");
             sy.Append(Head("RUN"));
             string cap = string.IsNullOrEmpty(r.capNote) ? "" : char.ToUpperInvariant(r.capNote[0]) + r.capNote.Substring(1);
@@ -361,7 +370,7 @@ namespace Zombies55
             if (!string.IsNullOrEmpty(r.bottleneck))
             {
                 sy.Append("Limit: <color=#").Append(Acc).Append(">").Append(r.bottleneck).Append("</color>\n");
-                if (!string.IsNullOrEmpty(r.bottleneckHow)) sy.Append(Dim(r.bottleneckHow.Contains(" (") ? r.bottleneckHow.Replace(" (", " <nobr>(") + "</nobr>" : r.bottleneckHow));
+                if (!string.IsNullOrEmpty(r.bottleneckHow)) sy.Append(Dim(ProbeText(r.bottleneckHow)));
             }
             systemText.text = sy.ToString();
 

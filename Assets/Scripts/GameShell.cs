@@ -358,6 +358,7 @@ namespace Zombies55
             _settingsFrom = _loop.State;
             titleRoot.SetActive(false);
             pauseRoot.SetActive(false);
+            hudRoot.SetActive(false);   // the HUD would show through the settings card; CloseSettings restores it via ApplyState
             settingsMenu.Open();
         }
 

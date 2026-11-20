@@ -896,7 +896,7 @@ namespace Zombies55.EditorTools
             // Details: three headed columns.
             var details = CreateStretched("Details", results);
             var timesText = TextAt(details, "FrameTimes", L, 132f, 380f, 386f, 18f, TextAlignmentOptions.TopLeft, Palette.UiLight);
-            var systemText = TextAt(details, "System", -330f, 132f, 480f, 386f, 17f, TextAlignmentOptions.TopLeft, Palette.UiLight);
+            var systemText = TextAt(details, "System", -330f, 132f, 480f, 386f, 16f, TextAlignmentOptions.TopLeft, Palette.UiLight);
             var settingsA = TextAt(details, "SettingsA", 170f, 132f, 270f, 386f, 18f, TextAlignmentOptions.TopLeft, Palette.UiLight);
             var settingsB = TextAt(details, "SettingsB", 450f, 132f, 270f, 386f, 18f, TextAlignmentOptions.TopLeft, Palette.UiLight);
             foreach (var t in new[] { timesText, systemText, settingsA, settingsB }) t.lineSpacing = 3f;

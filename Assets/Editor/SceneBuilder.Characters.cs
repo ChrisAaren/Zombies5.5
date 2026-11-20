@@ -311,6 +311,11 @@ namespace Zombies55.EditorTools
         static void ConfigurePhysicsLayers()
         {
             Physics.IgnoreLayerCollision(GameLayers.Player, GameLayers.Enemy, true);
+            // Pooled blast debris never collides with the player, enemies, explosive props or itself (it cannot trap or push anyone).
+            Physics.IgnoreLayerCollision(GameLayers.Debris, GameLayers.Player, true);
+            Physics.IgnoreLayerCollision(GameLayers.Debris, GameLayers.Enemy, true);
+            Physics.IgnoreLayerCollision(GameLayers.Debris, GameLayers.Explosive, true);
+            Physics.IgnoreLayerCollision(GameLayers.Debris, GameLayers.Debris, true);
             // The editor call writes the layer collision matrix in ProjectSettings/DynamicsManager.asset.
             var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/DynamicsManager.asset");
             if (assets != null && assets.Length > 0) EditorUtility.SetDirty(assets[0]);

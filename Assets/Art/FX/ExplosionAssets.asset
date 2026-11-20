@@ -1,0 +1,118 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c29afa19f7fe95343a6ed9fb5ee7f2cb, type: 3}
+  m_Name: ExplosionAssets
+  m_EditorClassIdentifier: Assembly-CSharp::Zombies55.ExplosionAssets
+  fireball: {fileID: 2100000, guid: 234ea54e90c04ff4c89a62f762597498, type: 2}
+  smoke: {fileID: 2100000, guid: 9308979696cf4b8479597d87dd551db6, type: 2}
+  dust: {fileID: 2100000, guid: b2f20a97302fd4e448a7dc10e22bd48b, type: 2}
+  fireLoop: {fileID: 2100000, guid: 1cbb62db716bedd42b922c2367dbda2a, type: 2}
+  ring: {fileID: 2100000, guid: f109859210524be46906c0740d77c91d, type: 2}
+  spark: {fileID: 2100000, guid: dceeef532bb52c4489f6cc309f9dac29, type: 2}
+  ember: {fileID: 2100000, guid: edb37b08d45b5d74bb711a6f18fd5ea3, type: 2}
+  flash: {fileID: 2100000, guid: 99854d22845a95d43aadac31f941ae0a, type: 2}
+  bits: {fileID: 2100000, guid: 95997bb5cbb588a44adbcb8757f85498, type: 2}
+  scorch: {fileID: 2100000, guid: 1ebb776bc560d414c96984a3b39bde98, type: 2}
+  wreckBody: {fileID: 2100000, guid: ed734002585cefa4b9ff26e04ac9e232, type: 2}
+  wreckGlass: {fileID: 2100000, guid: f2ac5911612d13f4eb5fed732c875c15, type: 2}
+  debrisPaint: {fileID: 2100000, guid: 43475a9adcb51af4a8d70e3335910fbd, type: 2}
+  parts:
+  - name: Debris_Hood
+    group: 0
+    prefab: {fileID: 2203206118646839242, guid: 222b9af0464290347a24e1f46c06a7a2, type: 3}
+    mass: 14
+    size: {x: 1.211, y: 0.395, z: 1.061}
+    poolCount: 3
+  - name: Debris_Door
+    group: 1
+    prefab: {fileID: 7229822897199677302, guid: e8a19570e614c1f4597ae1eee8289e0d, type: 3}
+    mass: 20
+    size: {x: 0.362, y: 0.76, z: 0.94}
+    poolCount: 8
+  - name: Debris_Bumper
+    group: 2
+    prefab: {fileID: 3299162578442649276, guid: a198cbdc51109364cab686002dadf4b1, type: 3}
+    mass: 9
+    size: {x: 1.559, y: 0.322, z: 0.375}
+    poolCount: 3
+  - name: Debris_Trunklid
+    group: 3
+    prefab: {fileID: 5366591276857349590, guid: 149da4c17af6ff242aaf4824a54af86e, type: 3}
+    mass: 11
+    size: {x: 1.087, y: 0.258, z: 0.56}
+    poolCount: 3
+  - name: Debris_Wheel
+    group: 4
+    prefab: {fileID: 2238043592867728734, guid: bca3ae709e021ba48bf1e0086ee39324, type: 3}
+    mass: 21
+    size: {x: 0.226, y: 0.65, z: 0.66}
+    poolCount: 8
+  - name: Debris_Scrap_A
+    group: 5
+    prefab: {fileID: 7573702965235894624, guid: 1c14e4b6bba49c3489eb44641b77d83b, type: 3}
+    mass: 3
+    size: {x: 0.582, y: 0.245, z: 0.476}
+    poolCount: 3
+  - name: Debris_Scrap_B
+    group: 5
+    prefab: {fileID: 3796162869787301994, guid: 3b755da4e162a2543ae40eba80a30ced, type: 3}
+    mass: 3.5
+    size: {x: 0.414, y: 0.223, z: 0.681}
+    poolCount: 3
+  - name: Debris_Scrap_C
+    group: 5
+    prefab: {fileID: 6479755693421700609, guid: edc9d5bd6ac7dd84c9c6bc9b5020dc27, type: 3}
+    mass: 1.4
+    size: {x: 0.341, y: 0.113, z: 0.325}
+    poolCount: 3
+  - name: Debris_Scrap_D
+    group: 5
+    prefab: {fileID: 2157487707627789415, guid: d253495230075054483ba16fad1157d8, type: 3}
+    mass: 2.6
+    size: {x: 0.782, y: 0.288, z: 0.26}
+    poolCount: 3
+  - name: Debris_Chunk_A
+    group: 6
+    prefab: {fileID: 3202728981766491253, guid: 5c7ed661f0c66644fb5c224088247f1f, type: 3}
+    mass: 45
+    size: {x: 0.485, y: 0.622, z: 0.705}
+    poolCount: 3
+  - name: Debris_Chunk_B
+    group: 6
+    prefab: {fileID: 7998463084618633344, guid: 2f53ee001d6c07d459aed4f9d896c137, type: 3}
+    mass: 28
+    size: {x: 0.398, y: 0.406, z: 0.696}
+    poolCount: 3
+  - name: Debris_Chunk_C
+    group: 6
+    prefab: {fileID: 9213580622347338310, guid: c397dc616e68b7347bb3a387602d926a, type: 3}
+    mass: 9
+    size: {x: 0.563, y: 0.421, z: 0.482}
+    poolCount: 3
+  - name: Debris_BarrelLid
+    group: 7
+    prefab: {fileID: 2310015522964576802, guid: 56a6cd6d90e1b0949bbdaa9ad8ccd85a, type: 3}
+    mass: 1.4
+    size: {x: 0.571, y: 0.212, z: 0.584}
+    poolCount: 4
+  - name: Debris_BarrelHalf_A
+    group: 8
+    prefab: {fileID: 131521733214166555, guid: 4c330bba6d46c41448afbe6dc4c559d6, type: 3}
+    mass: 4
+    size: {x: 0.706, y: 0.574, z: 0.806}
+    poolCount: 4
+  - name: Debris_BarrelHalf_B
+    group: 8
+    prefab: {fileID: 3271251237446023748, guid: ba416896f9a10314b829a25fa039aadf, type: 3}
+    mass: 4
+    size: {x: 0.899, y: 0.524, z: 0.62}
+    poolCount: 4

@@ -4,18 +4,24 @@ using UnityEngine;
 namespace Zombies55
 {
     // Synthesized combat sounds (no audio files): a distinct shot per weapon, reload clicks, dry fire,
-    // buy chime, deny buzz and the explosion boom. All volumes multiply GameAudio.SfxVolume.
+    // buy chime, deny buzz and the layered explosion. All volumes multiply GameAudio.SfxVolume.
     public class CombatAudio : MonoBehaviour
     {
         const int SampleRate = 44100;
-        const int SourceCount = 10;
+        const int SourceCount = 18;
 
         public static CombatAudio Instance { get; private set; }
 
         readonly Dictionary<string, AudioClip> _shots = new Dictionary<string, AudioClip>();
         AudioSource[] _sources;
         int _next;
-        AudioClip _dry, _reloadOut, _reloadIn, _reloadSlide, _swap, _buy, _deny, _boom, _bolt, _dud;
+        AudioClip _dry, _reloadOut, _reloadIn, _reloadSlide, _swap, _buy, _deny, _bolt, _dud;
+        // The layered blast: a near crack, a body boom, a distant rumble tail, glass, and a ringing for very close ones.
+        AudioClip _crack, _body, _tail, _glass, _ring;
+        AudioClip[] _clatter;
+        AudioLowPassFilter _muffle;
+        float _muffleStart = -10f, _muffleDur, _muffleStrength;
+        float _clatterWindow; int _clatterCount;
         // Per-gun reload sounds (magazine out, magazine in, slide / close) for the guns that do not use the shared ones.
         readonly Dictionary<string, AudioClip[]> _reloads = new Dictionary<string, AudioClip[]>();
 
@@ -56,7 +62,12 @@ namespace Zombies55
             _swap = MakeSwap();
             _buy = MakeChime();
             _deny = MakeDeny();
-            _boom = MakeBoom();
+            _crack = MakeCrack();
+            _body = MakeBody();
+            _tail = MakeTail();
+            _glass = MakeGlass();
+            _ring = MakeRing();
+            _clatter = new[] { MakeClatter(1), MakeClatter(2), MakeClatter(3), MakeClatter(4) };
 
             _sources = new AudioSource[SourceCount];
             for (int i = 0; i < SourceCount; i++)
@@ -123,13 +134,89 @@ namespace Zombies55
         public void PlayBuy() => Play(_buy, 0.7f, 1f);
         public void PlayDeny() => Play(_deny, 0.6f, 1f);
 
-        public void PlayExplosion(Vector3 position, bool big)
+        void PlayDelayed(AudioClip clip, float volume, float pitch, float delay)
+        {
+            if (clip == null || _sources == null || volume <= 0.003f) return;
+            var s = _sources[_next];
+            _next = (_next + 1) % _sources.Length;
+            s.clip = clip;
+            s.pitch = pitch;
+            s.volume = Mathf.Clamp01(volume * GameAudio.SfxVolume);
+            if (delay > 0.001f) s.PlayDelayed(delay); else s.Play();
+        }
+
+        // A blast heard in layers. The crack is sharp and carries only a short way; the body boom is heavy and carries further; the
+        // rumble tail arrives a beat later and lasts. Glass follows for cars (the debris clatter comes from the parts themselves).
+        // A blast that close deafens for a moment: a muffled mix and a ringing tone.
+        public void PlayExplosion(Vector3 position, BlastKind kind, float radius)
         {
             float dist = 0f;
             var cam = Camera.main;
             if (cam != null) dist = Vector3.Distance(cam.transform.position, position);
-            float atten = Mathf.Lerp(1f, 0.2f, Mathf.Clamp01(dist / 70f));
-            Play(_boom, (big ? 1f : 0.85f) * atten, (big ? 0.85f : 1.05f) + Random.Range(-0.05f, 0.05f));
+            float size = kind == BlastKind.Car ? 1f : kind == BlastKind.Barrel ? 0.85f : 0.7f;
+            float pitch = (kind == BlastKind.Car ? 0.9f : kind == BlastKind.Barrel ? 1f : 1.12f) + Random.Range(-0.04f, 0.04f);
+            float travel = Mathf.Min(0.45f, dist / 343f);
+
+            float near = Mathf.Clamp01(1f - dist / 55f);
+            float mid = Mathf.Lerp(1f, 0.22f, Mathf.Clamp01(dist / 95f));
+            float far = Mathf.Lerp(0.8f, 0.45f, Mathf.Clamp01(dist / 140f));
+
+            PlayDelayed(_crack, 1.0f * size * (0.25f + 0.75f * near * near), pitch * 1.03f, travel);
+            PlayDelayed(_body, 0.95f * size * mid, pitch, travel + 0.01f);
+            PlayDelayed(_tail, 0.8f * size * far, pitch, travel + 0.12f + Mathf.Min(0.2f, dist / 600f));
+            if (kind == BlastKind.Car && dist < 45f)
+                PlayDelayed(_glass, 0.5f * Mathf.Clamp01(1f - dist / 45f), 1f + Random.Range(-0.1f, 0.1f), travel + Random.Range(0.12f, 0.3f));
+
+            float ringRange = radius * 1.25f;
+            if (dist < ringRange)
+            {
+                float k = 1f - dist / ringRange;
+                PlayDelayed(_ring, 0.1f + 0.22f * k, 1f, travel + 0.05f);
+                Muffle(k, 1.2f + 2.2f * k);
+            }
+        }
+
+        void Muffle(float strength, float seconds)
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            if (_muffle == null)
+            {
+                var listener = cam.GetComponent<AudioListener>();
+                if (listener == null) return;
+                _muffle = listener.GetComponent<AudioLowPassFilter>();
+                if (_muffle == null) _muffle = listener.gameObject.AddComponent<AudioLowPassFilter>();
+            }
+            _muffle.enabled = true;
+            _muffleStart = Time.unscaledTime;
+            _muffleDur = seconds;
+            _muffleStrength = Mathf.Clamp01(strength);
+        }
+
+        void Update()
+        {
+            if (_muffle == null || !_muffle.enabled) return;
+            float k = (Time.unscaledTime - _muffleStart) / _muffleDur;
+            if (k >= 1f) { _muffle.cutoffFrequency = 22000f; _muffle.enabled = false; return; }
+            // slams shut instantly, holds a moment, then opens back up
+            float closed = Mathf.Lerp(22000f, 650f, _muffleStrength);
+            float open = k < 0.25f ? 0f : Mathf.SmoothStep(0f, 1f, (k - 0.25f) / 0.75f);
+            _muffle.cutoffFrequency = Mathf.Lerp(closed, 22000f, open * open);
+        }
+
+        // Debris hitting the street: a metal clink or clank, quieter with distance and rate-limited so a car's worth of parts is not a wall of noise.
+        public void PlayClatter(Vector3 position, float intensity, float mass)
+        {
+            float now = Time.unscaledTime;
+            if (now - _clatterWindow > 0.4f) { _clatterWindow = now; _clatterCount = 0; }
+            if (_clatterCount >= 3) return;
+            _clatterCount++;
+            var cam = Camera.main;
+            float dist = cam != null ? Vector3.Distance(cam.transform.position, position) : 0f;
+            float atten = Mathf.Clamp01(1f - dist / 45f);
+            if (atten <= 0f) return;
+            int i = mass > 15f ? Random.Range(2, 4) : Random.Range(0, 3);
+            PlayDelayed(_clatter[i], (0.25f + 0.5f * intensity) * atten, (mass > 15f ? 0.75f : 1.05f) * Random.Range(0.9f, 1.15f), 0f);
         }
 
         // ------------------------------------------------------------------ synthesis
@@ -366,27 +453,123 @@ namespace Zombies55
             return Build("Deny", d);
         }
 
-        static AudioClip MakeBoom()
+        static AudioClip MakeCrack()
         {
-            float len = 1.8f;
-            var d = new float[Mathf.RoundToInt(len * SampleRate)];
-            var rng = new System.Random(99);
-            float brown = 0f, y = 0f;
-            double phase = 0;
+            var d = new float[Mathf.RoundToInt(0.45f * SampleRate)];
+            var rng = new System.Random(311);
+            float lp = 0f, lp2 = 0f;
             for (int i = 0; i < d.Length; i++)
             {
                 float t = i / (float)SampleRate;
                 float n = (float)(rng.NextDouble() * 2 - 1);
-                brown += (n - brown) * 0.06f;
-                y += (n - y) * 0.45f;
-                float rumble = brown * Mathf.Exp(-t * 2.3f) * 9f;
-                float crack = y * Mathf.Exp(-t * 25f) * 1.4f;
-                float f = Mathf.Lerp(65f, 28f, Mathf.Clamp01(t / 0.6f));
-                phase += 2 * System.Math.PI * f / SampleRate;
-                float sub = (float)System.Math.Sin(phase) * Mathf.Exp(-t * 2.6f) * 1.2f;
-                d[i] = Soft(rumble + crack + sub) * 0.95f;
+                lp += (n - lp) * 0.35f;
+                lp2 += (n - lp2) * 0.05f;
+                float hp = n - lp2;                                  // bright noise
+                float snap = (hp * Mathf.Exp(-t * 55f) * 2.2f) + (lp * Mathf.Exp(-t * 18f) * 0.9f);
+                float slap = Mathf.Sin(2 * Mathf.PI * 210f * t) * Mathf.Exp(-t * 45f) * 0.8f;
+                d[i] = Soft((snap + slap) * 1.2f) * 0.95f;
             }
-            return Build("Boom", d);
+            return Build("BoomCrack", d);
+        }
+
+        static AudioClip MakeBody()
+        {
+            var d = new float[Mathf.RoundToInt(1.7f * SampleRate)];
+            var rng = new System.Random(312);
+            float brown = 0f, mid = 0f;
+            double phase = 0, phase2 = 0;
+            for (int i = 0; i < d.Length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float n = (float)(rng.NextDouble() * 2 - 1);
+                brown += (n - brown) * 0.05f;
+                mid += (n - mid) * 0.2f;
+                float f = Mathf.Lerp(110f, 34f, Mathf.Clamp01(t / 0.45f));
+                phase += 2 * System.Math.PI * f / SampleRate;
+                phase2 += 2 * System.Math.PI * f * 2.02f / SampleRate;
+                float sub = (float)System.Math.Sin(phase) * Mathf.Exp(-t * 2.8f) * 1.3f;
+                float thump = (float)System.Math.Sin(phase2) * Mathf.Exp(-t * 9f) * 0.5f;
+                float roar = (brown * 8f + mid * 1.2f) * Mathf.Exp(-t * 3.6f);
+                float attack = Mathf.Clamp01(t / 0.006f);
+                d[i] = Soft((sub + thump + roar) * attack) * 0.95f;
+            }
+            return Build("BoomBody", d);
+        }
+
+        static AudioClip MakeTail()
+        {
+            var d = new float[Mathf.RoundToInt(3.6f * SampleRate)];
+            var rng = new System.Random(313);
+            float brown = 0f, slow = 0f;
+            for (int i = 0; i < d.Length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float n = (float)(rng.NextDouble() * 2 - 1);
+                brown += (n - brown) * 0.025f;
+                slow += (n - slow) * 0.006f;
+                // a swell, then a long decay, with a couple of building-side echoes
+                float env = Mathf.Clamp01(t / 0.18f) * Mathf.Exp(-t * 1.15f);
+                float echo = 0.5f * Mathf.Exp(-Mathf.Pow((t - 0.42f) * 5f, 2f)) + 0.35f * Mathf.Exp(-Mathf.Pow((t - 0.85f) * 4f, 2f));
+                float rumble = (brown * 14f + slow * 22f) * (env + echo * 0.5f);
+                float tone = Mathf.Sin(2 * Mathf.PI * 41f * t) * env * 0.35f;
+                d[i] = Soft(rumble + tone) * 0.9f;
+            }
+            return Build("BoomTail", d);
+        }
+
+        static AudioClip MakeGlass()
+        {
+            var d = new float[Mathf.RoundToInt(1.1f * SampleRate)];
+            var rng = new System.Random(314);
+            for (int k = 0; k < 46; k++)
+            {
+                float start = -Mathf.Log(1f - (float)rng.NextDouble() * 0.95f) * 0.16f;   // most shards early
+                float f = Mathf.Lerp(2800f, 8500f, (float)rng.NextDouble());
+                float decay = Mathf.Lerp(35f, 110f, (float)rng.NextDouble());
+                float amp = Mathf.Lerp(0.05f, 0.22f, (float)rng.NextDouble());
+                int s0 = Mathf.RoundToInt(start * SampleRate);
+                for (int i = s0; i < d.Length && i < s0 + SampleRate / 4; i++)
+                {
+                    float t = (i - s0) / (float)SampleRate;
+                    d[i] += Mathf.Sin(2 * Mathf.PI * f * t) * Mathf.Exp(-t * decay) * amp;
+                }
+            }
+            for (int i = 0; i < d.Length; i++) d[i] = Soft(d[i] * 1.4f) * 0.8f;
+            return Build("BoomGlass", d);
+        }
+
+        static AudioClip MakeRing()
+        {
+            var d = new float[Mathf.RoundToInt(3.4f * SampleRate)];
+            for (int i = 0; i < d.Length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float env = Mathf.Clamp01(t / 0.04f) * Mathf.Exp(-t * 0.9f);
+                float v = Mathf.Sin(2 * Mathf.PI * 3150f * t) * 0.7f + Mathf.Sin(2 * Mathf.PI * 4210f * t + 1f) * 0.3f;
+                d[i] = v * env * 0.5f;
+            }
+            return Build("BoomRing", d);
+        }
+
+        // One metal clink or clank: inharmonic partials with fast decay and a click.
+        static AudioClip MakeClatter(int seed)
+        {
+            var d = new float[Mathf.RoundToInt(0.45f * SampleRate)];
+            var rng = new System.Random(500 + seed);
+            float baseF = seed <= 2 ? Mathf.Lerp(900f, 1700f, (float)rng.NextDouble()) : Mathf.Lerp(240f, 520f, (float)rng.NextDouble());
+            var ratios = new[] { 1f, 1.51f, 2.32f, 3.9f };
+            float lp = 0f;
+            for (int i = 0; i < d.Length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float v = 0f;
+                for (int k = 0; k < ratios.Length; k++) v += Mathf.Sin(2 * Mathf.PI * baseF * ratios[k] * t) * Mathf.Exp(-t * (14f + 16f * k)) / (1f + k);
+                float n = (float)(rng.NextDouble() * 2 - 1);
+                lp += (n - lp) * 0.5f;
+                v += lp * Mathf.Exp(-t * 220f) * 0.9f;
+                d[i] = Soft(v * 1.1f) * 0.7f;
+            }
+            return Build("Clatter" + seed, d);
         }
     }
 }

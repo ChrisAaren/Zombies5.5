@@ -12,6 +12,39 @@ namespace Zombies55
         public int Kills;     // of those, how many died from it
     }
 
+    // What a detonation tells its listeners (explosion FX, ragdolls, noise, decals).
+    public readonly struct BlastInfo
+    {
+        public readonly Vector3 Position;   // blast centre, world space
+        public readonly float Radius;       // metres; nothing is hurt beyond it
+        public readonly float Damage;       // damage at the centre, before falloff
+        public readonly float Force;        // velocity change in m/s a free body at the centre gets (it falls off like VelocityAt says)
+        public readonly BlastKind Kind;
+        public readonly bool FromPlayer;    // the player caused it (kills pay out to the player)
+        public readonly GameObject Source;  // the exploding prop or the shooter; may be null
+
+        public BlastInfo(Vector3 position, float radius, float damage, float force, BlastKind kind, bool fromPlayer, GameObject source)
+        {
+            Position = position; Radius = radius; Damage = damage; Force = force; Kind = kind; FromPlayer = fromPlayer; Source = source;
+        }
+
+        // 1 at the centre, 0 at the edge: full strength inside a quarter of the radius, then a smooth fall.
+        public float Falloff(Vector3 point)
+        {
+            float t = Mathf.Clamp01((point - Position).magnitude / Mathf.Max(0.01f, Radius));
+            return t < 0.25f ? 1f : 1f - Mathf.SmoothStep(0f, 1f, (t - 0.25f) / 0.75f);
+        }
+
+        // The velocity change a ragdoll limb or any free body at point should take: away from the centre, lifted a little.
+        public Vector3 VelocityAt(Vector3 point)
+        {
+            Vector3 dir = point - Position;
+            dir.y += 0.35f * Mathf.Max(0.5f, dir.magnitude);
+            if (dir.sqrMagnitude < 1e-4f) dir = Vector3.up;
+            return dir.normalized * (Force * Falloff(point));
+        }
+    }
+
     // The one place explosions happen: damage with falloff and wall shielding, the visual and the audio.
     // Barrels, cars and the grenade launcher all call Detonate. Kills of a blast marked fromPlayer are credited to the
     // player (DamageInfo.FromPlayer), so they pay out and roll item drops like bullet kills.
@@ -26,7 +59,12 @@ namespace Zombies55
         const float WallShield = 0.35f;
 
         // Raised after every detonation (for the effects that hook explosions: ragdolls, decals, noise).
-        public static event Action<Vector3, float, float, BlastKind, bool> Detonated;   // position, radius, damage, kind, fromPlayer
+        // Position, radius, damage, force, kind, fromPlayer and source all travel in the BlastInfo. The explosion FX, the debris pool and
+        // the parked-car rock listen here; the ragdoll system hooks in the same way.
+        public static event Action<BlastInfo> Detonated;
+
+        // Default Force (m/s of velocity change at the centre) per kind.
+        public static float DefaultForce(BlastKind kind) => kind == BlastKind.Car ? 15f : kind == BlastKind.Barrel ? 11f : 9f;
 
         static readonly Collider[] s_Buffer = new Collider[160];
         static readonly Dictionary<IDamageable, Collider> s_Found = new Dictionary<IDamageable, Collider>();
@@ -36,12 +74,12 @@ namespace Zombies55
         // the shooter (the player, for a shell); it is only written to DamageInfo.Source. ignore: a damageable the blast skips
         // (the prop that is exploding).
         public static BlastResult Detonate(Vector3 position, float radius, float damage, GameObject source, bool fromPlayer,
-            BlastKind kind, IDamageable ignore = null)
+            BlastKind kind, IDamageable ignore = null, float force = 0f)
         {
-            CombatFX.Instance?.Explosion(position, radius);
-            CombatAudio.Instance?.PlayExplosion(position, kind == BlastKind.Car);
+            var info = new BlastInfo(position, radius, damage, force > 0f ? force : DefaultForce(kind), kind, fromPlayer, source);
+            CombatAudio.Instance?.PlayExplosion(position, kind, radius);
             var result = Damage(position, radius, damage, source, fromPlayer, ignore);
-            Detonated?.Invoke(position, radius, damage, kind, fromPlayer);
+            Detonated?.Invoke(info);
             return result;
         }
 

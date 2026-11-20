@@ -26,11 +26,11 @@ namespace Zombies55
 
         Transform _pool;
         Material _soft;
-        ParticleSystem _dust, _sparks, _flash, _wisp, _fireball, _blastSmoke, _blastSparks, _blastDust;
+        ParticleSystem _dust, _sparks, _flash, _wisp;
         TracerSlot[] _tracers;
         int _nextTracer;
-        Light _flashLight, _boomLight;
-        float _flashUntil, _boomStart;
+        Light _flashLight;
+        float _flashUntil;
         CinemachineImpulseSource _impulse;
 
         void Awake() => EnsureInit();
@@ -40,7 +40,7 @@ namespace Zombies55
         void EnsureInit()
         {
             Instance = this;
-            if (_tracers != null && _flashLight != null && _boomLight != null && _flash != null) return;
+            if (_tracers != null && _flashLight != null && _flash != null) return;
             // Everything lives under one pool object, so a rebuild removes only what this component made.
             var old = transform.Find("CombatFXPool");
             if (old != null) Destroy(old.gameObject);
@@ -53,11 +53,6 @@ namespace Zombies55
             _sparks = MakeSystem("Sparks", 120, 2.2f, SparkGradient(), Curve(1f, 0.2f), true);
             _flash = MakeSystem("MuzzleFlash", 16, 0f, Fade(1f, 0f), Curve(1f, 0.4f));
             _wisp = MakeSystem("MuzzleWisp", 40, -0.1f, Fade(0.5f, 0f), Curve(0.6f, 1.6f));
-            _fireball = MakeSystem("Fireball", 40, -0.15f, FireGradient(), new AnimationCurve(
-                new Keyframe(0f, 0.4f), new Keyframe(0.3f, 1f), new Keyframe(1f, 0.7f)));
-            _blastSmoke = MakeSystem("BlastSmoke", 60, -0.08f, Fade(0.75f, 0f), Curve(0.4f, 1.4f));
-            _blastSparks = MakeSystem("BlastSparks", 100, 1.4f, SparkGradient(), Curve(1f, 0.3f), true);
-            _blastDust = MakeSystem("BlastDust", 40, 0f, Fade(0.5f, 0f), Curve(0.6f, 1.5f));
 
             _tracers = new TracerSlot[Mathf.Max(4, tracerPool)];
             for (int i = 0; i < _tracers.Length; i++)
@@ -79,7 +74,6 @@ namespace Zombies55
             }
 
             _flashLight = MakeLight("MuzzleLight", Palette.MuzzleFlash, 7f);
-            _boomLight = MakeLight("BlastLight", Palette.FireOrange, 12f);
             _impulse = GetComponent<CinemachineImpulseSource>();
             if (_impulse == null) _impulse = gameObject.AddComponent<CinemachineImpulseSource>();
         }
@@ -108,13 +102,6 @@ namespace Zombies55
             }
 
             if (_flashLight.enabled && now >= _flashUntil) _flashLight.enabled = false;
-
-            if (_boomLight.enabled)
-            {
-                float k = (now - _boomStart) / 0.4f;
-                if (k >= 1f) _boomLight.enabled = false;
-                else _boomLight.intensity = 12f * (1f - k) * (1f - k);
-            }
         }
 
         // ------------------------------------------------------------------ public effects
@@ -262,93 +249,6 @@ namespace Zombies55
                     rotation = Random.Range(0f, 360f),
                 };
                 _dust.Emit(ep, 1);
-            }
-        }
-
-        public void Explosion(Vector3 pos, float radius)
-        {
-            EnsureInit();
-            float s = Mathf.Clamp(radius / 6f, 0.6f, 1.6f);
-
-            // Bright core
-            var core = new ParticleSystem.EmitParams
-            {
-                position = pos + Vector3.up * 0.4f,
-                velocity = Vector3.zero,
-                startLifetime = 0.14f,
-                startSize = 6f * s,
-                startColor = Palette.UiLight,
-            };
-            _fireball.Emit(core, 1);
-
-            for (int i = 0; i < 8; i++)
-            {
-                var ep = new ParticleSystem.EmitParams
-                {
-                    position = pos + Random.insideUnitSphere * 0.6f * s + Vector3.up * 0.4f,
-                    velocity = Vector3.up * Random.Range(1f, 3.5f) + Random.insideUnitSphere * 1.8f,
-                    startLifetime = Random.Range(0.45f, 0.8f),
-                    startSize = Random.Range(2.2f, 4f) * s,
-                    startColor = Color.white,
-                    rotation = Random.Range(0f, 360f),
-                };
-                _fireball.Emit(ep, 1);
-            }
-
-            for (int i = 0; i < 14; i++)
-            {
-                var ep = new ParticleSystem.EmitParams
-                {
-                    position = pos + new Vector3(Random.Range(-0.5f, 0.5f), Random.Range(0.3f, 1.8f), Random.Range(-0.5f, 0.5f)) * s,
-                    velocity = Vector3.up * Random.Range(2.5f, 5.5f) + Random.insideUnitSphere * 1.2f,
-                    startLifetime = Random.Range(2.2f, 3.4f),
-                    startSize = Random.Range(1.8f, 3.2f) * s,
-                    startColor = Color.Lerp(Palette.SmokeGrey, Palette.SmokeDark, Random.value),
-                    rotation = Random.Range(0f, 360f),
-                };
-                _blastSmoke.Emit(ep, 1);
-            }
-
-            for (int i = 0; i < 28; i++)
-            {
-                var ep = new ParticleSystem.EmitParams
-                {
-                    position = pos + Vector3.up * 0.5f,
-                    velocity = (Random.onUnitSphere + Vector3.up * 0.6f).normalized * Random.Range(7f, 17f),
-                    startLifetime = Random.Range(0.5f, 1.1f),
-                    startSize = 0.08f,
-                    startColor = Random.value < 0.5f ? Palette.SparkYellow : Palette.FireOrange,
-                };
-                _blastSparks.Emit(ep, 1);
-            }
-
-            for (int i = 0; i < 8; i++)
-            {
-                float a = i / 8f * Mathf.PI * 2f + Random.Range(-0.2f, 0.2f);
-                var ep = new ParticleSystem.EmitParams
-                {
-                    position = pos + Vector3.up * 0.15f,
-                    velocity = new Vector3(Mathf.Cos(a), 0.05f, Mathf.Sin(a)) * Random.Range(4f, 7f) * s,
-                    startLifetime = Random.Range(0.6f, 1f),
-                    startSize = Random.Range(1f, 1.6f) * s,
-                    startColor = Palette.WithAlpha(Palette.ConcreteTint, 0.5f),
-                    rotation = Random.Range(0f, 360f),
-                };
-                _blastDust.Emit(ep, 1);
-            }
-
-            _boomLight.transform.position = pos + Vector3.up * 1.5f;
-            _boomLight.range = Mathf.Max(10f, radius * 2.5f);
-            _boomLight.intensity = 12f;
-            _boomLight.enabled = true;
-            _boomStart = Time.time;
-
-            var cam = Camera.main;
-            if (cam != null && _impulse != null)
-            {
-                float dist = Vector3.Distance(cam.transform.position, pos);
-                float k = Mathf.Clamp01(1f - dist / (radius * 6f));
-                if (k > 0.03f) _impulse.GenerateImpulse(1.2f * k * k * Mathf.Clamp(s, 0.8f, 1.4f) + 0.1f * k);
             }
         }
 

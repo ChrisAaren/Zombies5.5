@@ -38,6 +38,8 @@ namespace Zombies55
             public string[] slowestFrames, trail, perSecond, perSecondStats;
             public string[] profilerMarkersTop;
             public string experiments;
+            public bool explosions;          // -benchmarkExplosions: a car or barrel blown up near the player's path every 5 s
+            public int explosionsFired;
             public string note;
         }
 
@@ -53,6 +55,9 @@ namespace Zombies55
         float _stuckTimer;
         int _wp;
         float _yaw;
+        bool _explosions, _carNext = true;
+        float _nextBoom;
+        int _boomsFired;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -79,6 +84,7 @@ namespace Zombies55
 
         System.Collections.IEnumerator Start()
         {
+            _explosions = HasArg("-benchmarkExplosions");
             _stand = HasArg("-benchmarkStand");   // player stands still, the camera orbits: the crowd closes in and stays in view
             FramePacing.ForceUncapped = true;
             FramePacing.Apply();
@@ -192,6 +198,7 @@ namespace Zombies55
                 statFramesSec++; visSumSec += visEnemies; movSumSec += movingEnemies;
                 for (int i = 0; i < statRecs.Length; i++) if (statRecs[i].Valid) statSumSec[i] += statRecs[i].LastValue;
                 Drive();
+                TickExplosions((float)elapsed);
                 int alive = RoundManager.Instance.AliveCount;
                 aliveSum += alive; if (alive < aliveMin) aliveMin = alive;
                 if (timingOn)
@@ -225,6 +232,7 @@ namespace Zombies55
                 frameTimingAvailable = timingOn && gpu.Count > 0,
             };
             Fill(r, ft);
+            r.explosions = _explosions; r.explosionsFired = _boomsFired;
             foreach (var a in Environment.GetCommandLineArgs()) if (a.StartsWith("-bn=", StringComparison.OrdinalIgnoreCase)) r.experiments = a;
             r.trail = trail.ToArray();
             r.perSecondStats = perSecondStats.ToArray();
@@ -273,6 +281,37 @@ namespace Zombies55
             FramePacing.Apply();
             Destroy(gameObject);
 #endif
+        }
+
+        // -benchmarkExplosions: every 5 s the nearest live car (then barrel, alternating) ahead of the player blows up, so the worst case of
+        // blast FX, debris and chain reactions is part of the measurement. Props are reset when none is left to blow.
+        void TickExplosions(float t)
+        {
+            if (!_explosions || t < _nextBoom || PlayerHealth.Instance == null) return;
+            _nextBoom = t + 5f;
+            var player = PlayerHealth.Instance.transform.position;
+            Vector3 aim = player + Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward * 14f;
+            var want = _carNext ? ExplosiveKind.Car : ExplosiveKind.Barrel;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                ExplosiveProp best = null;
+                float bestD = float.MaxValue;
+                var all = ExplosiveProp.All;
+                for (int i = 0; i < all.Count; i++)
+                {
+                    var p = all[i];
+                    if (!p.IsAlive || p.Kind != want) continue;
+                    var pp = p.transform.position;
+                    float fromPlayer = Vector2.Distance(new Vector2(pp.x, pp.z), new Vector2(player.x, player.z));
+                    if (fromPlayer < 7f || fromPlayer > 30f) continue;
+                    float d = (new Vector2(pp.x, pp.z) - new Vector2(aim.x, aim.z)).sqrMagnitude;
+                    if (d < bestD) { bestD = d; best = p; }
+                }
+                if (best != null) { best.DetonateNow(false); _boomsFired++; _carNext = !_carNext; return; }
+                ExplosiveProp.ResetAll();
+                ExplosionFX.Instance?.ResetAll();
+            }
+            _carNext = !_carNext;
         }
 
         void Drive()

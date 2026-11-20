@@ -1,0 +1,346 @@
+{
+  "convention": "Unity axes: X right, Y up, Z forward; origin = centre of mass; dims_m = bounding box (x, y, z) in metres; slots Paint (tint to body colour), CarMetal, Charred, Rubber, Rim, BarrelPaint; one convex collider per part.",
+  "parts": [
+    {
+      "name": "Debris_Hood",
+      "tris": 1304,
+      "dims_m": [
+        1.211,
+        0.395,
+        1.061
+      ],
+      "mass_kg": 14,
+      "slots": [
+        "CarMetal",
+        "Charred",
+        "Paint"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.024,
+        0.074,
+        -0.069
+      ],
+      "notes": "outer skin + inner stiffener frame; corner curled, mid crease, torn rear edge",
+      "fbx": "debris/Debris_Hood.fbx"
+    },
+    {
+      "name": "Debris_Door",
+      "tris": 1228,
+      "dims_m": [
+        0.362,
+        0.76,
+        0.94
+      ],
+      "mass_kg": 20,
+      "slots": [
+        "CarMetal",
+        "Charred",
+        "Paint"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.019,
+        -0.031,
+        -0.049
+      ],
+      "notes": "outer skin with window opening + inner frame; bottom edge curled, twisted",
+      "fbx": "debris/Debris_Door.fbx"
+    },
+    {
+      "name": "Debris_Bumper",
+      "tris": 1048,
+      "dims_m": [
+        1.559,
+        0.322,
+        0.375
+      ],
+      "mass_kg": 9,
+      "slots": [
+        "CarMetal",
+        "Charred",
+        "Paint"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.017,
+        0.006,
+        -0.023
+      ],
+      "notes": "bumper cover (one end kinked, one end ripped off) + bent steel beam",
+      "fbx": "debris/Debris_Bumper.fbx"
+    },
+    {
+      "name": "Debris_Trunklid",
+      "tris": 972,
+      "dims_m": [
+        1.087,
+        0.258,
+        0.56
+      ],
+      "mass_kg": 11,
+      "slots": [
+        "CarMetal",
+        "Charred",
+        "Paint"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        -0.082,
+        0.042,
+        0.026
+      ],
+      "notes": "outer skin + inner frame; folded hinge side, torn latch edge",
+      "fbx": "debris/Debris_Trunklid.fbx"
+    },
+    {
+      "name": "Debris_Wheel",
+      "tris": 1612,
+      "dims_m": [
+        0.226,
+        0.65,
+        0.66
+      ],
+      "mass_kg": 21,
+      "slots": [
+        "Rubber",
+        "Rim",
+        "CarMetal",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.002,
+        -0.004,
+        0.002
+      ],
+      "notes": "tyre (Rubber) + rim (Rim) + 5 spokes, brake disc; axis = X",
+      "fbx": "debris/Debris_Wheel.fbx"
+    },
+    {
+      "name": "Debris_Scrap_A",
+      "tris": 552,
+      "dims_m": [
+        0.582,
+        0.245,
+        0.476
+      ],
+      "mass_kg": 3.0,
+      "slots": [
+        "Charred",
+        "CarMetal",
+        "Paint"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        -0.014,
+        0.027,
+        0.01
+      ],
+      "notes": "torn, twisted sheet metal",
+      "fbx": "debris/Debris_Scrap_A.fbx"
+    },
+    {
+      "name": "Debris_Scrap_B",
+      "tris": 544,
+      "dims_m": [
+        0.414,
+        0.223,
+        0.681
+      ],
+      "mass_kg": 3.5,
+      "slots": [
+        "CarMetal",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.002,
+        0.037,
+        -0.023
+      ],
+      "notes": "torn, twisted sheet metal",
+      "fbx": "debris/Debris_Scrap_B.fbx"
+    },
+    {
+      "name": "Debris_Scrap_C",
+      "tris": 340,
+      "dims_m": [
+        0.341,
+        0.113,
+        0.325
+      ],
+      "mass_kg": 1.4,
+      "slots": [
+        "CarMetal",
+        "Charred",
+        "Paint"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        -0.003,
+        0.01,
+        -0.004
+      ],
+      "notes": "torn, twisted sheet metal",
+      "fbx": "debris/Debris_Scrap_C.fbx"
+    },
+    {
+      "name": "Debris_Scrap_D",
+      "tris": 512,
+      "dims_m": [
+        0.782,
+        0.288,
+        0.26
+      ],
+      "mass_kg": 2.6,
+      "slots": [
+        "CarMetal",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.002,
+        0.004,
+        0.019
+      ],
+      "notes": "torn, twisted sheet metal",
+      "fbx": "debris/Debris_Scrap_D.fbx"
+    },
+    {
+      "name": "Debris_Chunk_A",
+      "tris": 372,
+      "dims_m": [
+        0.485,
+        0.622,
+        0.705
+      ],
+      "mass_kg": 45,
+      "slots": [
+        "CarMetal",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.005,
+        0.012,
+        0.003
+      ],
+      "notes": "engine / drivetrain lump, convex-friendly",
+      "fbx": "debris/Debris_Chunk_A.fbx"
+    },
+    {
+      "name": "Debris_Chunk_B",
+      "tris": 184,
+      "dims_m": [
+        0.398,
+        0.406,
+        0.696
+      ],
+      "mass_kg": 28,
+      "slots": [
+        "CarMetal",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        -0.001,
+        -0.005,
+        0.018
+      ],
+      "notes": "engine / drivetrain lump, convex-friendly",
+      "fbx": "debris/Debris_Chunk_B.fbx"
+    },
+    {
+      "name": "Debris_Chunk_C",
+      "tris": 364,
+      "dims_m": [
+        0.563,
+        0.421,
+        0.482
+      ],
+      "mass_kg": 9,
+      "slots": [
+        "CarMetal",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        -0.004,
+        0.001,
+        0.004
+      ],
+      "notes": "engine / drivetrain lump, convex-friendly",
+      "fbx": "debris/Debris_Chunk_C.fbx"
+    },
+    {
+      "name": "Debris_BarrelLid",
+      "tris": 1304,
+      "dims_m": [
+        0.571,
+        0.212,
+        0.584
+      ],
+      "mass_kg": 1.4,
+      "slots": [
+        "BarrelPaint",
+        "CarMetal",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.004,
+        0.008,
+        0.002
+      ],
+      "notes": "dished drum lid with rolled rim, bent and torn",
+      "fbx": "debris/Debris_BarrelLid.fbx"
+    },
+    {
+      "name": "Debris_BarrelHalf_A",
+      "tris": 1444,
+      "dims_m": [
+        0.706,
+        0.574,
+        0.806
+      ],
+      "mass_kg": 4.0,
+      "slots": [
+        "CarMetal",
+        "BarrelPaint",
+        "Charred"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        -0.114,
+        0.271,
+        -0.065
+      ],
+      "notes": "half of a 200 L steel drum shell (A = base end, B = lid end): rolled chimes, pressed hoops, petalled torn edge",
+      "fbx": "debris/Debris_BarrelHalf_A.fbx"
+    },
+    {
+      "name": "Debris_BarrelHalf_B",
+      "tris": 1380,
+      "dims_m": [
+        0.899,
+        0.524,
+        0.62
+      ],
+      "mass_kg": 4.0,
+      "slots": [
+        "CarMetal",
+        "Charred",
+        "BarrelPaint"
+      ],
+      "origin": "centre of mass",
+      "com_offset_m": [
+        0.017,
+        0.622,
+        0.126
+      ],
+      "notes": "half of a 200 L steel drum shell (A = base end, B = lid end): rolled chimes, pressed hoops, petalled torn edge",
+      "fbx": "debris/Debris_BarrelHalf_B.fbx"
+    }
+  ]
+}

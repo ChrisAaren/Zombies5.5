@@ -24,6 +24,8 @@ namespace Zombies55.EditorTools
             Physics.SyncTransforms();
 
             BuildCombatPlayer();
+            BuildExplosionAssets();
+            BuildExplosions();
 
             var loop = Object.FindAnyObjectByType<GameLoop>();
             if (loop != null && loop.GetComponent<PlayerWallet>() == null) loop.gameObject.AddComponent<PlayerWallet>();
@@ -290,7 +292,7 @@ namespace Zombies55.EditorTools
             // Out of Props so the static-batching pass leaves them alone (wrecks swap materials).
             cars.SetParent(_combatRoot, true);
             cars.name = "ExplosiveCars";
-            var wreck = Mat("WreckChar", Palette.WreckChar);
+            var wreck = _wreckBodyMat;   // charred metal (FX_Charred); ExplosiveProp also reads it from the explosion assets
             foreach (Transform car in cars)
             {
                 var col = car.GetComponent<BoxCollider>();

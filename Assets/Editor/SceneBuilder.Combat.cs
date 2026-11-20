@@ -59,7 +59,10 @@ namespace Zombies55.EditorTools
                 case "GunMetal": return Meters("GunMetal", Palette.GunMetal, null, 1f, 0.55f, 0.7f);
                 case "GunPolymer": return Meters("GunPolymer", Palette.GunPolymer, null, 1f, 0.3f);
                 case "GunGrip": return Meters("GunGrip", Palette.GunGrip, null, 1f, 0.15f);
-                case "Sight": return Surf("S_Sight", Palette.SightGlow, null, Vector2.one, 0.6f, 0f, 2f);
+                case "Sight": return Surf("S_Sight", Palette.SightGlow, null, Vector2.one, 0.6f, 0f, 2f);   // tiny emissive dots only
+                // Coated lens glass: very dark, glossy, a slight cool reflection, never emissive.
+                case "ScopeGlass": return Surf("S_ScopeGlass", new Color(0.02f, 0.032f, 0.04f), null, Vector2.one, 0.96f, 0.2f, 0f);
+                case "Warhead": return Surf("S_Warhead", new Color(0.36f, 0.40f, 0.18f), null, Vector2.one, 0.4f, 0.3f, 0f);
                 case "Hazard": return Meters("Hazard", Palette.HazardYellow, null, 1f, 0.35f);
                 case "KioskScreen": return Surf("S_KioskScreen", Palette.Accent, null, Vector2.one, 0.7f, 0f, 1.6f);
                 case "Hood": return Meters("Hood", Palette.HoodGrey, null, 1f, 0.2f);
@@ -142,7 +145,19 @@ namespace Zombies55.EditorTools
             { "Gun_Rifle",   (new Vector3(0f, 0.002f, 0.270f), new Vector3(0f, -0.01f, -0.243f)) },
             { "Gun_DMR",     (new Vector3(0f, 0.006f, 0.240f), new Vector3(0f, -0.02f, -0.305f)) },
             { "Gun_LMG",     (new Vector3(0f, 0.006f, 0.250f), new Vector3(0f, -0.02f, -0.297f)) },
+            // Tier guns, from the model export (Tools/Blender/staging/weapons/gun_fit.json).
+            { "Gun_Carbine",         (new Vector3(0f, 0.004f, 0.290f), new Vector3(0f, -0.006f, -0.219f)) },
+            { "Gun_AutoShotgun",     (new Vector3(0f, -0.012f, 0.320f), new Vector3(0f, -0.014f, -0.329f)) },
+            { "Gun_Sniper50",        (new Vector3(0f, 0.021f, 0.330f), new Vector3(0f, -0.023f, -0.477f)) },
+            { "Gun_GrenadeLauncher", (new Vector3(-0.030f, -0.064f, 0.225f), new Vector3(0f, 0.028f, -0.319f)) },
         };
+
+        // Support-hand palm orientation per model, in gun space (default: under the handguard, palm up, fingers to the right).
+        // A vertical foregrip is held with the palm facing the gun (towards +X), fingers forward round the post, thumb up.
+        static readonly Quaternion HandguardPalm = Quaternion.LookRotation(Vector3.up, Vector3.right);
+        static readonly Quaternion VerticalGripPalm = Quaternion.LookRotation(Vector3.right, Vector3.forward);
+        static readonly HashSet<string> VerticalGripModels = new HashSet<string> { "Gun_GrenadeLauncher" };
+        static Quaternion ForegripRotation(string modelName) => VerticalGripModels.Contains(modelName) ? VerticalGripPalm : HandguardPalm;
 
         static void BuildCombatPlayer()
         {
@@ -169,7 +184,7 @@ namespace Zombies55.EditorTools
                     ? SpawnCombat(model, mount, Vector3.zero, 0f, DefaultLook, def.ModelName)
                     : StandInGun(def.ModelName, mount);
                 foreach (var c in gun.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
-                bool pistol = def.Id == WeaponCatalog.StarterId;
+                bool pistol = def.Handgun;
                 var trim = pistol ? PistolGripTrim : LongGripTrim;
                 // Barrel along the fingers (palm Y), gun up against the curl axis (palm -X).
                 gun.transform.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.left)
@@ -189,7 +204,8 @@ namespace Zombies55.EditorTools
                     // Under the handguard, fingers across to the right, palm up, curling round the barrel.
                     var fit = LongGunFit[def.ModelName];
                     grip = Node("Foregrip", gun.transform, fit.foregrip);
-                    grip.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.right);
+                    grip.localRotation = ForegripRotation(def.ModelName);
+                    if (VerticalGripModels.Contains(def.ModelName)) Node("GripVertical", grip, Vector3.zero);   // marker: curl the fingers round a post
                     Node("Stock", gun.transform, fit.stock);
                 }
                 SetLayerRecursive(gun, GameLayers.Player);
@@ -197,6 +213,47 @@ namespace Zombies55.EditorTools
             }
 
             SetRef(anim, "gunMount", mount);
+            BuildGrenadeTemplate(root);
+        }
+
+        // The 40 mm shell the grenade launcher fires: the Proj_Grenade40 model, a little oversized so it reads in flight,
+        // with a light smoke trail. Inactive; GrenadeLauncher clones it into a pool.
+        static void BuildGrenadeTemplate(GameObject player)
+        {
+            var model = TryModel("Proj_Grenade40");
+            GameObject shell;
+            if (model != null) shell = SpawnCombat(model, _combatRoot, Vector3.zero, 0f, DefaultLook, "GrenadeTemplate");
+            else
+            {
+                shell = Node("GrenadeTemplate", _combatRoot, Vector3.zero).gameObject;
+                Prim(PrimitiveType.Capsule, "Body", shell.transform, Vector3.zero, new Vector3(0.05f, 0.05f, 0.1f), Mat("GunMetal", Palette.GunMetal), false);
+            }
+            foreach (var c in shell.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+            foreach (var r in shell.GetComponentsInChildren<Renderer>())
+            {
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+            }
+            // The mesh points along +Z; scale 3 makes the 10 cm shell a readable 30 cm.
+            foreach (Transform child in shell.transform) child.localScale = Vector3.one * 3f;
+
+            var trail = shell.AddComponent<TrailRenderer>();
+            trail.time = 0.8f;
+            trail.minVertexDistance = 0.15f;
+            trail.widthCurve = new AnimationCurve(new Keyframe(0f, 0.16f), new Keyframe(1f, 0f));
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(new Color(0.82f, 0.82f, 0.8f), 0f), new GradientColorKey(new Color(0.55f, 0.55f, 0.55f), 1f) },
+                new[] { new GradientAlphaKey(0.62f, 0f), new GradientAlphaKey(0f, 1f) });
+            trail.colorGradient = grad;
+            trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            trail.receiveShadows = false;
+            trail.numCapVertices = 2;
+
+            shell.AddComponent<GrenadeProjectile>();
+            shell.SetActive(false);
+            var launcher = player.AddComponent<GrenadeLauncher>();
+            SetRef(launcher, "template", shell);
         }
 
         static float StandInLength(string modelName)
@@ -269,52 +326,83 @@ namespace Zombies55.EditorTools
 
         // ------------------------------------------------------------------ kiosks
 
+        // Kiosk plan: every district sells the two guns of its tier, in different cells of the district where it has several.
+        // Each entry lists the candidate cells (ix, iz) in order of preference; the first cell with a free sidewalk spot wins.
+        // Fountain Square also gets the P-9 ammo kiosk.
+        static readonly (int district, string[] guns, Vector2Int[] cells)[] KioskPlan =
+        {
+            (0, new[] { "wasp", "mule", "p9" }, new[] { new Vector2Int(0, 0) }),
+            (1, new[] { "breaker", "rook" }, new[] { new Vector2Int(0, 1) }),
+            (2, new[] { "breaker", "rook" }, new[] { new Vector2Int(1, 0) }),
+            (3, new[] { "breaker", "rook" }, new[] { new Vector2Int(0, -1) }),
+            (4, new[] { "breaker", "rook" }, new[] { new Vector2Int(-1, 0) }),
+            (5, new[] { "kestrel", "bulldog" }, new[] { new Vector2Int(1, 1) }),
+            (6, new[] { "kestrel", "bulldog" }, new[] { new Vector2Int(1, -1) }),
+            (7, new[] { "kestrel", "bulldog" }, new[] { new Vector2Int(-1, -1) }),
+            (8, new[] { "kestrel", "bulldog" }, new[] { new Vector2Int(-1, 1) }),
+            (9, new[] { "warden", "hammerhead" }, new[] { new Vector2Int(-1, 2), new Vector2Int(1, 2), new Vector2Int(0, 2), new Vector2Int(-2, 2), new Vector2Int(2, 2) }),
+            (10, new[] { "warden", "hammerhead" }, new[] { new Vector2Int(1, -2), new Vector2Int(-1, -2), new Vector2Int(0, -2), new Vector2Int(2, -2), new Vector2Int(-2, -2) }),
+            (11, new[] { "longshot", "atlas" }, new[] { new Vector2Int(-2, 1), new Vector2Int(-2, -1), new Vector2Int(-2, 0) }),
+            (12, new[] { "longshot", "atlas" }, new[] { new Vector2Int(2, -1), new Vector2Int(2, 1), new Vector2Int(2, 0) }),
+        };
+
+        // Where each kiosk went, for the checks and the debug map: (weapon id, district, cell, position).
+        public static readonly List<(string id, int district, Vector2Int cell, Vector3 pos)> KioskLog = new List<(string, int, Vector2Int, Vector3)>();
+
         static void BuildKiosks()
         {
-            // One kiosk per gun, placed by district tier. Each entry lists candidate cells (ix, iz) in order of
-            // preference; the first cell with a free sidewalk spot wins. Spots sit 10.75 m from the block center,
-            // so they never touch the barrier lines on the cell edges (19 m out).
             var kiosks = Node("Kiosks", _combatRoot, Vector3.zero);
-            var plan = new (string id, Vector2Int[] cells)[]
+            KioskLog.Clear();
+            Physics.SyncTransforms();
+            foreach (var entry in KioskPlan)
             {
-                ("wasp", new[] { new Vector2Int(0, 0) }),                                                        // Fountain Square
-                ("breaker", new[] { new Vector2Int(0, 1), new Vector2Int(1, 0), new Vector2Int(0, -1), new Vector2Int(-1, 0) }),   // inner side
-                ("kestrel", new[] { new Vector2Int(1, 1), new Vector2Int(-1, -1), new Vector2Int(1, -1), new Vector2Int(-1, 1) }), // inner corner
-                ("longshot", new[] { new Vector2Int(-2, 0), new Vector2Int(2, 0), new Vector2Int(-2, 1), new Vector2Int(2, -1) }), // West or East
-                ("atlas", new[] { new Vector2Int(0, 2), new Vector2Int(0, -2), new Vector2Int(1, 2), new Vector2Int(-1, -2) }),    // North or South
-            };
-
-            for (int k = 0; k < plan.Length; k++)
-            {
-                var def = WeaponCatalog.Get(plan[k].id);
-                bool placed = false;
-                foreach (var cell in plan[k].cells)
+                var usedCells = new List<Vector2Int>();
+                for (int g = 0; g < entry.guns.Length; g++)
                 {
-                    Vector2 block = ZoneLayout.CellCenter(cell.x, cell.y);
-
-                    // Sides ordered by how much they face the map center; first free spot wins.
-                    var order = new List<int> { 0, 1, 2, 3 };
-                    Vector2 toCenter = block.sqrMagnitude < 0.01f ? Vector2.up : -block.normalized;
-                    order.Sort((a, b) => Vector2.Dot(SideNormals[b], toCenter).CompareTo(Vector2.Dot(SideNormals[a], toCenter)));
-                    foreach (float alongSign in new[] { k % 2 == 0 ? 1f : -1f, k % 2 == 0 ? -1f : 1f })
+                    var def = WeaponCatalog.Get(entry.guns[g]);
+                    bool placed = false;
+                    // Cells not yet holding a kiosk of this district come first, so the pair spreads out.
+                    var cells = new List<Vector2Int>(entry.cells);
+                    cells.Sort((a, b) => (usedCells.Contains(a) ? 1 : 0).CompareTo(usedCells.Contains(b) ? 1 : 0));
+                    foreach (var cell in cells)
                     {
-                        foreach (int side in order)
+                        Vector2 block = ZoneLayout.CellCenter(cell.x, cell.y);
+                        Vector2 toCenter = block.sqrMagnitude < 0.01f ? Vector2.up : -block.normalized;
+                        // Candidate spots: side of the block (facing the map centre first) and a corner end of it; sides and
+                        // ends a kiosk of this block already uses come last.
+                        var spots = new List<(float score, Vector2 pos, float yaw)>();
+                        foreach (float along in new[] { 8.8f, -8.8f, 5.5f, -5.5f })
+                            for (int side = 0; side < 4; side++)
+                            {
+                                Vector2 n = SideNormals[side];
+                                Vector2 tangent = new Vector2(-n.y, n.x);
+                                Vector2 a = block + n * KioskLine + tangent * (along * (g % 2 == 0 ? 1f : -1f));
+                                float score = -Vector2.Dot(n, toCenter) * 2f + (Mathf.Abs(along) < 6f ? 3f : 0f);
+                                foreach (var k in KioskLog)
+                                {
+                                    float d = Vector2.Distance(new Vector2(k.pos.x, k.pos.z), a);
+                                    if (d < 7f) score += 100f;
+                                    else if (k.cell == cell && Vector2.Dot(SideNormals[side], (new Vector2(k.pos.x, k.pos.z) - block).normalized) > 0.7f) score += 5f;
+                                }
+                                spots.Add((score, a, Mathf.Atan2(n.x, n.y) * Mathf.Rad2Deg));
+                            }
+                        spots.Sort((x, y) => x.score.CompareTo(y.score));
+                        foreach (var sp in spots)
                         {
-                            Vector2 n = SideNormals[side];
-                            Vector2 tangent = new Vector2(-n.y, n.x);
-                            Vector2 p2 = block + n * KioskLine + tangent * (8.8f * alongSign);
-                            var pos = new Vector3(p2.x, SidewalkTop, p2.y);
-                            float yaw = Mathf.Atan2(n.x, n.y) * Mathf.Rad2Deg;
-                            if (!CombatSpotFree(pos, yaw, new Vector3(0.6f, 1.0f, 0.3f), 1.15f)) continue;
-                            MakeKiosk(def, kiosks, pos, yaw);
+                            if (sp.score >= 100f) break;
+                            var pos = new Vector3(sp.pos.x, SidewalkTop, sp.pos.y);
+                            if (!CombatSpotFree(pos, sp.yaw, new Vector3(0.6f, 1.0f, 0.3f), 1.15f)) continue;
+                            MakeKiosk(def, kiosks, pos, sp.yaw);
+                            Physics.SyncTransforms();
+                            KioskLog.Add((def.Id, entry.district, cell, pos));
+                            usedCells.Add(cell);
                             placed = true;
                             break;
                         }
                         if (placed) break;
                     }
-                    if (placed) break;
+                    if (!placed) Debug.LogWarning("Combat: no free sidewalk spot for the " + def.DisplayName + " kiosk in district " + entry.district);
                 }
-                if (!placed) Debug.LogWarning("Combat: no free sidewalk spot for the " + def.DisplayName + " kiosk in its districts");
             }
 
             // Every kiosk keeps 2.5 m of free curb from any parked car (the V3 cars are wider than the old ones).
@@ -357,12 +445,27 @@ namespace Zombies55.EditorTools
                 Box("Screen", root.transform, new Vector3(0f, 2.0f, 0.21f), new Vector3(1.1f, 0.3f, 0.04f), Mat("KioskScreenStandIn", Palette.Accent, 1.5f), false);
             }
 
-            // The cabinet glass is see-through so the gun on sale shows.
+            // The cabinet glass is see-through so the gun on sale shows; the screen carries the tier accent.
+            Renderer screenRenderer = null;
+            int screenSlot = 0;
+            Material screenLit = null, screenDim = null;
+            Color tierColor = def.TierColor;
             foreach (var r in root.GetComponentsInChildren<Renderer>())
             {
                 var ms = r.sharedMaterials;
                 for (int i = 0; i < ms.Length; i++)
-                    if (ms[i] != null && ms[i].name.StartsWith("S_Glass")) ms[i] = KioskGlassMat();
+                {
+                    if (ms[i] == null) continue;
+                    if (ms[i].name.StartsWith("S_Glass")) ms[i] = KioskGlassMat();
+                    else if (ms[i].name.StartsWith("S_KioskScreen"))
+                    {
+                        screenLit = Surf("S_KioskScreen_T" + def.Tier, new Color(tierColor.r * 0.55f, tierColor.g * 0.55f, tierColor.b * 0.55f, 1f), null, Vector2.one, 0.7f, 0f, 0.8f);
+                        screenDim = Surf("S_KioskScreen_T" + def.Tier + "_Dim", new Color(tierColor.r * 0.3f, tierColor.g * 0.3f, tierColor.b * 0.3f, 1f), null, Vector2.one, 0.7f, 0f, 0.1f);
+                        ms[i] = screenLit;
+                        screenRenderer = r;
+                        screenSlot = i;
+                    }
+                }
                 r.sharedMaterials = ms;
             }
 
@@ -405,7 +508,7 @@ namespace Zombies55.EditorTools
             label.fontStyle = FontStyles.Bold;
             label.color = Palette.Shadow; // dark on the bright emissive panel
             label.alignment = TextAlignmentOptions.Center;
-            label.text = def.DisplayName.ToUpperInvariant() + "\n" + def.Cost;
+            label.text = def.DisplayName.ToUpperInvariant() + "\n" + WeaponCatalog.TierNames[def.Tier] + "  " + def.BuyCost;
             label.rectTransform.sizeDelta = new Vector2(Mathf.Min(labelSize.x, 0.95f), Mathf.Min(labelSize.y, 0.19f));
 
             // A small warm light keeps the gun readable in shade.
@@ -414,14 +517,14 @@ namespace Zombies55.EditorTools
             lightGo.transform.localPosition = new Vector3(0f, 0.25f, 0.45f);
             var light = lightGo.AddComponent<Light>();
             light.type = LightType.Point;
-            light.color = new Color(1f, 0.92f, 0.78f);
+            light.color = Color.Lerp(new Color(1f, 0.92f, 0.78f), tierColor, def.Tier == 0 ? 0f : 0.3f);
             light.intensity = 1.2f;
             light.range = 2.2f;
             light.shadows = LightShadows.None;
 
             FitBox(root);
             var kiosk = root.AddComponent<WeaponKiosk>();
-            kiosk.Configure(def.Id, display, label);
+            kiosk.Configure(def.Id, display, label, screenRenderer, screenSlot, screenLit, screenDim);
         }
 
         static Material KioskGlassMat()

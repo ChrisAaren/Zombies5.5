@@ -96,6 +96,10 @@ namespace Zombies55
         public static readonly Color GunPolymer = Hex("#26282C");      // matte gun furniture
         public static readonly Color GunGrip = Hex("#1F1F22");         // textured grips
         public static readonly Color SightGlow = Hex("#FF5A3C");       // small emissive sight dot
+
+        // Weapon tier accents (kiosk screens, weapon HUD): neutral white, green, blue, violet, amber-gold. Slightly desaturated.
+        static readonly Color[] TierColors = { Hex("#E6E4DC"), Hex("#58B26A"), Hex("#4C8BD6"), Hex("#9A6BD8"), Hex("#EDAA2C") };
+        public static Color Tier(int tier) => TierColors[Mathf.Clamp(tier, 0, TierColors.Length - 1)];
         public static readonly Color HazardYellow = Hex("#E8B923");    // hazard stripe band on barrels
         public static readonly Color BarrelRed = Hex("#B23A2E");       // explosive barrel body paint
         public static readonly Color WreckChar = Hex("#1F1D1C");       // burnt car wreck

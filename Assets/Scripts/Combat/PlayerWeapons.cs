@@ -63,6 +63,13 @@ namespace Zombies55
         float _aimBlend;
         float _nextDryTime;
         bool _aimSent;
+        bool _inBurst;
+        int _burstLeft;
+        float _boltSoundAt = -1f;
+        static readonly RaycastHit[] s_Hits = new RaycastHit[32];
+        static readonly System.Collections.Generic.HashSet<IDamageable> s_Seen = new System.Collections.Generic.HashSet<IDamageable>();
+        static readonly System.Collections.Generic.IComparer<RaycastHit> s_ByDistance =
+            System.Collections.Generic.Comparer<RaycastHit>.Create((a, b) => a.distance.CompareTo(b.distance));
 
         void Awake()
         {
@@ -171,6 +178,7 @@ namespace Zombies55
                 HandleSwapInput(kb, mouse, pad);
                 HandleReloadInput(kb, pad);
                 UpdateReload();
+                UpdateBurstAndBolt(def);
                 HandleFire(def, mouse, pad);
             }
             else if (IsReloading && !active)
@@ -213,7 +221,7 @@ namespace Zombies55
             if (pressed) _fireBufferUntil = Time.time + FireBufferSeconds;
 
             bool want = def.Mode == FireMode.Auto ? held : Time.time <= _fireBufferUntil;
-            if (!want) return;
+            if (!want || _inBurst) return;
             // Firing interrupts a tube reload as soon as there is a shell in the gun.
             if (IsReloading && _tube && _mag[ActiveSlot] > 0 && !IsSwapping) CancelTubeReload();
             if (IsReloading || IsSwapping) return;
@@ -236,6 +244,25 @@ namespace Zombies55
             FireOnce(def);
         }
 
+        // A burst in progress fires its remaining rounds at the in-burst rate (reload, swap or an empty magazine ends it);
+        // a bolt action sounds its bolt at the end of the cycle that follows the shot.
+        void UpdateBurstAndBolt(WeaponDefinition def)
+        {
+            if (_boltSoundAt > 0f && Time.time >= _boltSoundAt)
+            {
+                _boltSoundAt = -1f;
+                if (!IsReloading && !IsSwapping) CombatAudio.Instance?.PlayBolt();
+            }
+            if (!_inBurst) return;
+            if (def.Mode != FireMode.Burst || IsReloading || IsSwapping || _mag[ActiveSlot] <= 0)
+            {
+                _inBurst = false;
+                _nextFireTime = Mathf.Max(_nextFireTime, Time.time + (def.Mode == FireMode.Burst ? def.BurstPause : 0f));
+                return;
+            }
+            if (Time.time >= _nextFireTime) FireOnce(def);
+        }
+
         // ------------------------------------------------------------------ reload and swap
 
         void StartReload()
@@ -249,8 +276,10 @@ namespace Zombies55
             _reloadDuration = Mathf.Max(0.2f, def.ReloadSeconds);
             _reloadStage = 0;
             _tube = false;
+            _inBurst = false;
+            _boltSoundAt = -1f;
             if (def.Mode == FireMode.Pump && _pose != null && _pose.TubeClipsPresent) BeginTubeReload(def);
-            CombatAudio.Instance?.PlayReloadStage(0);
+            CombatAudio.Instance?.PlayReloadStage(0, def.Id);
         }
 
         void BeginTubeReload(WeaponDefinition def)
@@ -288,7 +317,7 @@ namespace Zombies55
             if (_tubeStage == 0)
             {
                 _tubeStage = 1;
-                CombatAudio.Instance?.PlayReloadStage(1);
+                CombatAudio.Instance?.PlayReloadStage(1, Current?.Id);
             }
             else if (_tubeStage == 1)
             {
@@ -297,7 +326,7 @@ namespace Zombies55
                 _res[slot]--;
                 _tubeShellsLeft--;
                 SyncAmmo();
-                CombatAudio.Instance?.PlayReloadStage(1);
+                CombatAudio.Instance?.PlayReloadStage(1, Current?.Id);
                 _tubeMore = _tubeShellsLeft > 1;
                 if (_tubeShellsLeft <= 0) _tubeStage = 2;
             }
@@ -306,7 +335,7 @@ namespace Zombies55
                 IsReloading = false;
                 ReloadProgress = 0f;
                 _tube = false;
-                CombatAudio.Instance?.PlayReloadStage(2);
+                CombatAudio.Instance?.PlayReloadStage(2, Current?.Id);
             }
         }
 
@@ -318,7 +347,7 @@ namespace Zombies55
             if (_reloadStage == 0 && ReloadProgress > 0.5f)
             {
                 _reloadStage = 1;
-                CombatAudio.Instance?.PlayReloadStage(1);
+                CombatAudio.Instance?.PlayReloadStage(1, Current?.Id);
             }
             if (ReloadProgress < 1f) return;
 
@@ -329,7 +358,7 @@ namespace Zombies55
             _res[slot] -= take;
             IsReloading = false;
             ReloadProgress = 0f;
-            CombatAudio.Instance?.PlayReloadStage(2);
+            CombatAudio.Instance?.PlayReloadStage(2, Current?.Id);
             SyncAmmo();
         }
 
@@ -344,6 +373,8 @@ namespace Zombies55
             ActiveSlot = slot;
             IsReloading = false;
             _tube = false;
+            _inBurst = false;
+            _boltSoundAt = -1f;
             ReloadProgress = 0f;
             _bloom = 0f;
             _fireBufferUntil = 0f;
@@ -407,10 +438,38 @@ namespace Zombies55
 
             float spread = CurrentSpreadDegrees;
             bool anyHit = false, anyKill = false, anyHead = false;
-            for (int p = 0; p < Mathf.Max(1, def.Pellets); p++)
+            if (def.Projectile)
             {
+                // The shell flies an arc that lands on the aim point; it has no tracer and no hit marker.
                 Vector3 dir = ConeDirection(camFwd, cam.transform.up, spread);
-                ShootRay(def, origin, dir, along, muzzlePos, ref anyHit, ref anyKill, ref anyHead);
+                Vector3 aimPoint = Physics.Raycast(origin, dir, out RaycastHit ph, def.Range + along, GameLayers.ShotMask,
+                    QueryTriggerInteraction.Ignore) ? ph.point : origin + dir * def.Range;
+                var launcher = GrenadeLauncher.Instance;
+                if (launcher != null) launcher.Launch(muzzlePos, aimPoint, def, gameObject);
+            }
+            else
+            {
+                for (int p = 0; p < Mathf.Max(1, def.Pellets); p++)
+                {
+                    Vector3 dir = ConeDirection(camFwd, cam.transform.up, spread);
+                    if (def.Pierce > 1) ShootPiercing(def, origin, dir, along, muzzlePos, ref anyHit, ref anyKill, ref anyHead);
+                    else ShootRay(def, origin, dir, along, muzzlePos, ref anyHit, ref anyKill, ref anyHead);
+                }
+            }
+
+            // Cadence: a burst fires its rounds at the in-burst rate and then pauses; a bolt action sounds its bolt late in the cycle.
+            bool firstOfBurst = true;
+            if (def.Mode == FireMode.Burst)
+            {
+                firstOfBurst = !_inBurst;
+                if (firstOfBurst) { _inBurst = true; _burstLeft = Mathf.Max(1, def.BurstCount); }
+                _burstLeft--;
+                _nextFireTime = Time.time + (_burstLeft > 0 ? def.SecondsPerShot : def.BurstPause);
+                if (_burstLeft <= 0) _inBurst = false;
+            }
+            else if (def.Mode == FireMode.Bolt)
+            {
+                _boltSoundAt = Time.time + Mathf.Min(0.55f, def.SecondsPerShot * 0.4f);
             }
 
             _bloom += Mathf.Max(def.AimSpread * 0.6f, 0.15f);
@@ -419,11 +478,100 @@ namespace Zombies55
             if (_orbit != null) _orbit.AddRecoil(def.RecoilPitch * k, UnityEngine.Random.Range(-def.RecoilYaw, def.RecoilYaw) * k);
 
             CombatAudio.Instance?.PlayShot(def.Id);
-            if (muzzle != null) CombatFX.Instance?.MuzzleFlash(muzzle, def.Mode == FireMode.Pump ? 1.5f : def.Damage > 60f ? 1.3f : 1f);
+            if (muzzle != null) FlashFor(def, muzzle);
+            if (firstOfBurst && def.Shake > 0f) CombatFX.Instance?.Shake(def.Shake * (IsAiming ? 0.8f : 1f));
 
             if (anyHit) HitConfirmed?.Invoke(anyKill, anyHead);
             Fired?.Invoke();
             SyncAmmo();
+        }
+
+        static void FlashFor(WeaponDefinition def, Transform muzzle)
+        {
+            float size, smoke = 1f;
+            switch (def.Id)
+            {
+                case "mule": size = 1.5f; smoke = 1.4f; break;
+                case "rook": size = 0.9f; break;
+                case "bulldog": size = 1.6f; smoke = 1.3f; break;
+                case "warden": size = 2.1f; smoke = 1.8f; break;
+                case "hammerhead": size = 1.6f; smoke = 3.2f; break;
+                default: size = def.Mode == FireMode.Pump ? 1.5f : def.Damage > 60f ? 1.3f : 1f; break;
+            }
+            CombatFX.Instance?.MuzzleFlash(muzzle, size, smoke);
+        }
+
+        // Enemies the last piercing shot went through (for tests).
+        public int LastPierced { get; private set; }
+
+        // Passes through up to def.Pierce enemies (or explosives), each hit once, each hit weaker; solid world ends the shot.
+        void ShootPiercing(WeaponDefinition def, Vector3 origin, Vector3 dir, float along, Vector3 muzzlePos,
+            ref bool anyHit, ref bool anyKill, ref bool anyHead)
+        {
+            float maxD = def.Range + along;
+            int n = Physics.RaycastNonAlloc(origin, dir, s_Hits, maxD, GameLayers.ShotMask, QueryTriggerInteraction.Ignore);
+            System.Array.Sort(s_Hits, 0, n, s_ByDistance);
+            Vector3 end = origin + dir * def.Range;
+            if (n > 0)
+            {
+                // Something between the muzzle and the first thing hit (a corner beside the player) takes the shot instead.
+                Vector3 first = s_Hits[0].point;
+                Vector3 to = first - muzzlePos;
+                float dm = to.magnitude;
+                if (dm > 0.3f && Physics.Raycast(muzzlePos, to / dm, out RaycastHit near, dm - 0.05f, GameLayers.ShotMask,
+                        QueryTriggerInteraction.Ignore) && near.collider.GetComponentInParent<IDamageable>() == null)
+                {
+                    ShootRay(def, origin, dir, along, muzzlePos, ref anyHit, ref anyKill, ref anyHead);
+                    return;
+                }
+            }
+
+            s_Seen.Clear();
+            int pierced = 0;
+            float scale = 1f;
+            for (int i = 0; i < n; i++)
+            {
+                var hit = s_Hits[i];
+                var col = hit.collider;
+                var hitbox = col.GetComponent<Hitbox>();
+                if (hitbox == null) hitbox = col.GetComponentInParent<Hitbox>();
+                IDamageable target = hitbox != null ? hitbox.Owner : col.GetComponentInParent<IDamageable>();
+                HitZone zone = hitbox != null ? hitbox.Zone : HitZone.Body;
+                ImpactKind kind = hitbox != null || col.gameObject.layer == GameLayers.Enemy ? ImpactKind.Enemy
+                    : col.gameObject.layer == GameLayers.Explosive ? ImpactKind.Metal : ImpactKind.World;
+
+                if (target == null)
+                {
+                    end = hit.point;
+                    CombatFX.Instance?.Impact(hit.point, hit.normal, kind);
+                    break;
+                }
+                if (!target.IsAlive || !s_Seen.Add(target)) continue;
+
+                CombatFX.Instance?.Impact(hit.point, hit.normal, kind);
+                float dmg = def.Damage * scale;
+                bool head = zone == HitZone.Head;
+                if (head) dmg *= def.HeadshotMultiplier;
+                bool wasAlive = target.IsAlive;
+                target.TakeDamage(new DamageInfo
+                {
+                    Amount = dmg,
+                    Point = hit.point,
+                    Direction = dir,
+                    Zone = zone,
+                    Kind = DamageKind.Bullet,
+                    Source = gameObject,
+                    FromPlayer = true,
+                });
+                anyHit = true;
+                if (head) anyHead = true;
+                if (wasAlive && !target.IsAlive) anyKill = true;
+                pierced++;
+                scale *= def.PierceFalloff;
+                if (pierced >= def.Pierce) { end = hit.point; break; }
+            }
+            LastPierced = pierced;
+            CombatFX.Instance?.Tracer(muzzlePos, end);
         }
 
         void ShootRay(WeaponDefinition def, Vector3 origin, Vector3 dir, float along, Vector3 muzzlePos,

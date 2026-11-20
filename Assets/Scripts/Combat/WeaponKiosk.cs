@@ -16,6 +16,9 @@ namespace Zombies55
         [SerializeField] string weaponId;
         [SerializeField] Transform display;
         [SerializeField] TextMeshPro priceLabel;
+        [SerializeField] Renderer screen;          // the renderer that carries the screen panel (it has other materials too)
+        [SerializeField] int screenSlot;           // the screen's material slot on that renderer
+        [SerializeField] Material screenLit, screenDim;   // tier accent, and the same dimmed while the district is locked
         [SerializeField] float useRange = 2f;
         [SerializeField] float spinDegreesPerSecond = 40f;
         [SerializeField] float bobHeight = 0.03f;
@@ -26,19 +29,57 @@ namespace Zombies55
         bool _near;
         bool _labelOwned;
         Vector3 _displayRest;
+        int _district = -1;
+        bool _unlocked = true, _lockApplied;
+        float _nextLockCheck;
+        Color _labelColor;
 
-        public void Configure(string id, Transform displayPoint, TextMeshPro label)
+        public string WeaponId => weaponId;
+
+        public void Configure(string id, Transform displayPoint, TextMeshPro label, Renderer screenRenderer = null, int slot = 0,
+            Material lit = null, Material dim = null)
         {
             weaponId = id;
             display = displayPoint;
             priceLabel = label;
+            screen = screenRenderer;
+            screenSlot = slot;
+            screenLit = lit;
+            screenDim = dim;
         }
 
         void Start()
         {
             _def = WeaponCatalog.Get(weaponId);
             if (display != null) _displayRest = display.localPosition;
+            if (priceLabel != null) _labelColor = priceLabel.color;
+            _district = ZoneLayout.DistrictAt(transform.position);
             RefreshLabel(false);
+            ApplyLock(true);
+        }
+
+        // Screen and label read dimmed while the district is still locked behind its barrier.
+        void ApplyLock(bool force)
+        {
+            var zones = ZoneManager.Instance;
+            bool unlocked = zones == null || _district < 0 || zones.IsOwned(_district);
+            if (!force && unlocked == _unlocked && _lockApplied) return;
+            _unlocked = unlocked;
+            _lockApplied = true;
+            if (priceLabel != null)
+            {
+                var c = _labelColor;
+                priceLabel.color = unlocked ? c : new Color(c.r, c.g, c.b, 0.55f);
+            }
+            if (screen != null && screenLit != null && screenDim != null)
+            {
+                var mats = screen.sharedMaterials;
+                if (screenSlot >= 0 && screenSlot < mats.Length)
+                {
+                    mats[screenSlot] = unlocked ? screenLit : screenDim;
+                    screen.sharedMaterials = mats;
+                }
+            }
         }
 
         void OnDisable()
@@ -49,6 +90,11 @@ namespace Zombies55
 
         void Update()
         {
+            if (Time.unscaledTime >= _nextLockCheck)
+            {
+                _nextLockCheck = Time.unscaledTime + 0.25f;
+                ApplyLock(false);
+            }
             if (display != null)
             {
                 display.Rotate(0f, spinDegreesPerSecond * Time.deltaTime, 0f, Space.Self);
@@ -82,7 +128,7 @@ namespace Zombies55
             bool owned = weapons.Owns(_def.Id);
             if (owned != _labelOwned) RefreshLabel(owned);
             bool full = owned && weapons.IsAmmoFull(_def.Id);
-            int cost = owned ? _def.AmmoCost : _def.Cost;
+            int cost = owned ? _def.AmmoCost : _def.BuyCost;
             bool wallet = PlayerWallet.Instance != null;
             bool affordable = wallet && PlayerWallet.Instance.CanAfford(cost);
 
@@ -134,8 +180,9 @@ namespace Zombies55
         {
             _labelOwned = owned;
             if (priceLabel == null || _def == null) return;
-            priceLabel.text = owned ? _def.DisplayName.ToUpperInvariant() + "\nAMMO " + _def.AmmoCost
-                                    : _def.DisplayName.ToUpperInvariant() + "\n" + _def.Cost;
+            string tier = WeaponCatalog.TierNames[Mathf.Clamp(_def.Tier, 0, 4)];
+            priceLabel.text = owned ? _def.DisplayName.ToUpperInvariant() + "\n" + tier + "  AMMO " + _def.AmmoCost
+                                    : _def.DisplayName.ToUpperInvariant() + "\n" + tier + "  " + _def.BuyCost;
         }
     }
 }

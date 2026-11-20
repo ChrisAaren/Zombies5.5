@@ -31,6 +31,8 @@ namespace Zombies55
 
         [Header("Weapon panel")]
         [SerializeField] TMP_Text weaponNameText;
+        [SerializeField] Image weaponTierBar;
+        [SerializeField] TMP_Text weaponTierText;
         [SerializeField] TMP_Text magText;
         [SerializeField] TMP_Text reserveText;
         [SerializeField] Image[] slotChips;
@@ -347,6 +349,14 @@ namespace Zombies55
                 _weaponDirty = false;
                 var cur = _pw.Current;
                 weaponNameText.text = cur != null ? cur.DisplayName.ToUpperInvariant() : "UNARMED";
+                Color tier = cur != null ? cur.TierColor : Palette.Tier(0);
+                if (weaponTierBar != null) weaponTierBar.color = tier;
+                if (weaponTierText != null)
+                {
+                    weaponTierText.text = cur != null ? WeaponCatalog.TierNames[Mathf.Clamp(cur.Tier, 0, 4)] : string.Empty;
+                    weaponTierText.color = tier;
+                }
+                if (reloadFill != null) reloadFill.color = tier;
 
                 int mag = _pw.Magazine;
                 bool low = cur != null && mag <= Mathf.Max(1, Mathf.CeilToInt(cur.MagazineSize * 0.25f));
@@ -359,7 +369,7 @@ namespace Zombies55
                     var def = _pw.GetSlot(i);
                     bool active = i == _pw.ActiveSlot;
                     slotLabels[i].text = (i + 1) + "  " + (def != null ? def.DisplayName.ToUpperInvariant() : "EMPTY");
-                    slotChips[i].color = active ? Palette.Accent : Palette.WithAlpha(Palette.UiDark, 0.8f);
+                    slotChips[i].color = active ? (def != null ? def.TierColor : Palette.Accent) : Palette.WithAlpha(Palette.UiDark, 0.8f);
                     slotLabels[i].color = active ? Palette.UiDark
                         : Palette.WithAlpha(Palette.UiLight, def != null ? 1f : 0.45f);
                 }

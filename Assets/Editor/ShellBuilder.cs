@@ -232,7 +232,15 @@ namespace Zombies55.EditorTools
 
             var weaponName = CreateText(wp, "WeaponName", "P-9 SIDEARM", 30, Palette.UiLight, 6f, true);
             weaponName.alignment = TextAlignmentOptions.MidlineLeft;
-            PlaceCorner(weaponName.rectTransform, top, new Vector2(24f, -14f), new Vector2(472f, 40f));
+            PlaceCorner(weaponName.rectTransform, top, new Vector2(24f, -14f), new Vector2(400f, 40f));
+
+            // Tier accent: a thin bar down the panel's left edge and the tier tag (T0..T4) at the end of the name row.
+            var tierBar = CreateImage(wp, "TierBar", s_RoundedRect, Palette.Tier(0), true);
+            tierBar.pixelsPerUnitMultiplier = 3f;
+            PlaceCorner(tierBar.rectTransform, top, new Vector2(8f, -14f), new Vector2(6f, 202f));
+            var tierText = CreateText(wp, "TierTag", "T0", 26, Palette.Tier(0), 4f, true);
+            tierText.alignment = TextAlignmentOptions.MidlineRight;
+            PlaceCorner(tierText.rectTransform, top, new Vector2(432f, -14f), new Vector2(64f, 40f));
 
             var mag = CreateText(wp, "Magazine", "12", 100, Palette.UiLight, 0f, true);
             mag.alignment = TextAlignmentOptions.MidlineRight;
@@ -329,6 +337,8 @@ namespace Zombies55.EditorTools
             Wire(so, "floatTemplate", floatTemplate);
             Wire(so, "floatRoot", floatRoot);
             Wire(so, "weaponNameText", weaponName);
+            Wire(so, "weaponTierBar", tierBar);
+            Wire(so, "weaponTierText", tierText);
             Wire(so, "magText", mag);
             Wire(so, "reserveText", reserve);
             WireArray(so, "slotChips", chips);

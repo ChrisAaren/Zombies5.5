@@ -138,7 +138,49 @@ namespace Zombies55
             t.Line.enabled = true;
         }
 
-        public void MuzzleFlash(Transform muzzle, float size)
+        // Small camera impulse (shots, bursts). 1 is a heavy kick.
+        public void Shake(float amount)
+        {
+            EnsureInit();
+            if (amount > 0f && _impulse != null) _impulse.GenerateImpulse(amount * 0.5f);
+        }
+
+        // The soft round particle material (trails, glows).
+        public Material SoftMaterial { get { EnsureInit(); return _soft; } }
+
+        // A grenade that hits too close: a thump of dust and a few sparks, no blast.
+        public void Dud(Vector3 pos)
+        {
+            EnsureInit();
+            for (int i = 0; i < 5; i++)
+            {
+                var ep = new ParticleSystem.EmitParams
+                {
+                    position = pos + Random.insideUnitSphere * 0.15f,
+                    velocity = Random.onUnitSphere * Random.Range(0.6f, 1.6f) + Vector3.up * 0.8f,
+                    startLifetime = Random.Range(0.4f, 0.8f),
+                    startSize = Random.Range(0.25f, 0.5f),
+                    startColor = Palette.WithAlpha(Palette.ConcreteTint, 0.6f),
+                    rotation = Random.Range(0f, 360f),
+                };
+                _dust.Emit(ep, 1);
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                var sp = new ParticleSystem.EmitParams
+                {
+                    position = pos,
+                    velocity = Random.onUnitSphere * Random.Range(2f, 5f),
+                    startLifetime = Random.Range(0.15f, 0.3f),
+                    startSize = 0.05f,
+                    startColor = Palette.SparkYellow,
+                };
+                _sparks.Emit(sp, 1);
+            }
+        }
+
+        // size scales the flash; smoke scales the lingering wisp (a launcher blows a cloud).
+        public void MuzzleFlash(Transform muzzle, float size, float smoke = 1f)
         {
             EnsureInit();
             Vector3 p = muzzle.position;
@@ -177,7 +219,7 @@ namespace Zombies55
                 position = p + f * 0.1f,
                 velocity = f * Random.Range(0.8f, 1.6f) + Vector3.up * 0.4f,
                 startLifetime = Random.Range(0.3f, 0.5f),
-                startSize = 0.12f * size,
+                startSize = 0.12f * size * smoke,
                 startColor = Palette.WithAlpha(Palette.SmokeGrey, 0.5f),
             };
             _wisp.Emit(wp, 1);

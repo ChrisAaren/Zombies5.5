@@ -15,13 +15,8 @@ namespace Zombies55
         [SerializeField] float maxHealth = 60f;
         [SerializeField] float blastRadius = 6f;
         [SerializeField] float blastDamage = 140f;
-        [SerializeField] float playerDamageScale = 0.6f;
         [SerializeField] float carFuseSeconds = 1.5f;
         [SerializeField] Material wreckMaterial;
-
-        static readonly Collider[] s_Buffer = new Collider[160];
-        static readonly Dictionary<IDamageable, Collider> s_Found = new Dictionary<IDamageable, Collider>();
-        static readonly List<KeyValuePair<IDamageable, Collider>> s_Work = new List<KeyValuePair<IDamageable, Collider>>();
 
         float _hp;
         bool _exploded;
@@ -163,9 +158,8 @@ namespace Zombies55
             Vector3 center = WorldCenter();
             bool big = kind == ExplosiveKind.Car;
 
-            CombatFX.Instance?.Explosion(center, blastRadius);
-            CombatAudio.Instance?.PlayExplosion(center, big);
-            DealBlast(center);
+            Blast.Detonate(center, blastRadius, blastDamage, gameObject, _playerCaused,
+                big ? BlastKind.Car : BlastKind.Barrel, this);
 
             if (_fire != null) _fire.Stop(true, ParticleSystemStopBehavior.StopEmitting);
             if (kind == ExplosiveKind.Barrel)
@@ -207,57 +201,6 @@ namespace Zombies55
                 return new Vector3(b.center.x, b.min.y + (kind == ExplosiveKind.Car ? 0.7f : 0.45f), b.center.z);
             }
             return transform.position + Vector3.up * 0.5f;
-        }
-
-        void DealBlast(Vector3 center)
-        {
-            int n = Physics.OverlapSphereNonAlloc(center, blastRadius, s_Buffer, GameLayers.BlastMask,
-                QueryTriggerInteraction.Ignore);
-            s_Found.Clear();
-            for (int i = 0; i < n; i++)
-            {
-                var c = s_Buffer[i];
-                var d = c.GetComponentInParent<IDamageable>();
-                if (d == null || ReferenceEquals(d, this)) continue;
-                if (!s_Found.TryGetValue(d, out var best)
-                    || (c.bounds.ClosestPoint(center) - center).sqrMagnitude < (best.bounds.ClosestPoint(center) - center).sqrMagnitude)
-                    s_Found[d] = c;
-            }
-
-            s_Work.Clear();
-            foreach (var kv in s_Found) s_Work.Add(kv);
-            s_Found.Clear();
-
-            foreach (var kv in s_Work)
-            {
-                var d = kv.Key;
-                var c = kv.Value;
-                if (c == null || !d.IsAlive) continue;
-                Vector3 p = c.bounds.ClosestPoint(center);
-                float t = Mathf.Clamp01((p - center).magnitude / blastRadius);
-                float falloff = t < 0.25f ? 1f : Mathf.Lerp(1f, 0.1f, (t - 0.25f) / 0.75f);
-                float amount = blastDamage * falloff;
-
-                // Walls shield most of the blast.
-                Vector3 target = c.bounds.center;
-                if (Physics.Linecast(center + Vector3.up * 0.3f, target, 1 << GameLayers.Default, QueryTriggerInteraction.Ignore))
-                    amount *= 0.35f;
-                if (d is PlayerHealth) amount *= playerDamageScale;
-
-                Vector3 dir = target - center;
-                dir.y += 0.3f;
-                d.TakeDamage(new DamageInfo
-                {
-                    Amount = amount,
-                    Point = p,
-                    Direction = dir.normalized,
-                    Zone = HitZone.Body,
-                    Kind = DamageKind.Explosion,
-                    Source = gameObject,
-                    FromPlayer = _playerCaused,
-                });
-            }
-            s_Work.Clear();
         }
 
         // ------------------------------------------------------------------ reset

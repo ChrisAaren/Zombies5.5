@@ -63,6 +63,9 @@ namespace Zombies55
         [Tooltip("Left-hand finger curl in degrees (proximal, intermediate, distal) on a handguard, wrapped round it.")]
         [SerializeField] Vector3 supportCurl = new Vector3(62f, 80f, 55f);
         [SerializeField] Vector3 supportThumb = new Vector3(40f, 40f, 40f);
+        [Tooltip("Same for a vertical foregrip (fingers wrapped round a post, palm facing the gun).")]
+        [SerializeField] Vector3 supportCurlVertical = new Vector3(70f, 85f, 60f);
+        [SerializeField] Vector3 supportThumbVertical = new Vector3(30f, 35f, 35f);
         [SerializeField] Vector3 thumbAxis = new Vector3(0f, 0f, -1f);
         [Tooltip("Elbow pole of the support arm in the gun's space (X right, Y up, Z forward, origin at the grip): below and outboard" +
                  " of the handguard, so the forearm comes up to it from underneath and never crosses the receiver or magazine.")]
@@ -92,6 +95,7 @@ namespace Zombies55
         readonly Dictionary<string, GameObject> _guns = new Dictionary<string, GameObject>();
         GameObject _gun;
         Transform _muzzle, _foregrip, _stock;
+        bool _verticalGrip;                     // the foregrip is a vertical post (a marker child "GripVertical" on the node)
         Vector3 _mountRest;
         struct FingerBone { public Transform Bone; public Quaternion Rest; public float Curl; }
         FingerBone[] _rightFingers, _leftFingers;
@@ -308,6 +312,11 @@ namespace Zombies55
                 case "atlas": return 3.0f;     // LMG
                 case "longshot": return 3.8f;  // DMR
                 case "breaker": return 5.5f;   // shotgun
+                case "mule": return 4.8f;      // heavy revolver
+                case "rook": return 2.2f;      // burst carbine
+                case "bulldog": return 4.4f;   // auto shotgun
+                case "warden": return 6.5f;    // .50 bolt action
+                case "hammerhead": return 5.0f; // 40 mm launcher
             }
             return def.Mode == FireMode.Pump ? 5.5f : Mathf.Clamp(def.RecoilPitch * 1.5f + 1.5f, 1.8f, 4f);
         }
@@ -333,6 +342,7 @@ namespace Zombies55
             _muzzle = null;
             _foregrip = null;
             _stock = null;
+            _verticalGrip = false;
             foreach (var kv in _guns) if (kv.Value != null) kv.Value.SetActive(false);
             if (def == null || !_guns.TryGetValue(def.ModelName, out _gun) || _gun == null) return;
             _gun.SetActive(true);
@@ -341,10 +351,11 @@ namespace Zombies55
                 if (t.name == "Muzzle") _muzzle = t;
                 else if (t.name == "Foregrip") _foregrip = t;
                 else if (t.name == "Stock") _stock = t;
+                else if (t.name == "GripVertical") _verticalGrip = true;
             }
         }
 
-        bool PistolSet => _weapons == null || _weapons.Current == null || _weapons.Current.Id == WeaponCatalog.StarterId;
+        bool PistolSet => _weapons == null || _weapons.Current == null || _weapons.Current.Handgun;
 
         void Update()
         {
@@ -521,11 +532,13 @@ namespace Zombies55
             for (int i = 0; i < _leftFingers.Length; i++)
             {
                 var f = _leftFingers[i];
-                float deg = (i % 3 == 0 ? supportCurl.x : i % 3 == 1 ? supportCurl.y : supportCurl.z) * curlSign;
+                Vector3 sc = _verticalGrip ? supportCurlVertical : supportCurl;
+                float deg = (i % 3 == 0 ? sc.x : i % 3 == 1 ? sc.y : sc.z) * curlSign;
                 f.Bone.localRotation = Quaternion.Slerp(f.Bone.localRotation, f.Rest * Quaternion.AngleAxis(deg, Vector3.right), weight);
             }
             Transform[] thumb = { _lThumb0, _lThumb1, _lThumb2 };
-            float[] deg3 = { supportThumb.x, supportThumb.y, supportThumb.z };
+            Vector3 st = _verticalGrip ? supportThumbVertical : supportThumb;
+            float[] deg3 = { st.x, st.y, st.z };
             for (int i = 0; i < 3; i++)
                 if (thumb[i] != null)
                     thumb[i].localRotation = Quaternion.Slerp(thumb[i].localRotation, _thumbRest[i] * Quaternion.AngleAxis(deg3[i], thumbAxis), weight);

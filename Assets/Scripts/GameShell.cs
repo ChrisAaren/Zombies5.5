@@ -130,6 +130,9 @@ namespace Zombies55
         {
             if (_loop == null || _leaving) return;
 
+            // The settings menu was opened some other way (a test hook): hide the screens under it all the same.
+            if (!_settingsOpen && settingsMenu.IsOpen) HideForSettings();
+
             if (_settingsOpen)
             {
                 // The settings screen swallows input; Esc, B and Start go back.
@@ -354,12 +357,20 @@ namespace Zombies55
         {
             if (_settingsOpen || _loop == null) return;
             if (_loop.State != RunState.Ready && _loop.State != RunState.Paused) return;
+            HideForSettings();
+            settingsMenu.Open();
+        }
+
+        // Everything under the settings card is hidden (only the 3D scene stays): it would show through the card.
+        // CloseSettings restores the screen for the current state via ApplyState.
+        void HideForSettings()
+        {
             _settingsOpen = true;
             _settingsFrom = _loop.State;
             titleRoot.SetActive(false);
             pauseRoot.SetActive(false);
-            hudRoot.SetActive(false);   // the HUD would show through the settings card; CloseSettings restores it via ApplyState
-            settingsMenu.Open();
+            hudRoot.SetActive(false);
+            endRoot.SetActive(false);
         }
 
         void CloseSettings()

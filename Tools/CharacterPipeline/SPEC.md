@@ -3,7 +3,7 @@
 (The user's specification, saved verbatim, with orchestrator notes at the end.)
 
 ## Context
-- Unity project: E:\Unity\Zombies5.5 (Unity 6000.6.9f1). Follow its CLAUDE.md.
+- Unity project: <project root> (Unity 6000.6.9f1). Follow its CLAUDE.md.
 - Tools: Blender (headless, `blender -b --python <script> -- <args>`) and Unity. Nothing else: no extra Python packages beyond what ships with Blender (numpy is included), no cloud services, no paid add-ons.
 - Goal: take a static humanoid mesh (A-pose or T-pose, ideally with spread fingers) and automatically produce a clean, rigged, game-ready FBX that imports into Unity as a valid Humanoid avatar. Each step must be checkable by numbers and a small number of images, so you can iterate without manual help.
 - Look at what already exists in the project and in your Blender workflow first. Reuse and extend it rather than duplicating it.

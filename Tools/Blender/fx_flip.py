@@ -7,7 +7,7 @@ import bpy, os, math, random, time, shutil
 import numpy as np
 from mathutils import Vector
 
-WORK = r"E:\Unity\Zombies5.5\Tools\Blender\staging\explosions\_work"
+WORK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "staging", "explosions", "_work")
 FPS = 30
 NOISE_SCALE = {"fireball": 9.0, "smoke": 14.0, "fire": 30.0}
 _MAP = None

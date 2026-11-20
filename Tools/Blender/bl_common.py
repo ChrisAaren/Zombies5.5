@@ -8,7 +8,7 @@ import bpy, bmesh, math, os, sys
 from mathutils import Vector, Matrix, Euler, noise
 from mathutils.bvhtree import BVHTree
 
-ROOT = r"E:\Unity\Zombies5.5"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root (Tools/Blender/<this file> -> up 3)
 MODELS = os.path.join(ROOT, "Assets", "Art", "Models")
 PREVIEWS = os.path.join(ROOT, "Tools", "Blender", "previews")
 

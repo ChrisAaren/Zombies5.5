@@ -18,7 +18,7 @@ from bl_ext.blender_org.mpfb.services.humanservice import HumanService
 from bl_ext.blender_org.mpfb.services.locationservice import LocationService
 from bl_ext.blender_org.mpfb.services.targetservice import TargetService
 
-ROOT = r"E:\Unity\Zombies5.5"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root (Tools/Blender/<this file> -> up 3)
 FBX_DIR = os.path.join(ROOT, "Assets", "Art", "Models", "Characters")
 TEX_DIR = os.path.join(ROOT, "Assets", "Art", "Textures", "Characters", "MPFB")
 PREV_DIR = os.path.join(ROOT, "Tools", "Blender", "previews")

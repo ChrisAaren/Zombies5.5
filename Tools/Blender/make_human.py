@@ -17,7 +17,7 @@ from mathutils.bvhtree import BVHTree
 import bl_skeleton
 import hb_body, hb_face, hb_cloth, hb_weights, hb_uv, hb_tex
 
-ROOT = r"E:\Unity\Zombies5.5"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root (Tools/Blender/<this file> -> up 3)
 OUT_FBX = os.path.join(ROOT, "Assets", "Art", "Models", "Characters", "Char_Human.fbx")
 SLOTS = ["Skin", "EyeWhite", "Iris", "Brow", "Top", "Pants", "Shoe"]      # slot index == face tag
 COLORS = {"Skin": (0.80, 0.60, 0.48), "EyeWhite": (0.92, 0.92, 0.90), "Iris": (0.45, 0.32, 0.18), "Brow": (0.09, 0.06, 0.04),

@@ -4,7 +4,7 @@ Arrays are float32, shape (H, W, 4), row 0 = TOP of the image, straight (non-pre
 import bpy, os, math
 import numpy as np
 
-OUT = r"E:\Unity\Zombies5.5\Tools\Blender\staging\explosions"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "staging", "explosions")
 
 
 # ----------------------------------------------------------------------------------------------------- io

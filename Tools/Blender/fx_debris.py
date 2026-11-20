@@ -12,7 +12,7 @@ from mathutils import Vector, Matrix, Euler, noise
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bl_common as bc
 
-OUT = r"E:\Unity\Zombies5.5\Tools\Blender\staging\explosions"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "staging", "explosions")
 bc.COLORS.update({"Paint": (.62, .10, .08), "CarMetal": (.50, .50, .52), "Charred": (.035, .03, .027), "Rubber": (.035, .035, .04),
                   "Rim": (.62, .63, .66), "BarrelPaint": (.10, .26, .44)})
 MAXTRIS = 1500

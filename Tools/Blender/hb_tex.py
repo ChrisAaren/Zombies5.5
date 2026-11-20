@@ -3,7 +3,7 @@ import os
 import numpy as np
 import bpy
 
-TEX_DIR = r"E:\Unity\Zombies5.5\Assets\Art\Textures\Characters"
+TEX_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "Assets", "Art", "Textures", "Characters")
 
 
 def save_png(name, arr, srgb=True):

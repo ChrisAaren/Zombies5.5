@@ -1,6 +1,6 @@
 """Vehicles V2 -> Assets/Art/Models/Vehicles/V2/CarV2_{Sedan,Coupe,Hatch,Wagon,Van,Pickup,Cab,SUV,Minivan}.fbx
 Textures -> Assets/Art/Textures/{PlatesV2_Albedo,CarDirt_Mask}.png
-Run: blender --background --factory-startup --python make_vehicles_v2.py [--only Sedan,Cab] [--tex]
+Run: blender --background --factory-startup --python make_vehicles_v2.py [--only Sedan,Cab] [--tex] [--plates]
 
 Pivot: ground, between the wheels (bottom center). Forward = Unity +Z. Slots: CarPaint, Glass, Chrome,
 Rubber, Interior, Headlight, Taillight, Metal, Plate. 2nd UV map "UVDirt" (-> Unity uv2) is the dirt-mask map.
@@ -678,6 +678,9 @@ def main():
         if a.startswith("--only="):
             only = a.split("=")[1].split(",")
     reset_scene()
+    if "--plates" in sys.argv:  # regenerate only PlatesV2_Albedo.png
+        make_plates()
+        return
     if "--tex" in sys.argv or not os.path.exists(os.path.join(TEX, "PlatesV2_Albedo.png")):
         make_plates()
     if "--tex" in sys.argv or not os.path.exists(os.path.join(TEX, "CarDirt_Mask.png")):

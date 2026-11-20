@@ -88,8 +88,8 @@ unity command script eval -- --code 'return CharacterUnityCheck.Run("testcourier
 #    (after editing the scripts: unity command script recompile, then poll unity command script recompile_status)
 
 # 2. Project closed: batch mode (calls EditorApplication.Exit: 0 = all pass, 1 = a check failed, 2 = exception, 3 = bad args). No -quit.
-"D:\Unity\6000.6.9f1\Editor\Unity.exe" -batchmode -projectPath "E:\Unity\Zombies5.5" -executeMethod CharacterUnityCheck.RunBatch -character testcourier -logFile Tools/CharacterPipeline/work/testcourier/unity_batch.log
+"D:\Unity\6000.6.9f1\Editor\Unity.exe" -batchmode -projectPath "<project root>" -executeMethod CharacterUnityCheck.RunBatch -character testcourier -logFile Tools/CharacterPipeline/work/testcourier/unity_batch.log
 ```
 `run.py <name> <source> --unity` runs stages 1-5 then picks the entry point itself (`unity status` shows a ready Editor on the project -> script eval,
 else batch). `run.py <name> --unity-only` runs only the Unity check. Env `UNITY_CLI` / `UNITY_EDITOR` override the paths.
-Batch mode cannot open a project that an Editor has open (project lock); close it first with `unity close "E:\Unity\Zombies5.5"`.
+Batch mode cannot open a project that an Editor has open (project lock); close it first with `unity close "<project root>"`.

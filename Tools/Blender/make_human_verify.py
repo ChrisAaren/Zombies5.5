@@ -6,7 +6,7 @@ from mathutils import Vector
 import bl_skeleton
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
-bpy.ops.import_scene.fbx(filepath=r"E:\Unity\Zombies5.5\Assets\Art\Models\Characters\Char_Human.fbx")
+bpy.ops.import_scene.fbx(filepath=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "Assets", "Art", "Models", "Characters", "Char_Human.fbx"))
 rig = next(o for o in bpy.context.scene.objects if o.type == 'ARMATURE')
 mesh = next(o for o in bpy.context.scene.objects if o.type == 'MESH')
 print("[verify] armature", rig.name, "bones", len(rig.data.bones), "mesh", mesh.name, "mats", [m.name for m in mesh.data.materials])

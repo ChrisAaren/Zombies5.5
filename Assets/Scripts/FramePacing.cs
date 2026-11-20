@@ -7,6 +7,7 @@ namespace Zombies55
     // Lives on a hidden persistent object created at startup, so it works in every scene and before any menu exists.
     //
     // Unity on desktop ignores Application.targetFrameRate while vSyncCount > 0, so the rule is:
+    //   Cap UNLIMITED (0): no frame cap; vSyncCount 1 with VSync on, 0 with it off.
     //   VSync off: vSyncCount 0 and targetFrameRate = cap.
     //   VSync on, cap >= R - 1: vSyncCount 1 (one frame per refresh).
     //   VSync on, R / cap within 3% of an integer n in 2..4: vSyncCount n (every n-th refresh, still tear-free).
@@ -17,6 +18,8 @@ namespace Zombies55
     {
         // Set by BenchmarkRunner: ignore the settings and run uncapped with VSync off.
         public static bool ForceUncapped;
+        // Set while a benchmark runs: the FPS counter must not draw (or cost) anything inside the measured window.
+        public static bool HideCounter;
 
         // The refresh rate of the display the window is on right now. Screen.currentResolution can lag behind a window
         // that was moved to another monitor, so the window's display is the first choice.
@@ -67,6 +70,7 @@ namespace Zombies55
         public static void Resolve(double refresh, int cap, bool vsync, out int vSyncCount, out int targetFps, out bool canTear)
         {
             canTear = false;
+            if (cap <= 0) { vSyncCount = vsync ? 1 : 0; targetFps = -1; return; } // UNLIMITED: no cap (VSync on still locks to every refresh)
             if (!vsync) { vSyncCount = 0; targetFps = cap; return; }
             if (refresh <= 0.0 || cap >= refresh - 1.0) { vSyncCount = 1; targetFps = -1; return; }
             double ratio = refresh / cap;
@@ -135,7 +139,7 @@ namespace Zombies55
 
         void OnGUI()
         {
-            if (!GameSettings.FpsCounter || _text.Length == 0 || Event.current.type != EventType.Repaint) return;
+            if (HideCounter || !GameSettings.FpsCounter || _text.Length == 0 || Event.current.type != EventType.Repaint) return;
             if (_style == null)
             {
                 _style = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.UpperCenter, fontStyle = FontStyle.Bold };

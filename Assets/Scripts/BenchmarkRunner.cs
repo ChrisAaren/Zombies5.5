@@ -6,10 +6,13 @@ using System.Linq;
 using Unity.Profiling;
 using Unity.Profiling.LowLevel.Unsafe;
 using UnityEngine.Rendering;
+using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 namespace Zombies55
 {
-    // Benchmark mode: started with the -benchmark command-line argument (optional -benchmarkSeconds N).
+    // Benchmark mode: started with the -benchmark command-line argument (optional -benchmarkSeconds N, -benchmarkPreset low|medium|high|ultra,
+    // -benchmarkExplosions, -benchmarkStats) or from the settings menu (BeginFromMenu: loading message, run, results screen, scene reload).
     // Worst case survival run: every district owned, 48 enemies alive and chasing, explosive props in the scene.
     // The player and camera follow a fixed street loop (no input), VSync is off and the frame rate is uncapped.
     // Warm up 5 s, measure N s (default 60), write benchmark.json next to the exe (or persistentDataPath), quit.
@@ -43,6 +46,12 @@ namespace Zombies55
             public int ragdollsStarted, ragdollsRefused, ragdollPeakActive, playerKnockdowns;   // enemy and player ragdolls during the measured window
             public float ragdollStartMsMax;
             public string note;
+            public string preset;
+            public string[] settings;
+            public bool frameTimingEnabledInPlayer;
+            public string bottleneck, bottleneckHow;
+            public float[] graph;
+            public float probeFpsFull, probeFpsReduced;
         }
 
         static readonly Vector2[] Loop =
@@ -51,7 +60,22 @@ namespace Zombies55
             new Vector2(-19, 57), new Vector2(-19, -57), new Vector2(-57, -57), new Vector2(-57, 57),
         };
 
+        // True from the menu's RUN until the scene reload that follows the results. GameShell ignores pause input meanwhile.
+        public static bool Active { get; private set; }
+        // The run that just finished; GameShell opens the results screen with it after the reload, then clears it.
+        public static BenchmarkResult Pending;
+        // One line for the benchmark tab ("BENCHMARK CANCELLED").
+        public static string Note;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() { Active = false; Pending = null; Note = null; }
+
         float _seconds = 60f;
+        BenchmarkOptions _opt;
+        bool _fromMenu, _cancel;
+        GameObject _overlay;
+        TMPro.TMP_Text _overlayText;
+        UnityEngine.UI.Image _overlayDim;
         bool _stand;
         Vector3 _stuckRef;
         float _stuckTimer;
@@ -73,7 +97,25 @@ namespace Zombies55
                 else if (string.Equals(args[i], "-benchmarkSeconds", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length
                          && float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 1f) secs = s;
             }
+            for (int i = 0; i < args.Length - 1; i++)
+                if (string.Equals(args[i], "-benchmarkPreset", StringComparison.OrdinalIgnoreCase))
+                {
+                    int p = Array.FindIndex(GameSettings.PresetNames, n => string.Equals(n, args[i + 1], StringComparison.OrdinalIgnoreCase));
+                    if (p >= 0 && p < 4) { GameSettings.ApplyPreset(p); GraphicsApplier.ApplyNow(); }
+                }
             if (on) Begin(secs);
+        }
+
+        // The settings menu's RUN BENCHMARK: reloads the scene for a fresh game, runs with the current settings, then shows the results.
+        public static void BeginFromMenu(BenchmarkOptions options)
+        {
+            if (Active) return;
+            Active = true;
+            Pending = null; Note = null;
+            var go = new GameObject("BenchmarkRunner") { hideFlags = HideFlags.HideAndDontSave };
+            DontDestroyOnLoad(go);
+            var r = go.AddComponent<BenchmarkRunner>();
+            r._opt = options; r._seconds = options.Seconds; r._fromMenu = true;
         }
 
         // Also callable from the Editor (script eval) to test the benchmark in Play mode.
@@ -84,11 +126,80 @@ namespace Zombies55
             go.AddComponent<BenchmarkRunner>()._seconds = seconds;
         }
 
+        // ---------------------------------------------------------------- overlay (the only UI while a menu run is going)
+
+        void ShowOverlay(string text, bool dim)
+        {
+            if (_overlay == null)
+            {
+                _overlay = new GameObject("BenchmarkOverlay", typeof(RectTransform), typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler));
+                _overlay.transform.SetParent(transform, false);
+                var canvas = _overlay.GetComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 5000;
+                var sc = _overlay.GetComponent<UnityEngine.UI.CanvasScaler>();
+                sc.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                sc.referenceResolution = new Vector2(1920f, 1080f);
+                sc.matchWidthOrHeight = 0.5f;
+                var dimGo = new GameObject("Dim", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+                dimGo.transform.SetParent(_overlay.transform, false);
+                _overlayDim = dimGo.GetComponent<UnityEngine.UI.Image>();
+                _overlayDim.raycastTarget = false;
+                var rt = (RectTransform)dimGo.transform;
+                rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
+                var bar = new GameObject("Text", typeof(RectTransform), typeof(TMPro.TextMeshProUGUI));
+                bar.transform.SetParent(_overlay.transform, false);
+                _overlayText = bar.GetComponent<TMPro.TextMeshProUGUI>();
+                _overlayText.raycastTarget = false;
+                _overlayText.alignment = TMPro.TextAlignmentOptions.Center;
+                _overlayText.fontSize = 30f;
+                _overlayText.characterSpacing = 6f;
+                _overlayText.color = Palette.UiLight;
+                var brt = (RectTransform)bar.transform;
+                brt.anchorMin = new Vector2(0f, 0f); brt.anchorMax = new Vector2(1f, 0f);
+                brt.pivot = new Vector2(0.5f, 0f);
+                brt.sizeDelta = new Vector2(0f, 60f); brt.anchoredPosition = new Vector2(0f, 26f);
+            }
+            _overlay.SetActive(true);
+            _overlayDim.color = Palette.WithAlpha(Palette.UiDark, dim ? 0.92f : 0f);
+            var rtt = (RectTransform)_overlayText.transform;
+            if (dim) { rtt.anchorMin = new Vector2(0f, 0.5f); rtt.anchorMax = new Vector2(1f, 0.5f); rtt.pivot = new Vector2(0.5f, 0.5f); rtt.anchoredPosition = Vector2.zero; _overlayText.fontSize = 56f; }
+            else { rtt.anchorMin = new Vector2(0f, 0f); rtt.anchorMax = new Vector2(1f, 0f); rtt.pivot = new Vector2(0.5f, 0f); rtt.anchoredPosition = new Vector2(0f, 26f); _overlayText.fontSize = 28f; }
+            _overlayText.text = text;
+        }
+
+        void SetOverlayText(string text) { if (_overlayText != null) _overlayText.text = text; }
+
+        static bool CancelPressed()
+        {
+            var k = Keyboard.current; var pad = Gamepad.current;
+            return (k != null && k.escapeKey.wasPressedThisFrame) || (pad != null && (pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame));
+        }
+
         System.Collections.IEnumerator Start()
         {
-            _explosions = HasArg("-benchmarkExplosions");
+            _explosions = _fromMenu ? _opt.Explosions : HasArg("-benchmarkExplosions");
             _stand = HasArg("-benchmarkStand");   // player stands still, the camera orbits: the crowd closes in and stays in view
-            FramePacing.ForceUncapped = true;
+            bool cliQuit = !_fromMenu;
+            bool stats = HasArg("-benchmarkStats");   // per-second visible/moving enemy and render counters: they cost frame time, so only on request
+            if (_fromMenu)
+            {
+                ShowOverlay("LOADING BENCHMARK", true);
+                yield return null;
+                yield return null;
+                var old = GameLoop.Instance;
+                if (old != null) old.ReturnToTitle();   // fresh scene: enemies, zones, round and points all start clean
+                else SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+                while (GameLoop.Instance == null || ReferenceEquals(GameLoop.Instance, old)) yield return null;
+                yield return null;
+            }
+            GraphicsApplier.ApplyNow();
+            // Frame timing in a release player: attaching a ProfilerRecorder turns FrameTimingManager on (documented for 6000.6).
+            var ftRecMain = ProfilerRecorder.StartNew(ProfilerCategory.Internal, "Main Thread", 1);
+            var ftRecGpu = ProfilerRecorder.StartNew(ProfilerCategory.Render, "GPU Frame Time", 1);
+            bool uncapped = _fromMenu ? _opt.Uncapped : true;
+            FramePacing.ForceUncapped = uncapped;
+            FramePacing.HideCounter = true;
             FramePacing.Apply();
             UnityEngine.Random.InitState(12345);
             PlayerHealth.GodMode = true;
@@ -111,7 +222,15 @@ namespace Zombies55
             ApplyExperiments();
 
             float t0 = Time.unscaledTime;
-            while (Time.unscaledTime - t0 < WarmupSeconds) { Drive(); yield return null; }
+            float nextLabel = 0f;
+            if (_fromMenu) ShowOverlay("", false);
+            while (Time.unscaledTime - t0 < WarmupSeconds && !_cancel)
+            {
+                Drive();
+                if (_fromMenu && Time.unscaledTime >= nextLabel) { nextLabel = Time.unscaledTime + 0.5f; SetOverlayText("BENCHMARK  WARM-UP  " + (Time.unscaledTime - t0).ToString("0") + " / " + WarmupSeconds.ToString("0") + " s   -   ESC TO CANCEL"); }
+                if (CancelPressed()) _cancel = true;
+                yield return null;
+            }
             RagdollPool.Instance?.ResetStats();
 
             var ft = new List<float>(1 << 16);
@@ -120,6 +239,8 @@ namespace Zombies55
             var gpu = new List<float>(1 << 16);
             var timings = new FrameTiming[1];
             bool timingOn = FrameTimingManager.IsFeatureEnabled();
+            bool ftEnabledInPlayer = timingOn;
+            double unfocused = 0; bool lostFocus = false;
             double aliveSum = 0; int aliveMin = int.MaxValue;
             int gc0 = GC.CollectionCount(0);
             long heapPrev = GC.GetTotalMemory(false);
@@ -129,10 +250,10 @@ namespace Zombies55
             var trail = new List<string>();
             var statNames = new[] { "Draw Calls Count", "Batches Count", "SetPass Calls Count", "Triangles Count", "Shadow Casters Count", "Visible Skinned Meshes Count" };
             var statRecs = new ProfilerRecorder[statNames.Length];
-            if (Debug.isDebugBuild) for (int i = 0; i < statNames.Length; i++) statRecs[i] = ProfilerRecorder.StartNew(ProfilerCategory.Render, statNames[i]);
+            if (stats && Debug.isDebugBuild) for (int i = 0; i < statNames.Length; i++) statRecs[i] = ProfilerRecorder.StartNew(ProfilerCategory.Render, statNames[i]);
             var statSum = new double[statNames.Length];
             int visEnemies = 0, movingEnemies = 0; double visSum = 0, movSum = 0; int statFrames = 0;
-            var allEnemies = FindObjectsByType<Enemy>(FindObjectsInactive.Exclude);
+            Enemy[] allEnemies = stats ? FindObjectsByType<Enemy>(FindObjectsInactive.Exclude) : null;
             var perSecondStats = new List<string>();
             int lastStatSec = 0, statFramesSec = 0; double visSumSec = 0, movSumSec = 0; var statSumSec = new double[statNames.Length];
             float nextTrail = 0f;
@@ -155,10 +276,16 @@ namespace Zombies55
                 recSum = new double[recs.Count];
             }
             double elapsed = 0;
-            while (elapsed < _seconds)
+            while (elapsed < _seconds && !_cancel)
             {
                 yield return null;
                 float dt = Time.unscaledDeltaTime;
+                if (!Application.isFocused) { unfocused += dt; if (unfocused > 2.0) lostFocus = true; }
+                if (_fromMenu)
+                {
+                    if (CancelPressed()) _cancel = true;
+                    if (Time.unscaledTime >= nextLabel) { nextLabel = Time.unscaledTime + 0.5f; SetOverlayText("BENCHMARK  " + elapsed.ToString("0") + " / " + _seconds.ToString("0") + " s   -   ESC TO CANCEL"); }
+                }
                 elapsed += dt;
                 ft.Add(dt * 1000f);
                 times.Add((float)elapsed);
@@ -176,7 +303,7 @@ namespace Zombies55
                 }
                 statFrames++;
                 for (int i = 0; i < statRecs.Length; i++) if (statRecs[i].Valid) statSum[i] += statRecs[i].LastValue;
-                if (statFrames % 10 == 1)
+                if (stats && statFrames % 10 == 1)
                 {
                     allEnemies = FindObjectsByType<Enemy>(FindObjectsInactive.Exclude);
                     visEnemies = 0; movingEnemies = 0;
@@ -188,7 +315,7 @@ namespace Zombies55
                     }
                 }
                 visSum += visEnemies; movSum += movingEnemies;
-                if ((int)elapsed != lastStatSec || false)
+                if (stats && (int)elapsed != lastStatSec)
                 {
                     if (statFramesSec > 0)
                     {
@@ -216,6 +343,26 @@ namespace Zombies55
                 }
             }
             int gcs = GC.CollectionCount(0) - gc0;
+            if (!ftEnabledInPlayer) ftEnabledInPlayer = FrameTimingManager.IsFeatureEnabled();
+            if (ftRecMain.Valid) ftRecMain.Dispose();
+            if (ftRecGpu.Valid) ftRecGpu.Dispose();
+            if (_cancel) { Finish(null, null, cliQuit); yield break; }
+            // CPU or GPU? FrameTimingManager gives no data in a release player (even with a ProfilerRecorder attached), so probe:
+            // run the same route again at the full render scale and at 60% of it. Barely faster = CPU-bound, much faster = GPU-bound.
+            float probeA = 0f, probeB = 0f;
+            if (_fromMenu || HasArg("-benchmarkProbe"))
+            {
+                if (_fromMenu) SetOverlayText("BENCHMARK  CHECKING WHAT LIMITS THE FRAME RATE");
+                // Full, reduced, full, reduced: the crowd keeps closing in while the route runs, so the order is balanced to cancel that drift.
+                for (int pass = 0; pass < 4; pass++)
+                {
+                    GraphicsApplier.ProbeScale = pass % 2 == 0 ? 1f : 0.6f; GraphicsApplier.ApplyNow();
+                    yield return Probe(0.8f);   // settle: render targets are reallocated
+                    yield return Probe(3.2f);
+                    if (pass % 2 == 0) probeA += _probeFps * 0.5f; else probeB += _probeFps * 0.5f;
+                }
+                GraphicsApplier.ProbeScale = 1f; GraphicsApplier.ApplyNow();
+            }
 
             var r = new Report
             {
@@ -235,6 +382,9 @@ namespace Zombies55
                 frameTimingAvailable = timingOn && gpu.Count > 0,
             };
             Fill(r, ft);
+            r.frameTimingEnabledInPlayer = ftEnabledInPlayer;
+            r.preset = GameSettings.PresetNames[Mathf.Clamp(GameSettings.QualityPreset, 0, 4)];
+            r.settings = GraphicsApplier.Snapshot();
             r.explosions = _explosions; r.explosionsFired = _boomsFired;
             var rp = RagdollPool.Instance;
             if (rp != null) { r.ragdollsStarted = rp.Granted; r.ragdollsRefused = rp.Refused; r.ragdollPeakActive = rp.PeakActive; r.ragdollStartMsMax = rp.MaxAcquireMs; }
@@ -272,22 +422,125 @@ namespace Zombies55
                 r.cpuMainThreadMsP95 = Pct(main, 95); r.cpuRenderThreadMsP95 = Pct(rend, 95); r.gpuMsP95 = Pct(gpu, 95);
             }
             else r.note = "FrameTimingManager reported no data on this build (feature disabled or unsupported).";
+            var result = BuildResult(r, ft, times, lostFocus, uncapped, probeA, probeB);
+            r.probeFpsFull = probeA; r.probeFpsReduced = probeB;
             if (recs != null)
             {
                 var order = Enumerable.Range(0, recs.Count).OrderByDescending(i => recSum[i]).Take(70).ToArray();
                 r.profilerMarkersTop = order.Select(i => recNames[i] + "  avg=" + (recSum[i] / Mathf.Max(1, recFrames) / 1e6).ToString("0.000") + "ms").ToArray();
                 foreach (var rec in recs) rec.Dispose();
             }
+            r.bottleneck = result.bottleneck; r.bottleneckHow = result.bottleneckHow; r.graph = result.graph;
             Write(r);
-            Application.Quit();
-#if UNITY_EDITOR
-            Debug.Log("[Benchmark] done: " + JsonUtility.ToJson(r));
-            PlayerHealth.GodMode = false; RoundManager.BenchmarkMode = false;
-            PlayerController.ScriptedInput = false; CameraOrbit.ScriptedLook = false; FramePacing.ForceUncapped = false;
-            FramePacing.Apply();
-            Destroy(gameObject);
-#endif
+            Finish(result, r, cliQuit);
         }
+
+        float _probeFps;
+
+        System.Collections.IEnumerator Probe(float seconds)
+        {
+            float t = 0f; int n = 0;
+            while (t < seconds) { yield return null; t += Time.unscaledDeltaTime; n++; Drive(); }
+            _probeFps = n / Mathf.Max(0.001f, t);
+        }
+
+        // Puts every flag the run set back, then either quits (command line) or reloads the scene and hands the result to the shell.
+        void Finish(BenchmarkResult result, Report report, bool cliQuit)
+        {
+            PlayerHealth.GodMode = false; RoundManager.BenchmarkMode = false;
+            PlayerController.ScriptedInput = false; CameraOrbit.ScriptedLook = false;
+            FramePacing.ForceUncapped = false; FramePacing.HideCounter = false;
+            FramePacing.Apply();
+            if (cliQuit)
+            {
+                Application.Quit();
+#if UNITY_EDITOR
+                if (report != null) Debug.Log("[Benchmark] done: " + JsonUtility.ToJson(report));
+                Destroy(gameObject);
+#endif
+                return;
+            }
+            if (result != null) { Pending = result; BenchmarkHistory.Add(result); }
+            else Note = "BENCHMARK CANCELLED";
+            if (_overlay != null) ShowOverlay("SAVING RESULTS", true);
+            StartCoroutine(ReloadAndDie());
+        }
+
+        System.Collections.IEnumerator ReloadAndDie()
+        {
+            yield return null;
+            var old = GameLoop.Instance;
+            if (old != null) old.ReturnToTitle(); else SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            while (GameLoop.Instance == null || ReferenceEquals(GameLoop.Instance, old)) yield return null;
+            yield return null;
+            yield return null;
+            Active = false;
+            Destroy(gameObject);
+        }
+
+        BenchmarkResult BuildResult(Report r, List<float> ft, List<float> times, bool lostFocus, bool uncapped, float probeA, float probeB)
+        {
+            var res = new BenchmarkResult
+            {
+                id = Guid.NewGuid().ToString("N"),
+                utc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+                gameVersion = Application.version, build = r.build,
+                seconds = r.seconds, frames = r.frames,
+                avgFps = r.avgFps, low1PctFps = r.low1PctFps, low01PctFps = r.low01PctFps,
+                minFps = 1000f / Mathf.Max(0.001f, r.frameMsMax), maxFps = 1000f / Mathf.Max(0.001f, Min(ft)),
+                frameMsAvg = r.frameMsAvg, frameMsP50 = r.frameMsP50, frameMsP95 = r.frameMsP95, frameMsP99 = r.frameMsP99, frameMsMax = r.frameMsMax,
+                framesOver8_3 = r.framesOver8_3ms, framesOver16_6 = r.framesOver16_6ms,
+                preset = r.preset, settings = r.settings,
+                gpu = r.gpu, cpu = r.cpu, os = SystemInfo.operatingSystem, api = r.graphicsApi,
+                display = Screen.mainWindowDisplayInfo.name,
+                resolution = r.resolutionWidth + "x" + r.resolutionHeight,
+                mode = r.fullscreenMode, refresh = r.refreshRateHz + " Hz",
+                vramMb = SystemInfo.graphicsMemorySize, ramMb = SystemInfo.systemMemorySize, cores = SystemInfo.processorCount,
+                uncapped = uncapped, explosions = _explosions,
+                frameTimingAvailable = r.frameTimingAvailable,
+                cpuMainMs = r.cpuMainThreadMsAvg, cpuRenderMs = r.cpuRenderThreadMsAvg, gpuMs = r.gpuMsAvg,
+            };
+            float scale = GameSettings.RenderScalePercent[Mathf.Clamp(GameSettings.GetInt(SettingId.RenderScale), 0, 5)] / 100f;
+            res.renderResolution = Mathf.RoundToInt(r.resolutionWidth * scale) + "x" + Mathf.RoundToInt(r.resolutionHeight * scale);
+            res.capNote = uncapped ? "frame cap and VSync ignored" : "cap " + GameSettings.Format(SettingId.FrameRate) + ", VSync " + GameSettings.Format(SettingId.VSync);
+            float med = r.frameMsP50;
+            foreach (var v in ft) { if (v > 33.3f) res.framesOver33++; if (v > 3f * med && v > 25f) res.hitches++; }
+            if (lostFocus) { res.valid = false; res.invalidReason = "the window lost focus during the run"; }
+            // 240 slices over the run, each showing its slowest frame so spikes are not averaged away.
+            const int Buckets = 240;
+            res.graph = new float[Buckets];
+            float total = times.Count > 0 ? times[times.Count - 1] : 1f;
+            for (int i = 0; i < ft.Count; i++)
+            {
+                int b = Mathf.Clamp((int)(times[i] / Mathf.Max(0.001f, total) * Buckets), 0, Buckets - 1);
+                if (ft[i] > res.graph[b]) res.graph[b] = ft[i];
+            }
+            // CPU or GPU: from frame timing when the player reports it.
+            if (r.frameTimingAvailable && r.frameMsAvg > 0f)
+            {
+                float f = r.frameMsAvg;
+                float gpuShare = r.gpuMsAvg / f, mainShare = r.cpuMainThreadMsAvg / f;
+                if (gpuShare >= 0.9f) res.bottleneck = "GPU";
+                else if (mainShare >= 0.9f && gpuShare < 0.7f) res.bottleneck = "CPU";
+                else if (r.cpuRenderThreadMsAvg / f >= 0.9f) res.bottleneck = "CPU";
+                else if (gpuShare >= mainShare + 0.15f) res.bottleneck = "GPU";
+                else if (mainShare >= gpuShare + 0.15f) res.bottleneck = "CPU";
+                else res.bottleneck = "BALANCED";
+                res.bottleneckHow = "frame timing: GPU " + Mathf.RoundToInt(gpuShare * 100f) + "%, CPU main thread " + Mathf.RoundToInt(mainShare * 100f) + "% of the frame";
+            }
+            else if (probeA > 0f && probeB > 0f)
+            {
+                float gain = (probeB - probeA) / probeA;
+                res.bottleneck = gain < 0.05f ? "CPU" : gain > 0.25f ? "GPU" : "BALANCED";
+                res.bottleneckHow = "render scale probe: " + F0(probeA) + " fps at full scale, " + F0(probeB) + " fps at 60% (" + (gain >= 0 ? "+" : "") + F0(gain * 100f) + "%)";
+            }
+            res.verdict = BenchmarkVerdict.Make(res, FramePacing.RefreshRate);
+            return res;
+        }
+
+        static string F0(float v) => Mathf.RoundToInt(v).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        static float Min(List<float> l) { float m = float.MaxValue; foreach (var v in l) if (v < m) m = v; return m == float.MaxValue ? 0f : m; }
 
         // -benchmarkExplosions: every 5 s the nearest live car (then barrel, alternating) ahead of the player blows up, so the worst case of
         // blast FX, debris and chain reactions is part of the measurement. Props are reset when none is left to blow.
@@ -365,7 +618,7 @@ namespace Zombies55
             foreach (var a in Environment.GetCommandLineArgs()) if (a.StartsWith("-bn=", StringComparison.OrdinalIgnoreCase)) csv = a.Substring(4).ToLowerInvariant();
             if (string.IsNullOrEmpty(csv)) return;
             var flags = new HashSet<string>(csv.Split(','));
-            var urp = GraphicsSettings.currentRenderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
+            var urp = (GraphicsApplier.Asset != null ? GraphicsApplier.Asset : GraphicsSettings.currentRenderPipeline) as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
             var camData = Camera.main != null ? Camera.main.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>() : null;
             if (flags.Contains("noshadow") && urp != null) urp.shadowDistance = 0.1f;
             if (flags.Contains("shadow60") && urp != null) { urp.shadowDistance = 60f; urp.shadowCascadeCount = 3; }

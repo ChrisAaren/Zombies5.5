@@ -86,6 +86,17 @@ namespace Zombies55
             SetExtraStats(string.Empty);
 
             ApplyState(_loop.State);
+
+            // Back from a benchmark run (the scene was reloaded for a clean game): open its results, or say it was cancelled.
+            if (_loop.State == RunState.Ready && (BenchmarkRunner.Pending != null || !string.IsNullOrEmpty(BenchmarkRunner.Note)))
+            {
+                var result = BenchmarkRunner.Pending;
+                BenchmarkRunner.Pending = null;
+                _settingsOpen = true;
+                _settingsFrom = RunState.Ready;
+                titleRoot.SetActive(false);
+                settingsMenu.OpenBenchmarkResults(result);
+            }
         }
 
         void OnDestroy()
@@ -131,7 +142,7 @@ namespace Zombies55
                     break;
 
                 case RunState.Running:
-                    if (PausePressed()) _loop.Pause();
+                    if (PausePressed() && !BenchmarkRunner.Active) _loop.Pause();   // Esc cancels a benchmark instead
                     break;
 
                 case RunState.Paused:

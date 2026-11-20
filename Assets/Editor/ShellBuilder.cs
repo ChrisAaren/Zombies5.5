@@ -506,14 +506,15 @@ namespace Zombies55.EditorTools
             var heading = CreateText(cardRt, "Heading", "SETTINGS", 90, Palette.Accent, 8f, true);
             Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 395f), new Vector2(700f, 110f));
 
-            string[] tabNames = { "CONTROLS", "CROSSHAIR", "AUDIO", "GRAPHICS" };
-            var tabButtons = new UnityEngine.UI.Button[4];
-            var tabPanels = new GameObject[4];
-            var firsts = new UnityEngine.UI.Selectable[4];
-            for (int i = 0; i < 4; i++)
+            const int TabCount = 5;
+            string[] tabNames = { "CONTROLS", "CROSSHAIR", "AUDIO", "GRAPHICS", "BENCHMARK" };
+            var tabButtons = new UnityEngine.UI.Button[TabCount];
+            var tabPanels = new GameObject[TabCount];
+            var firsts = new UnityEngine.UI.Selectable[TabCount];
+            for (int i = 0; i < TabCount; i++)
             {
                 tabButtons[i] = CreateButton(cardRt, tabNames[i] + "Tab", tabNames[i],
-                    new Vector2(-465f + i * 310f, 300f), new Vector2(295f, 66f), 32f);
+                    new Vector2(-610f + i * 305f, 300f), new Vector2(285f, 66f), 30f);
                 tabPanels[i] = CreateStretched(tabNames[i] + "Panel", cardRt).gameObject;
             }
 
@@ -559,19 +560,62 @@ namespace Zombies55.EditorTools
             firsts[2] = AddSliderRow(audio, SettingId.MusicVolume, "MUSIC VOLUME", new Vector2(0f, 90f), 1200f, 70f);
             AddSliderRow(audio, SettingId.SfxVolume, "SFX VOLUME", new Vector2(0f, 0f), 1200f, 70f);
 
-            // Graphics: display first (DisplayManager), then pacing and effects.
+            // Graphics: a scrolling list in five groups.
             var gfx = (RectTransform)tabPanels[3].transform;
-            const float gw = 1200f, gh = 58f, gy = 215f, gdy = 68f;
+            var scroll = BuildScrollList(gfx, "GraphicsScroll", new Vector2(0f, -2f), new Vector2(1380f, 520f), out var content, true);
+            const float gw = 1200f, gh = 54f;
+            AddHeader(content, "DISPLAY");
             // The monitor row is greyed out with a single display, so the mode row takes the initial focus.
-            AddStepperRow(gfx, SettingId.Monitor, "MONITOR", new Vector2(0f, gy), gw, gh, false, 560f);
-            firsts[3] = AddStepperRow(gfx, SettingId.DisplayMode, "DISPLAY MODE", new Vector2(0f, gy - gdy), gw, gh, false, 560f);
-            AddStepperRow(gfx, SettingId.Resolution, "RESOLUTION", new Vector2(0f, gy - gdy * 2), gw, gh, false, 560f);
-            // No REFRESH RATE row: it only applies to exclusive fullscreen, which does not exist under D3D12 (see DisplayManager).
-            AddStepperRow(gfx, SettingId.FrameRate, "FRAME RATE", new Vector2(0f, gy - gdy * 3), gw, gh, false);
-            AddToggleRow(gfx, SettingId.VSync, "VSYNC", new Vector2(0f, gy - gdy * 4), gw, gh);
-            AddToggleRow(gfx, SettingId.DepthOfField, "DEPTH OF FIELD", new Vector2(0f, gy - gdy * 5), gw, gh);
-            AddToggleRow(gfx, SettingId.LensFlare, "LENS FLARE", new Vector2(0f, gy - gdy * 6), gw, gh);
-            AddToggleRow(gfx, SettingId.FpsCounter, "FPS COUNTER", new Vector2(0f, gy - gdy * 7), gw, gh);
+            AddStepperRow(content, SettingId.Monitor, "MONITOR", default, gw, gh, false, 560f, true, "Which monitor the game runs on. Greyed out when only one is connected.");
+            firsts[3] = AddStepperRow(content, SettingId.DisplayMode, "DISPLAY MODE", default, gw, gh, false, 560f, true, "Fullscreen is borderless and always uses the monitor's current refresh rate. Windowed keeps a normal window.");
+            AddStepperRow(content, SettingId.Resolution, "RESOLUTION", default, gw, gh, false, 560f, true, "Output resolution of the chosen monitor. Lower it for speed, or use Render Scale to keep the desktop resolution.");
+            AddStepperRow(content, SettingId.FrameRate, "FRAME RATE", default, gw, gh, false, 260f, true, "Caps the frame rate. Unlimited removes the cap (with VSync off, frames can tear).");
+            AddToggleRow(content, SettingId.VSync, "VSYNC", default, gw, gh, 0.34f, true, "Waits for the display refresh: no tearing, a little more input latency. Off gives the lowest latency.");
+            AddSliderRow(content, SettingId.Fov, "FIELD OF VIEW", default, gw, gh, true, "Camera field of view. Wider shows more of the street but renders more objects (a small cost).");
+            AddSliderRow(content, SettingId.Brightness, "BRIGHTNESS", default, gw, gh, true, "Overall exposure of the image, in stops. Zero is the intended look.");
+            AddToggleRow(content, SettingId.FpsCounter, "FPS COUNTER", default, gw, gh, 0.34f, true, "Shows the frame rate and frame time at the top of the screen.");
+
+            AddHeader(content, "QUALITY PRESET");
+            AddStepperRow(content, SettingId.QualityPreset, "PRESET", default, gw, gh, false, 260f, true, "Sets every quality option below at once. Changing any of them afterwards switches this to Custom.");
+
+            AddHeader(content, "RENDERING");
+            AddStepperRow(content, SettingId.RenderScale, "RENDER SCALE", default, gw, gh, false, 260f, true, "Resolution the 3D scene renders at. Lower is faster (GPU), 125% is supersampling for a cleaner image.");
+            AddStepperRow(content, SettingId.Upscaler, "UPSCALER", default, gw, gh, false, 260f, true, "Sharpens a lowered Render Scale with AMD FSR 1.0. Only used below 100%.");
+            AddStepperRow(content, SettingId.AntiAliasing, "ANTI-ALIASING", default, gw, gh, false, 260f, true, "Smooths jagged edges. FXAA is cheapest, SMAA is sharper, TAA is the cleanest and the default look.");
+            AddStepperRow(content, SettingId.ShadowQuality, "SHADOW QUALITY", default, gw, gh, false, 260f, true, "Shadow map resolution, softness and cascade count. The biggest quality-for-speed trade (CPU and GPU).");
+            AddStepperRow(content, SettingId.ShadowDistance, "SHADOW DISTANCE", default, gw, gh, false, 260f, true, "How far from the camera shadows are drawn. Shorter is much faster (CPU).");
+            AddStepperRow(content, SettingId.AmbientOcclusion, "AMBIENT OCCLUSION", default, gw, gh, false, 260f, true, "Darkens creases and contact points (props on the street, under cars). Low cost on the GPU.");
+            AddStepperRow(content, SettingId.TextureQuality, "TEXTURE QUALITY", default, gw, gh, false, 260f, true, "Low halves texture resolution to save graphics memory. Changing it takes a moment.");
+            AddStepperRow(content, SettingId.ObjectDetail, "OBJECT DETAIL", default, gw, gh, false, 260f, true, "How far away cars and props keep their detailed models (CPU and GPU).");
+
+            AddHeader(content, "POST-PROCESSING");
+            AddStepperRow(content, SettingId.Bloom, "BLOOM", default, gw, gh, false, 260f, true, "Soft glow around bright lights and the sky. High Quality uses a sharper filter.");
+            AddToggleRow(content, SettingId.DepthOfField, "DEPTH OF FIELD", default, gw, gh, 0.34f, true, "Softly blurs the far skyline. Everything within combat range stays sharp.");
+            AddToggleRow(content, SettingId.MotionBlur, "MOTION BLUR", default, gw, gh, 0.34f, true, "Blurs the image while the camera turns quickly. Off in the default look.");
+            AddToggleRow(content, SettingId.LensFlare, "LENS FLARE", default, gw, gh, 0.34f, true, "Glare and ghosts from the sun and bright lights.");
+            AddToggleRow(content, SettingId.FilmGrain, "FILM GRAIN", default, gw, gh, 0.34f, true, "A fine grain over the image for a filmic texture.");
+
+            AddHeader(content, "ADVANCED");
+            AddStepperRow(content, SettingId.StreetDetail, "STREET DETAIL", default, gw, gh, false, 260f, true, "Dirt, posters, litter, steam and cables, and how far away they are drawn (CPU).");
+            AddStepperRow(content, SettingId.EffectsQuality, "EFFECTS QUALITY", default, gw, gh, false, 260f, true, "Explosion particles, debris, smoke, lights, wrecks, scorch marks and ragdolls (CPU and GPU).");
+            AddStepperRow(content, SettingId.CharacterDetail, "CHARACTER DETAIL", default, gw, gh, false, 260f, true, "Skinning quality and foot placement on the enemy crowd (CPU).");
+            AddStepperRow(content, SettingId.Anisotropic, "ANISOTROPIC FILTERING", default, gw, gh, false, 260f, true, "Keeps road and wall textures sharp at a slant. Almost free on modern GPUs.");
+
+            AddHeader(content, "BENCHMARK");
+            var gfxBench = CreateButton(content, "RunBenchmarkRow", "RUN BENCHMARK  >", Vector2.zero, new Vector2(gw, 62f), 30f);
+            var gbl = gfxBench.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+            gbl.preferredWidth = gw; gbl.preferredHeight = 62f;
+            AddDescription(gfxBench.gameObject, "Measure how this PC runs the game with these settings: a 60 second route through the city.");
+
+            // Benchmark tab
+            var bench = (RectTransform)tabPanels[4].transform;
+            var benchPanel = BuildBenchmarkTab(bench, out var runBench);
+            firsts[4] = runBench;
+
+            var description = CreateText(cardRt, "Description", string.Empty, 24,
+                Palette.WithAlpha(Palette.UiLight, 0.92f), 1f, true);
+            description.fontStyle = FontStyles.Normal;
+            Place(description.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -302f), new Vector2(1440f, 40f));
 
             var reset = CreateButton(cardRt, "ResetButton", "RESET TO DEFAULTS", new Vector2(-250f, -385f), new Vector2(440f, 80f), 34f);
             var back = CreateButton(cardRt, "BackButton", "BACK", new Vector2(250f, -385f), new Vector2(440f, 80f), 38f);
@@ -587,22 +631,233 @@ namespace Zombies55.EditorTools
             Wire(so, "resetButton", reset);
             Wire(so, "backButton", back);
             Wire(so, "card", cardRt);
+            Wire(so, "descriptionText", description);
+            Wire(so, "benchmarkPanel", benchPanel);
+            Wire(so, "graphicsBenchmarkButton", gfxBench);
+            Wire(so, "graphicsScroll", scroll);
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            for (int i = 1; i < 4; i++) tabPanels[i].SetActive(false);
+            for (int i = 1; i < TabCount; i++) tabPanels[i].SetActive(false);
             return menu;
         }
 
+        // ------------------------------------------------------------------ scrolling lists
+
+        // ScrollRect with a clipped viewport, a vertical layout content and a slim scrollbar. follow = gamepad focus scrolls the list.
+        static UnityEngine.UI.ScrollRect BuildScrollList(RectTransform parent, string name, Vector2 pos, Vector2 size, out RectTransform content, bool follow)
+        {
+            var rt = NewRect(name, parent);
+            Place(rt, new Vector2(0.5f, 0.5f), pos, size);
+            var scroll = rt.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 40f;
+
+            var viewport = NewRect("Viewport", rt);
+            Stretch(viewport);
+            viewport.offsetMax = new Vector2(-22f, 0f);   // room for the scrollbar
+            viewport.gameObject.AddComponent<UnityEngine.UI.RectMask2D>();
+            // A raycastable transparent image so the mouse wheel scrolls anywhere over the list.
+            var hit = viewport.gameObject.AddComponent<UnityEngine.UI.Image>();
+            hit.color = new Color(0f, 0f, 0f, 0f);
+            hit.raycastTarget = true;
+
+            content = NewRect("Content", viewport);
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = new Vector2(1f, 1f);
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = Vector2.zero;
+            var vlg = content.gameObject.AddComponent<UnityEngine.UI.VerticalLayoutGroup>();
+            vlg.childAlignment = TextAnchor.UpperCenter;
+            vlg.childControlWidth = true; vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = false; vlg.childForceExpandHeight = false;
+            vlg.spacing = 6f;
+            vlg.padding = new RectOffset(0, 0, 4, 10);
+            var fit = content.gameObject.AddComponent<UnityEngine.UI.ContentSizeFitter>();
+            fit.verticalFit = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
+
+            // Scrollbar
+            var barRt = NewRect("Scrollbar", rt);
+            SetAnchors(barRt, new Vector2(1f, 0f), new Vector2(1f, 1f));
+            barRt.pivot = new Vector2(1f, 0.5f);
+            barRt.sizeDelta = new Vector2(12f, 0f);
+            barRt.anchoredPosition = Vector2.zero;
+            var track = barRt.gameObject.AddComponent<UnityEngine.UI.Image>();
+            track.sprite = s_RoundedRect; track.type = UnityEngine.UI.Image.Type.Sliced;
+            track.color = Palette.WithAlpha(Palette.Shadow, 0.7f);
+            var slide = NewRect("Sliding Area", barRt);
+            Stretch(slide);
+            var handle = CreateImage(slide, "Handle", s_RoundedRect, Palette.WithAlpha(Palette.UiLight, 0.55f), true);
+            handle.raycastTarget = true;
+            Stretch(handle.rectTransform);
+            var bar = barRt.gameObject.AddComponent<UnityEngine.UI.Scrollbar>();
+            bar.handleRect = handle.rectTransform;
+            bar.targetGraphic = handle;
+            bar.direction = UnityEngine.UI.Scrollbar.Direction.BottomToTop;
+            var nav = bar.navigation; nav.mode = UnityEngine.UI.Navigation.Mode.None; bar.navigation = nav;
+
+            scroll.viewport = viewport;
+            scroll.content = content;
+            scroll.verticalScrollbar = bar;
+            scroll.verticalScrollbarVisibility = UnityEngine.UI.ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
+            scroll.verticalScrollbarSpacing = 6f;
+            if (follow) rt.gameObject.AddComponent<SettingsScrollFollow>();
+            return scroll;
+        }
+
+        // Group title with a thin accent rule: not selectable.
+        static void AddHeader(RectTransform content, string title)
+        {
+            var rt = NewRect(title + "Header", content);
+            var le = rt.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+            le.preferredWidth = 1200f; le.preferredHeight = 50f;
+            var text = CreateText(rt, "Title", title, 26, Palette.Accent, 8f, true);
+            text.alignment = TextAlignmentOptions.BottomLeft;
+            SetAnchors(text.rectTransform, Vector2.zero, Vector2.one);
+            text.rectTransform.offsetMin = new Vector2(8f, 6f);
+            text.rectTransform.offsetMax = Vector2.zero;
+            var line = CreateImage(rt, "Rule", null, Palette.WithAlpha(Palette.Accent, 0.55f), false);
+            SetAnchors(line.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0f));
+            line.rectTransform.pivot = new Vector2(0.5f, 0f);
+            line.rectTransform.sizeDelta = new Vector2(0f, 2f);
+            line.rectTransform.anchoredPosition = Vector2.zero;
+        }
+
+        static void AddDescription(GameObject target, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            var d = target.AddComponent<SettingDescription>();
+            var so = new SerializedObject(d);
+            so.FindProperty("text").stringValue = text;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // ------------------------------------------------------------------ benchmark tab
+
+        static TextMeshProUGUI BodyText(RectTransform parent, string name, Vector2 pos, Vector2 size, float fontSize, TextAlignmentOptions align, bool wrap = true)
+        {
+            var t = CreateText(parent, name, string.Empty, fontSize, Palette.UiLight, 1f, false);
+            t.fontStyle = FontStyles.Normal;
+            t.alignment = align;
+            t.textWrappingMode = wrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+            t.overflowMode = TextOverflowModes.Overflow;
+            t.richText = true;
+            Place(t.rectTransform, new Vector2(0.5f, 0.5f), pos, size);
+            return t;
+        }
+
+        static BenchmarkPanel BuildBenchmarkTab(RectTransform tab, out UnityEngine.UI.Selectable runButton)
+        {
+            var panel = tab.gameObject.AddComponent<BenchmarkPanel>();
+
+            // ---- home
+            var home = CreateStretched("Home", tab);
+            var summary = BodyText(home, "Summary", new Vector2(-560f, -5f), new Vector2(400f, 520f), 19f, TextAlignmentOptions.TopLeft);
+            summary.lineSpacing = 6f;
+            AddToggleRow(home, SettingId.BenchUncapped, "IGNORE FRAME CAP + VSYNC", new Vector2(0f, 215f), 640f, 54f, 0.74f, false, null);
+            AddToggleRow(home, SettingId.BenchExplosions, "INCLUDE EXPLOSIONS", new Vector2(0f, 150f), 640f, 54f, 0.74f, false, null);
+            var run = CreateButton(home, "RunButton", "RUN BENCHMARK", new Vector2(0f, 58f), new Vector2(640f, 100f), 44f);
+            var viewLast = CreateButton(home, "ViewLastButton", "VIEW LAST RESULT", new Vector2(0f, -55f), new Vector2(640f, 70f), 30f);
+            var note = BodyText(home, "Note", new Vector2(0f, -170f), new Vector2(620f, 110f), 20f, TextAlignmentOptions.Top);
+            note.color = Palette.WithAlpha(Palette.UiLight, 0.8f);
+
+            var histTitle = CreateText(home, "HistoryTitle", "HISTORY", 24, Palette.Accent, 6f, true);
+            Place(histTitle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(545f, 245f), new Vector2(420f, 34f));
+            var histScroll = BuildScrollList(home, "HistoryScroll", new Vector2(545f, -25f), new Vector2(430f, 440f), out var histContent, true);
+            histScroll.GetComponent<SettingsScrollFollow>().enabled = true;
+            var template = CreateButton(histContent, "RowTemplate", "ROW", Vector2.zero, new Vector2(400f, 44f), 17f);
+            var tl = template.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+            tl.preferredWidth = 400f; tl.preferredHeight = 44f;
+            var tlabel = template.GetComponentInChildren<TextMeshProUGUI>();
+            tlabel.characterSpacing = 1f;
+            template.gameObject.SetActive(false);
+            var empty = BodyText(home, "HistoryEmpty", new Vector2(545f, -25f), new Vector2(400f, 60f), 22f, TextAlignmentOptions.Center);
+            empty.text = "NO RUNS YET";
+            empty.color = Palette.WithAlpha(Palette.UiLight, 0.6f);
+
+            // ---- results
+            var results = CreateStretched("Results", tab);
+            var big = BodyText(results, "BigNumbers", new Vector2(-570f, 150f), new Vector2(400f, 200f), 26f, TextAlignmentOptions.TopLeft);
+            big.lineSpacing = -2f;
+            var system = BodyText(results, "System", new Vector2(-570f, -80f), new Vector2(400f, 230f), 15f, TextAlignmentOptions.TopLeft);
+            system.lineSpacing = 4f;
+
+            var graphBg = CreateImage(results, "GraphBackground", s_RoundedRect, Palette.WithAlpha(Palette.InteriorDark, 0.85f), true);
+            Place(graphBg.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 150f), new Vector2(700f, 200f));
+            var graphRt = NewRect("Graph", graphBg.rectTransform);
+            SetAnchors(graphRt, Vector2.zero, Vector2.one);
+            graphRt.offsetMin = new Vector2(10f, 10f); graphRt.offsetMax = new Vector2(-10f, -10f);
+            graphRt.gameObject.AddComponent<CanvasRenderer>();
+            var graph = graphRt.gameObject.AddComponent<GraphicsGraph>();
+            graph.raycastTarget = false;
+            var legend = BodyText(results, "Legend", new Vector2(0f, 38f), new Vector2(700f, 22f), 13f, TextAlignmentOptions.Center, false);
+            var stats = BodyText(results, "Stats", new Vector2(0f, 4f), new Vector2(700f, 44f), 16f, TextAlignmentOptions.TopLeft);
+            stats.lineSpacing = 4f;
+            var compare = BodyText(results, "Compare", new Vector2(-175f, -112f), new Vector2(350f, 190f), 16f, TextAlignmentOptions.TopLeft, false);
+            compare.lineSpacing = 2f;
+            var compareDiff = BodyText(results, "CompareDiff", new Vector2(185f, -112f), new Vector2(330f, 190f), 16f, TextAlignmentOptions.TopLeft, false);
+            compareDiff.lineSpacing = 2f;
+            var settingsUsed = BodyText(results, "SettingsUsed", new Vector2(570f, 30f), new Vector2(380f, 440f), 16f, TextAlignmentOptions.TopLeft);
+            settingsUsed.lineSpacing = 4f;
+
+            var compareBtn = CreateButton(results, "CompareButton", "COMPARE", new Vector2(-440f, -240f), new Vector2(430f, 52f), 22f);
+            var againBtn = CreateButton(results, "RunAgainButton", "RUN AGAIN", new Vector2(-60f, -240f), new Vector2(280f, 52f), 24f);
+            var deleteBtn = CreateButton(results, "DeleteButton", "DELETE", new Vector2(180f, -240f), new Vector2(180f, 52f), 24f);
+            var backBtn = CreateButton(results, "BackToBenchmarkButton", "BACK", new Vector2(420f, -240f), new Vector2(240f, 52f), 24f);
+            var verdict = BodyText(results, "Verdict", new Vector2(0f, -300f), new Vector2(1440f, 56f), 21f, TextAlignmentOptions.Center);
+            verdict.color = Palette.Accent;
+
+            var so = new SerializedObject(panel);
+            Wire(so, "home", home.gameObject);
+            Wire(so, "summaryText", summary);
+            Wire(so, "noteText", note);
+            Wire(so, "runButton", run);
+            Wire(so, "viewLastButton", viewLast);
+            Wire(so, "historyContent", histContent);
+            Wire(so, "historyTemplate", template);
+            Wire(so, "historyEmptyText", empty);
+            Wire(so, "results", results.gameObject);
+            Wire(so, "bigText", big);
+            Wire(so, "systemText", system);
+            Wire(so, "statsText", stats);
+            Wire(so, "settingsText", settingsUsed);
+            Wire(so, "compareText", compare);
+            Wire(so, "compareDiffText", compareDiff);
+            Wire(so, "verdictText", verdict);
+            Wire(so, "legendText", legend);
+            Wire(so, "graph", graph);
+            Wire(so, "compareButton", compareBtn);
+            Wire(so, "compareButtonLabel", compareBtn.GetComponentInChildren<TextMeshProUGUI>());
+            Wire(so, "againButton", againBtn);
+            Wire(so, "deleteButton", deleteBtn);
+            Wire(so, "backButton", backBtn);
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            results.gameObject.SetActive(false);
+            runButton = run;
+            return panel;
+        }
+
+        // ------------------------------------------------------------------ rows
+
+        // pos is ignored (default) when the row sits in a layout group: the group sizes and places it.
         static UnityEngine.UI.Image CreateRowBase(RectTransform parent, string name, string label, Vector2 pos,
-            float width, float height, bool raycast)
+            float width, float height, bool raycast, float labelFrac = 0.34f, bool inLayout = false)
         {
             var bg = CreateImage(parent, name, s_RoundedRect, default, true);
             bg.raycastTarget = raycast;
-            Place(bg.rectTransform, new Vector2(0.5f, 0.5f), pos, new Vector2(width, height));
+            if (inLayout)
+            {
+                var le = bg.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+                le.preferredWidth = width; le.preferredHeight = height;
+            }
+            else Place(bg.rectTransform, new Vector2(0.5f, 0.5f), pos, new Vector2(width, height));
 
             var text = CreateText(bg.rectTransform, "Label", label, 28, Palette.UiLight, 4f, true);
             text.alignment = TextAlignmentOptions.MidlineLeft;
-            PlaceCorner(text.rectTransform, new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(width * 0.34f, height));
+            PlaceCorner(text.rectTransform, new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(width * labelFrac, height));
             return bg;
         }
 
@@ -617,15 +872,16 @@ namespace Zombies55.EditorTools
             colors.highlightedColor = Palette.WithAlpha(Palette.UiLight, 0.18f);
             colors.selectedColor = Palette.WithAlpha(Palette.Accent, 0.4f);
             colors.pressedColor = Palette.WithAlpha(Palette.Accent, 0.55f);
+            colors.disabledColor = Palette.WithAlpha(Palette.Shadow, 0.3f);
             colors.colorMultiplier = 1f;
             colors.fadeDuration = 0.08f;
             sel.colors = colors;
         }
 
         static UnityEngine.UI.Selectable AddSliderRow(RectTransform parent, SettingId id, string label, Vector2 pos,
-            float width, float height)
+            float width, float height, bool inLayout = false, string description = null)
         {
-            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, false);
+            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, inLayout, 0.34f, inLayout);
             bg.color = Palette.WithAlpha(Palette.Shadow, 0.4f);
             var row = bg.rectTransform;
 
@@ -645,13 +901,15 @@ namespace Zombies55.EditorTools
             Wire(so, "slider", slider);
             Wire(so, "valueText", value);
             so.ApplyModifiedPropertiesWithoutUndo();
+            AddDescription(slider.gameObject, description);
+            AddDescription(bg.gameObject, description);
             return slider;
         }
 
         static UnityEngine.UI.Selectable AddStepperRow(RectTransform parent, SettingId id, string label, Vector2 pos,
-            float width, float height, bool withSwatch, float valueWidth = 260f)
+            float width, float height, bool withSwatch, float valueWidth = 260f, bool inLayout = false, string description = null)
         {
-            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true);
+            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true, inLayout ? 0.4f : 0.34f, inLayout);
             var row = bg.rectTransform;
             var comp = bg.gameObject.AddComponent<SettingsStepperRow>();
             StyleRowSelectable(comp, bg);
@@ -676,13 +934,14 @@ namespace Zombies55.EditorTools
             Wire(so, "prevButton", prev);
             Wire(so, "nextButton", next);
             so.ApplyModifiedPropertiesWithoutUndo();
+            AddDescription(bg.gameObject, description);
             return comp;
         }
 
         static UnityEngine.UI.Selectable AddToggleRow(RectTransform parent, SettingId id, string label, Vector2 pos,
-            float width, float height)
+            float width, float height, float labelFrac = 0.34f, bool inLayout = false, string description = null)
         {
-            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true);
+            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true, labelFrac, inLayout);
             var row = bg.rectTransform;
             var comp = bg.gameObject.AddComponent<SettingsToggleRow>();
             StyleRowSelectable(comp, bg);
@@ -697,6 +956,7 @@ namespace Zombies55.EditorTools
             Wire(so, "valueText", value);
             Wire(so, "pill", pill);
             so.ApplyModifiedPropertiesWithoutUndo();
+            AddDescription(bg.gameObject, description);
             return comp;
         }
 

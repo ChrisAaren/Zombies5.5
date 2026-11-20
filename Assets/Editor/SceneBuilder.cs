@@ -101,6 +101,7 @@ namespace Zombies55.EditorTools
             BuildRagdolls();
 
             MergeSkyline();
+            AssignClutterLayers();
             MarkStatic(_city);
             MarkStatic(_props);
             MarkStatic(_env.Find("Boundary"));
@@ -300,6 +301,7 @@ namespace Zombies55.EditorTools
             DynamicGI.UpdateEnvironment();
 
             ConfigureUrpAssets();
+            ConfigureGraphicsAssets();
 
             // Post-processing
             var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(VolumePath);

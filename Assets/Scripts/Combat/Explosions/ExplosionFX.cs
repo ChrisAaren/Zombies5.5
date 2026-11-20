@@ -247,10 +247,31 @@ namespace Zombies55
             ps.GetComponent<ParticleSystemRenderer>().pivot = new Vector3(0f, up, 0f);
         }
 
+        // Every particle system with a collision module is listed here, so EffectsDetail.ParticleCollision (off at Low) can switch them all.
+        static readonly System.Collections.Generic.List<ParticleSystem> s_Colliders = new System.Collections.Generic.List<ParticleSystem>();
+        static bool s_CollisionHooked;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetCollisionHook() { s_Colliders.Clear(); s_CollisionHooked = false; }
+
+        static void ApplyParticleCollision()
+        {
+            bool on = EffectsDetail.ParticleCollision;
+            for (int i = s_Colliders.Count - 1; i >= 0; i--)
+            {
+                var ps = s_Colliders[i];
+                if (ps == null) { s_Colliders.RemoveAt(i); continue; }
+                var m = ps.collision;
+                m.enabled = on;
+            }
+        }
+
         static void Collide(ParticleSystem ps, float bounce, float dampen, float lifetimeLoss)
         {
+            if (!s_CollisionHooked) { s_CollisionHooked = true; EffectsDetail.Changed += ApplyParticleCollision; }
+            s_Colliders.Add(ps);
             var c = ps.collision;
-            c.enabled = true;
+            c.enabled = EffectsDetail.ParticleCollision;
             c.type = ParticleSystemCollisionType.World;
             c.mode = ParticleSystemCollisionMode.Collision3D;
             c.quality = ParticleSystemCollisionQuality.Low;

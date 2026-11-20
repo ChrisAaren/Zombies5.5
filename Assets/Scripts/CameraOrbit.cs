@@ -40,7 +40,8 @@ namespace Zombies55
         float _pitch;
         int _ignoreMouseFrames;
         CinemachineThirdPersonFollow _follow;
-        float _baseFov, _baseDistance;
+        const float DefaultFov = 55f;
+        float _baseDistance;
         Vector3 _baseShoulder;
         float _aim, _aimTarget;
         float _recoilPitch, _recoilYaw, _recoilVelPitch, _recoilVelYaw;
@@ -70,7 +71,6 @@ namespace Zombies55
             if (vcam == null) vcam = FindAnyObjectByType<CinemachineCamera>();
             if (vcam == null) return;
             _follow = vcam.GetComponent<CinemachineThirdPersonFollow>();
-            _baseFov = vcam.Lens.FieldOfView;
             if (_follow != null)
             {
                 _baseShoulder = _follow.ShoulderOffset;
@@ -83,7 +83,9 @@ namespace Zombies55
             _aim += (_aimTarget - _aim) * (1f - Mathf.Exp(-aimBlendSharpness * dt));
             if (vcam == null) return;
             var lens = vcam.Lens;
-            lens.FieldOfView = Mathf.Lerp(_baseFov, aimFov, _aim);
+            // FOV setting: the hip FOV is the setting, the aimed FOV keeps its ratio to the authored 55 degrees.
+            float fov = GameSettings.Fov;
+            lens.FieldOfView = Mathf.Lerp(fov, aimFov * (fov / DefaultFov), _aim);
             vcam.Lens = lens;
             if (_follow != null)
             {

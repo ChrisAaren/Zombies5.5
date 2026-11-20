@@ -36,6 +36,8 @@ namespace Zombies55
         public const int Player = 10;     // the player's CharacterController
         public const int Debris = 12;     // pooled blast debris; collides with the world only
         public const int Ragdoll = 13;    // pooled ragdoll bodies; collide with the world, cars and barriers only; never hit by bullets or blasts
+        public const int Clutter = 14;        // collider-free street clutter (steam, grates, cables, litter): culled by distance by StreetDetail
+        public const int ClutterDecal = 15;   // dirt and street-noise decals: culled by distance by StreetDetail
         public const int Barrier = 11;    // district barrier colliders; not shootable, not baked into the NavMesh
 
         // What the player's bullets can hit: world, enemies, explosives. Never the player.

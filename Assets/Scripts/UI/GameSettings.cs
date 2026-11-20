@@ -14,6 +14,8 @@ namespace Zombies55
         MusicVolume, SfxVolume,
         DepthOfField, LensFlare,
         FrameRate, VSync, FpsCounter,
+        // Display (DisplayManager owns the state and saves it itself; these ids are indices into its option lists).
+        Monitor, DisplayMode, Resolution, RefreshRate,
     }
 
     // Player-facing settings, stored in PlayerPrefs. Loads lazily on first read.
@@ -54,6 +56,10 @@ namespace Zombies55
             new Def(Prefix + "FrameRate", 0f, 3f, 3f), // index into FrameRateValues; default 120
             new Def(Prefix + "VSync", 0f, 1f, 1f),
             new Def(Prefix + "FpsCounter", 0f, 1f, 0f),
+            new Def(Prefix + "Monitor", 0f, 15f, 0f),      // display ids: routed to DisplayManager, never stored here
+            new Def(Prefix + "DisplayMode", 0f, 2f, 0f),
+            new Def(Prefix + "Resolution", 0f, 63f, 0f),
+            new Def(Prefix + "RefreshRate", 0f, 31f, 0f),
         };
 
         public static readonly string[] StyleNames =
@@ -87,10 +93,18 @@ namespace Zombies55
             _values = new float[Defs.Length];
             for (int i = 0; i < Defs.Length; i++)
             {
-                if (IsAudio((SettingId)i)) continue;
+                if (IsAudio((SettingId)i) || IsDisplay((SettingId)i)) continue;
                 _values[i] = Clamp(i, PlayerPrefs.GetFloat(Defs[i].Key, Defs[i].Default));
             }
         }
+
+        static bool IsDisplay(SettingId id) => id >= SettingId.Monitor;
+
+        // DisplayManager finished a move or mode change: let the rows and FramePacing refresh.
+        public static void NotifyExternalChange() => Changed?.Invoke();
+
+        // Rows that can be greyed out (the monitor row with one display, the refresh row outside exclusive fullscreen).
+        public static bool IsEnabled(SettingId id) => !IsDisplay(id) || DisplayManager.IsEnabled(id);
 
         static bool IsAudio(SettingId id) => id == SettingId.MusicVolume || id == SettingId.SfxVolume;
 
@@ -116,6 +130,7 @@ namespace Zombies55
             EnsureLoaded();
             if (id == SettingId.MusicVolume) return GameAudio.MusicVolume;
             if (id == SettingId.SfxVolume) return GameAudio.SfxVolume;
+            if (IsDisplay(id)) return DisplayManager.GetIndex(id);
             return _values[(int)id];
         }
 
@@ -123,6 +138,7 @@ namespace Zombies55
         {
             EnsureLoaded();
             int i = (int)id;
+            if (IsDisplay(id)) { DisplayManager.SetIndex(id, Mathf.RoundToInt(value)); Changed?.Invoke(); return; }
             value = Clamp(i, value);
             if (id == SettingId.MusicVolume) GameAudio.MusicVolume = value;
             else if (id == SettingId.SfxVolume) GameAudio.SfxVolume = value;
@@ -142,10 +158,11 @@ namespace Zombies55
 
         // Number of choices for a stepper setting.
         public static int OptionCount(SettingId id) =>
-            id == SettingId.CrosshairColor ? ColorNames.Length : id == SettingId.FrameRate ? FrameRateValues.Length : StyleNames.Length;
+            IsDisplay(id) ? DisplayManager.OptionCount(id) : id == SettingId.CrosshairColor ? ColorNames.Length : id == SettingId.FrameRate ? FrameRateValues.Length : StyleNames.Length;
 
         public static string Format(SettingId id)
         {
+            if (IsDisplay(id)) return DisplayManager.Format(id);
             float v = GetFloat(id);
             var ci = CultureInfo.InvariantCulture;
             switch (id)
@@ -177,6 +194,7 @@ namespace Zombies55
             for (int i = 0; i < Defs.Length; i++)
             {
                 var id = (SettingId)i;
+                if (IsDisplay(id)) continue; // resetting must not move the window
                 if (id == SettingId.MusicVolume) GameAudio.MusicVolume = Defs[i].Default;
                 else if (id == SettingId.SfxVolume) GameAudio.SfxVolume = Defs[i].Default;
                 else

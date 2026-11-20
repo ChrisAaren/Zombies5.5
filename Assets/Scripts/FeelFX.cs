@@ -68,8 +68,12 @@ namespace Zombies55
         {
             if (impact < 2f) return;
             float strength = Mathf.Clamp01(impact / 15f);
-            landingPuff.transform.position = player.transform.position + Vector3.up * 0.05f;
-            landingPuff.Emit(4);
+            // The dust only marks a real drop or jump landing (4 m/s is about a 0.3 m fall); small hops make a sound, not a puff.
+            if (impact >= 4f)
+            {
+                landingPuff.transform.position = player.transform.position + Vector3.up * 0.05f;
+                landingPuff.Emit(4);
+            }
             GameAudio.Instance?.PlayLand(strength);
             if (impact > landShakeThreshold) impulse?.GenerateImpulse(0.15f * strength);
         }

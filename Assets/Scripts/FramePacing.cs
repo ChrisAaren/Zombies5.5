@@ -18,7 +18,19 @@ namespace Zombies55
         // Set by BenchmarkRunner: ignore the settings and run uncapped with VSync off.
         public static bool ForceUncapped;
 
-        public static double RefreshRate => Screen.currentResolution.refreshRateRatio.value;
+        // The refresh rate of the display the window is on right now. Screen.currentResolution can lag behind a window
+        // that was moved to another monitor, so the window's display is the first choice.
+        public static double RefreshRate
+        {
+            get
+            {
+#if !UNITY_EDITOR
+                double d = Screen.mainWindowDisplayInfo.refreshRate.value;
+                if (d > 1.0) return d;
+#endif
+                return Screen.currentResolution.refreshRateRatio.value;
+            }
+        }
         public static int AppliedVSyncCount { get; private set; }
         public static int AppliedTargetFrameRate { get; private set; }
         public static bool CanTear { get; private set; }
@@ -28,6 +40,8 @@ namespace Zombies55
         double _lastRefresh;
         FullScreenMode _lastMode;
         int _lastW, _lastH;
+        string _lastDisplay = "";
+        float _nextDisplayCheck;   // display queries are native calls that allocate the display name: poll twice a second, not every frame
 
         // FPS counter state
         float _accum;
@@ -46,6 +60,7 @@ namespace Zombies55
             var go = new GameObject("FramePacing") { hideFlags = HideFlags.HideAndDontSave };
             DontDestroyOnLoad(go);
             s_Instance = go.AddComponent<FramePacing>();
+            s_Instance.useGUILayout = false;   // the counter uses GUI.Label only: skip the per-frame IMGUI layout pass
         }
 
         // Pure rule, exposed for tests and the benchmark report.
@@ -89,13 +104,18 @@ namespace Zombies55
         void Update()
         {
             // Re-evaluate when the display mode or refresh rate changes (window moved to another monitor, mode switch).
-            double r = RefreshRate;
-            var mode = Screen.fullScreenMode;
-            var res = Screen.currentResolution;
-            if (r != _lastRefresh || mode != _lastMode || res.width != _lastW || res.height != _lastH)
+            if (Time.unscaledTime >= _nextDisplayCheck)
             {
-                _lastRefresh = r; _lastMode = mode; _lastW = res.width; _lastH = res.height;
-                Apply();
+                _nextDisplayCheck = Time.unscaledTime + 0.5f;
+                double r = RefreshRate;
+                var mode = Screen.fullScreenMode;
+                var res = Screen.currentResolution;
+                string disp = Screen.mainWindowDisplayInfo.name;
+                if (r != _lastRefresh || mode != _lastMode || res.width != _lastW || res.height != _lastH || disp != _lastDisplay)
+                {
+                    _lastRefresh = r; _lastMode = mode; _lastW = res.width; _lastH = res.height; _lastDisplay = disp;
+                    Apply();
+                }
             }
 
             float dt = Time.unscaledDeltaTime;

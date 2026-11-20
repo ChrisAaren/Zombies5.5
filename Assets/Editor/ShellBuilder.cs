@@ -559,13 +559,19 @@ namespace Zombies55.EditorTools
             firsts[2] = AddSliderRow(audio, SettingId.MusicVolume, "MUSIC VOLUME", new Vector2(0f, 90f), 1200f, 70f);
             AddSliderRow(audio, SettingId.SfxVolume, "SFX VOLUME", new Vector2(0f, 0f), 1200f, 70f);
 
-            // Graphics
+            // Graphics: display first (DisplayManager), then pacing and effects.
             var gfx = (RectTransform)tabPanels[3].transform;
-            firsts[3] = AddToggleRow(gfx, SettingId.DepthOfField, "DEPTH OF FIELD", new Vector2(0f, 190f), 1200f, 70f);
-            AddToggleRow(gfx, SettingId.LensFlare, "LENS FLARE", new Vector2(0f, 100f), 1200f, 70f);
-            AddStepperRow(gfx, SettingId.FrameRate, "FRAME RATE", new Vector2(0f, 10f), 1200f, 70f, false);
-            AddToggleRow(gfx, SettingId.VSync, "VSYNC", new Vector2(0f, -80f), 1200f, 70f);
-            AddToggleRow(gfx, SettingId.FpsCounter, "FPS COUNTER", new Vector2(0f, -170f), 1200f, 70f);
+            const float gw = 1200f, gh = 58f, gy = 215f, gdy = 68f;
+            // The monitor row is greyed out with a single display, so the mode row takes the initial focus.
+            AddStepperRow(gfx, SettingId.Monitor, "MONITOR", new Vector2(0f, gy), gw, gh, false, 560f);
+            firsts[3] = AddStepperRow(gfx, SettingId.DisplayMode, "DISPLAY MODE", new Vector2(0f, gy - gdy), gw, gh, false, 560f);
+            AddStepperRow(gfx, SettingId.Resolution, "RESOLUTION", new Vector2(0f, gy - gdy * 2), gw, gh, false, 560f);
+            // No REFRESH RATE row: it only applies to exclusive fullscreen, which does not exist under D3D12 (see DisplayManager).
+            AddStepperRow(gfx, SettingId.FrameRate, "FRAME RATE", new Vector2(0f, gy - gdy * 3), gw, gh, false);
+            AddToggleRow(gfx, SettingId.VSync, "VSYNC", new Vector2(0f, gy - gdy * 4), gw, gh);
+            AddToggleRow(gfx, SettingId.DepthOfField, "DEPTH OF FIELD", new Vector2(0f, gy - gdy * 5), gw, gh);
+            AddToggleRow(gfx, SettingId.LensFlare, "LENS FLARE", new Vector2(0f, gy - gdy * 6), gw, gh);
+            AddToggleRow(gfx, SettingId.FpsCounter, "FPS COUNTER", new Vector2(0f, gy - gdy * 7), gw, gh);
 
             var reset = CreateButton(cardRt, "ResetButton", "RESET TO DEFAULTS", new Vector2(-250f, -385f), new Vector2(440f, 80f), 34f);
             var back = CreateButton(cardRt, "BackButton", "BACK", new Vector2(250f, -385f), new Vector2(440f, 80f), 38f);
@@ -643,7 +649,7 @@ namespace Zombies55.EditorTools
         }
 
         static UnityEngine.UI.Selectable AddStepperRow(RectTransform parent, SettingId id, string label, Vector2 pos,
-            float width, float height, bool withSwatch)
+            float width, float height, bool withSwatch, float valueWidth = 260f)
         {
             var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true);
             var row = bg.rectTransform;
@@ -652,14 +658,15 @@ namespace Zombies55.EditorTools
 
             var next = CreateArrowButton(row, "Next", ">", new Vector2(-20f, 0f));
             var value = CreateText(row, "Value", "-", 30, Palette.UiLight, 4f, true);
-            PlaceCorner(value.rectTransform, new Vector2(1f, 0.5f), new Vector2(-84f, 0f), new Vector2(260f, height));
-            var prev = CreateArrowButton(row, "Prev", "<", new Vector2(-352f, 0f));
+            if (valueWidth > 300f) { value.fontSize = 26f; value.characterSpacing = 1f; }
+            PlaceCorner(value.rectTransform, new Vector2(1f, 0.5f), new Vector2(-84f, 0f), new Vector2(valueWidth, height));
+            var prev = CreateArrowButton(row, "Prev", "<", new Vector2(-(92f + valueWidth), 0f));
 
             UnityEngine.UI.Image swatch = null;
             if (withSwatch)
             {
                 swatch = CreateImage(row, "Swatch", s_RoundedRect, Palette.UiLight, true);
-                PlaceCorner(swatch.rectTransform, new Vector2(1f, 0.5f), new Vector2(-418f, 0f), new Vector2(36f, 36f));
+                PlaceCorner(swatch.rectTransform, new Vector2(1f, 0.5f), new Vector2(-(158f + valueWidth), 0f), new Vector2(36f, 36f));
             }
 
             var so = new SerializedObject(comp);

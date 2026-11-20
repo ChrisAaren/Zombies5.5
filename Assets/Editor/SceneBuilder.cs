@@ -511,14 +511,16 @@ namespace Zombies55.EditorTools
         static void BuildBlockBase(float cx, float cz, bool plaza)
         {
             var block = Node(plaza ? "PlazaBlock" : "Block", _city, new Vector3(cx, 0f, cz));
+            // The 10 cm curb lip on the slab edge is visual only: a collider there made the player pop up 10 cm on every
+            // crossing (the slab underneath is the real, solid curb).
             Box("Slab", block, new Vector3(0f, SidewalkTop * 0.5f, 0f),
                 new Vector3(BlockSize, SidewalkTop, BlockSize), plaza ? mPlaza : mSidewalk, true);
             float edge = BlockSize * 0.5f - 0.15f;
             float rimY = SidewalkTop + 0.05f;
-            Box("CurbN", block, new Vector3(0f, rimY, edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, true);
-            Box("CurbS", block, new Vector3(0f, rimY, -edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, true);
-            Box("CurbE", block, new Vector3(edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurbZ, true);
-            Box("CurbW", block, new Vector3(-edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurbZ, true);
+            Box("CurbN", block, new Vector3(0f, rimY, edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, false);
+            Box("CurbS", block, new Vector3(0f, rimY, -edge), new Vector3(BlockSize, 0.1f, 0.3f), mCurb, false);
+            Box("CurbE", block, new Vector3(edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurbZ, false);
+            Box("CurbW", block, new Vector3(-edge, rimY, 0f), new Vector3(0.3f, 0.1f, BlockSize), mCurbZ, false);
         }
 
         static void BuildBlockBuildings(float cx, float cz, int k, int count)
@@ -822,6 +824,7 @@ namespace Zombies55.EditorTools
             var orbit = pivotGo.AddComponent<CameraOrbit>();
             SetRef(orbit, "target", _playerRoot);
             SetRef(_playerController, "cameraYaw", _cameraPivot);
+            SetRef(_playerController, "visual", _playerCharacter);
 
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";

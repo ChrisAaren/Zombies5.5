@@ -34,6 +34,15 @@ namespace Zombies55
         [SerializeField] float coyoteTime = 0.12f;
         [SerializeField] float jumpBuffer = 0.12f;
 
+        [Header("Ground following")]
+        [Tooltip("The character model. Its height is smoothed over a short time, so curbs and small steps glide instead of popping.")]
+        [SerializeField] Transform visual;
+        [SerializeField] float visualSmoothTime = 0.12f;
+        [Tooltip("Walking off a ledge no higher than this (m) keeps the player on the ground instead of falling. 0 = the controller's step offset.")]
+        [SerializeField] float snapDistance = 0f;
+        [Tooltip("Landing is only reported after at least this long in the air (s); stepping off a curb is not a landing.")]
+        [SerializeField] float minAirTimeForLanding = 0.1f;
+
         [Tooltip("Camera yaw source; movement is relative to where the camera looks.")]
         [SerializeField] Transform cameraYaw;
 
@@ -44,6 +53,9 @@ namespace Zombies55
         float _lastJumpPressedTime = -1f;
         bool _wasGrounded = true;
         float _yawVelocity;
+        float _airTime;
+        Vector3 _visualRest;
+        float _visualOffset, _visualOffsetVel;
 
         public Vector3 Velocity => _planarVelocity + Vector3.up * _verticalVelocity;
         public float PlanarSpeed => _planarVelocity.magnitude;
@@ -63,6 +75,23 @@ namespace Zombies55
         void Awake()
         {
             _controller = GetComponent<CharacterController>();
+            if (visual != null) _visualRest = visual.localPosition;
+        }
+
+        const int SnapMask = ~((1 << GameLayers.Player) | (1 << GameLayers.Enemy) | (1 << GameLayers.IgnoreRaycast));
+
+        // After a Move that lost the ground (walking off a curb or over a seam), look for ground within the step offset
+        // below the feet and drop onto it. Returns the distance dropped, or -1 when there is no walkable ground.
+        float FindGroundBelow()
+        {
+            float reach = snapDistance > 0f ? snapDistance : _controller.stepOffset;
+            float r = _controller.radius;
+            const float lift = 0.05f;
+            Vector3 origin = transform.position + _controller.center - Vector3.up * (_controller.height * 0.5f - r) + Vector3.up * lift;
+            if (!Physics.SphereCast(origin, r * 0.9f, Vector3.down, out var hit, reach + lift + 0.02f, SnapMask, QueryTriggerInteraction.Ignore))
+                return -1f;
+            if (hit.normal.y < Mathf.Cos(_controller.slopeLimit * Mathf.Deg2Rad)) return -1f;
+            return Mathf.Max(0f, hit.distance - lift);
         }
 
         void Update()
@@ -128,14 +157,43 @@ namespace Zombies55
             float fallSpeed = -_verticalVelocity;
             _verticalVelocity += gravity * dt;
 
+            float yBefore = transform.position.y;
+            bool jumpedThisFrame = _verticalVelocity > 0.1f;
             var flags = _controller.Move((_planarVelocity + Vector3.up * _verticalVelocity) * dt);
             var actual = _controller.velocity;
             GroundVelocity = new Vector3(actual.x, 0f, actual.z);
             IsGrounded = (flags & CollisionFlags.Below) != 0;
+
+            // Ground snapping: a one-frame loss of ground (curb edge, seam, tiny slope) must not become a fall and a landing.
+            if (!IsGrounded && _wasGrounded && !jumpedThisFrame)
+            {
+                float drop = FindGroundBelow();
+                if (drop >= 0f)
+                {
+                    if (drop > 0.0005f) _controller.Move(Vector3.down * drop);
+                    IsGrounded = true;
+                    _verticalVelocity = -2f;
+                }
+            }
             if ((flags & CollisionFlags.Above) != 0 && _verticalVelocity > 0f) _verticalVelocity = 0f;
 
-            if (IsGrounded && !_wasGrounded) Landed?.Invoke(Mathf.Max(0f, fallSpeed));
+            if (IsGrounded) { if (!_wasGrounded && _airTime >= minAirTimeForLanding) Landed?.Invoke(Mathf.Max(0f, fallSpeed)); _airTime = 0f; }
+            else _airTime += dt;
             _wasGrounded = IsGrounded;
+
+            SmoothVisual(yBefore, jumpedThisFrame, dt);
+        }
+
+        // Keep the capsule exact but let the model glide over steps: the height jump of a grounded frame is absorbed
+        // into an offset that eases back to zero over visualSmoothTime.
+        void SmoothVisual(float yBefore, bool jumped, float dt)
+        {
+            if (visual == null) return;
+            float dy = transform.position.y - yBefore;
+            if (IsGrounded && !jumped && Mathf.Abs(dy) > 0.004f && Mathf.Abs(dy) < 0.5f) _visualOffset -= dy;
+            _visualOffset = Mathf.SmoothDamp(_visualOffset, 0f, ref _visualOffsetVel, visualSmoothTime, Mathf.Infinity, dt);
+            if (Mathf.Abs(_visualOffset) < 0.0002f) { _visualOffset = 0f; _visualOffsetVel = 0f; }
+            visual.localPosition = _visualRest + Vector3.up * _visualOffset;
         }
 
         // Set by BenchmarkRunner: drives the player along a fixed path instead of reading input.

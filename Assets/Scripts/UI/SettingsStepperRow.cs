@@ -38,6 +38,7 @@ namespace Zombies55
 
         void Step(int dir)
         {
+            if (!GameSettings.IsEnabled(id)) return;
             int count = GameSettings.OptionCount(id);
             GameSettings.SetInt(id, ((GameSettings.GetInt(id) + dir) % count + count) % count);
             GameAudio.Instance?.PlayClick();
@@ -46,6 +47,11 @@ namespace Zombies55
         void Refresh()
         {
             valueText.text = GameSettings.Format(id);
+            bool on = GameSettings.IsEnabled(id);
+            interactable = on;
+            prevButton.interactable = on;
+            nextButton.interactable = on;
+            valueText.alpha = on ? 1f : 0.4f;
             if (swatch != null) swatch.color = GameSettings.CrosshairColor;
         }
 

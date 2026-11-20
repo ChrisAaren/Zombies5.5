@@ -13,6 +13,9 @@ namespace Zombies55
         public int Points { get; private set; }
         public int TotalEarned { get; private set; }
 
+        // Every award is multiplied by this (the Payday pickup sets 2). Spending is never affected.
+        public int Multiplier { get; set; } = 1;
+
         // (new total, delta, reason)
         public event Action<int, int, string> Changed;
 
@@ -33,6 +36,7 @@ namespace Zombies55
         public void Add(int amount, string reason)
         {
             if (amount <= 0) return;
+            amount *= Mathf.Max(1, Multiplier);
             Points += amount;
             TotalEarned += amount;
             Changed?.Invoke(Points, amount, reason);

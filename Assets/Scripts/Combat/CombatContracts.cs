@@ -17,6 +17,7 @@ namespace Zombies55
         public DamageKind Kind;
         public GameObject Source;     // who caused it: the player, an explosive prop, an enemy
         public bool FromPlayer;       // true for the player's bullets and explosions the player set off
+        public bool Scripted;         // pickup kills (Shockwave): credited to the player, but no per-kill points and no drop roll
     }
 
     public interface IDamageable

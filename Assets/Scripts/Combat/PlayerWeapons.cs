@@ -136,6 +136,13 @@ namespace Zombies55
             }
         }
 
+        // Ammo Cache pickup: magazine and reserve of every owned gun back to full.
+        public void RefillAllAmmo()
+        {
+            for (int i = 0; i < SlotCount; i++)
+                if (_slots[i] != null) RefillAmmo(_slots[i].Id);
+        }
+
         // ------------------------------------------------------------------ update
 
         void Update()

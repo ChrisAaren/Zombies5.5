@@ -54,6 +54,7 @@ namespace Zombies55
         public static float SpawnIntervalForRound(int r) => Mathf.Max(0.15f, 1f - 0.06f * r);
 
         readonly Stack<Enemy> _free = new Stack<Enemy>(MaxAlive);
+        readonly List<Enemy> _all = new List<Enemy>(MaxAlive);
         float[] _pointReadyAt;
         readonly List<int> _cand = new List<int>(64);
         readonly List<int> _candScore = new List<int>(64);
@@ -86,6 +87,7 @@ namespace Zombies55
                 e.SetOwner(this);
                 e.gameObject.SetActive(false);
                 _free.Push(e);
+                _all.Add(e);
             }
         }
 
@@ -165,6 +167,32 @@ namespace Zombies55
         }
 
         internal void Release(Enemy enemy) => _free.Push(enemy);
+
+        // Shockwave pickup: kills every enemy that is alive right now. The kills are credited to the player and count toward the
+        // round, but carry no per-kill points and never roll a drop (DamageInfo.Scripted). Returns how many died.
+        public int KillAllAlive(Vector3 origin)
+        {
+            int killed = 0;
+            for (int i = 0; i < _all.Count; i++)
+            {
+                var e = _all[i];
+                if (e == null || !e.gameObject.activeSelf || !e.IsAlive) continue;
+                Vector3 dir = e.transform.position - origin;
+                dir.y = 0f;
+                e.TakeDamage(new DamageInfo
+                {
+                    Amount = e.Health + 1f,
+                    Point = e.transform.position + Vector3.up,
+                    Direction = dir.sqrMagnitude > 0.01f ? dir.normalized : Vector3.forward,
+                    Zone = HitZone.Body,
+                    Kind = DamageKind.Melee,
+                    FromPlayer = true,
+                    Scripted = true,
+                });
+                killed++;
+            }
+            return killed;
+        }
 
         // Picks a spawn point in an owned district, 25-90 m from the player (the minimum shrinks to
         // 0.8x the farthest owned point, never below 10 m, so small districts work), preferring points

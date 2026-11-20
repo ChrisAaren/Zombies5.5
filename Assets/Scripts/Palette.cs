@@ -111,6 +111,15 @@ namespace Zombies55
         public static readonly Color Shadow = Hex("#2B2D42");
         public static readonly Color Accent = Hex("#FFC53D");
         public static readonly Color Danger = Hex("#E63946");
+
+        // Item drops: the glow color of each pickup (matches its model's PickupGlow slot) and the painted body.
+        public static readonly Color PickupAmber = Hex("#FFA010");     // Ammo Cache
+        public static readonly Color PickupCyan = Hex("#20C8FF");      // Shockwave
+        public static readonly Color PickupRed = Hex("#FF2A10");       // Deadeye
+        public static readonly Color PickupLime = Hex("#8CFF30");      // Payday
+        public static readonly Color PickupBody = Hex("#4B5040");      // worn olive-drab paint
+        public static readonly Color PickupMetal = Hex("#3A3D44");
+        public static readonly Color PickupPaint = Hex("#B58A1E");     // Ammo Cache stencil paint
         public static readonly Color UiLight = Hex("#FFF4E0");
         public static readonly Color UiDark = Hex("#1E2036");
 

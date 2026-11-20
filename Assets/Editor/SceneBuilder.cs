@@ -97,6 +97,7 @@ namespace Zombies55.EditorTools
             BuildCombat();
             BuildZones();
             BuildEnemies();
+            BuildPickups();
 
             MergeSkyline();
             MarkStatic(_city);
@@ -124,11 +125,26 @@ namespace Zombies55.EditorTools
         {
             StaticOcclusionCulling.Clear();
             bool ok = StaticOcclusionCulling.Compute();
-            Debug.Log("Occlusion bake " + (ok ? "done" : "FAILED") + ", data " + StaticOcclusionCulling.umbraDataSize + " bytes");
+            // umbraDataSize reads 0 until the scene is saved and the data asset is imported, so verify after the save below.
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
             AssetDatabase.SaveAssets();
+            AssetDatabase.ImportAsset(OcclusionDataPath, ImportAssetOptions.ForceSynchronousImport);
+            AssetDatabase.Refresh();
+
+            // The data asset is the generated output that the committed scene points at: it must exist on disk with a resolvable guid.
+            // (umbraDataSize is not updated until the Editor ticks again, so it is not checked here.)
+            string guid = AssetDatabase.AssetPathToGUID(OcclusionDataPath);
+            long bytes = System.IO.File.Exists(OcclusionDataPath) ? new System.IO.FileInfo(OcclusionDataPath).Length : 0;
+            bool referenced = guid.Length > 0 && System.IO.File.ReadAllText(ScenePath).Contains(guid);
+            if (!ok || bytes <= 0 || !System.IO.File.Exists(OcclusionDataPath + ".meta") || !referenced)
+                Debug.LogError("Occlusion bake FAILED: ok=" + ok + ", assetBytes=" + bytes + ", sceneReferencesIt=" + referenced +
+                               ". Expected " + OcclusionDataPath + " (commit it together with the scene).");
+            else
+                Debug.Log("Occlusion bake done: " + OcclusionDataPath + " (" + bytes + " bytes, guid " + guid + ")");
         }
+
+        const string OcclusionDataPath = "Assets/Scenes/Zombies55/OcclusionCullingData.asset";
 
         // ------------------------------------------------------------------ materials
 

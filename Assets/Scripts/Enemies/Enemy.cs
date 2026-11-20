@@ -339,6 +339,7 @@ namespace Zombies55
             }
 
             float amount = info.Amount * (info.Zone == HitZone.Head ? headDamageMultiplier : 1f);
+            if (info.FromPlayer && PickupDirector.DeadeyeActive) amount = Mathf.Max(amount, Health + 1f);   // Deadeye: any player hit kills
             if (amount <= 0f) return;
             Health -= amount;
             bool lethal = Health <= 0f;
@@ -356,7 +357,7 @@ namespace Zombies55
             if (!lethal && _state == State.Chase && _anim != null) _anim.PlayHit();
 
             var wallet = PlayerWallet.Instance;
-            if (info.FromPlayer && wallet != null)
+            if (info.FromPlayer && !info.Scripted && wallet != null)
             {
                 if (!lethal)
                 {

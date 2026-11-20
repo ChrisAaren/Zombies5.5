@@ -304,6 +304,8 @@ namespace Zombies55.EditorTools
             var districtBannerText = CreateText(districtBanner, "DistrictBannerText", "DISTRICT UNLOCKED", 38, Palette.Accent, 5f, true);
             Stretch(districtBannerText.rectTransform);
 
+            BuildPickupHud(root, points.rectTransform);
+
             // Round banner last so it draws above the HUD.
             var banner = NewRect("RoundBanner", root);
             Place(banner, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(1700f, 230f));
@@ -351,6 +353,105 @@ namespace Zombies55.EditorTools
             banner.gameObject.SetActive(false);
             districtBanner.gameObject.SetActive(false);
             return root.gameObject;
+        }
+
+        // Item drops: pickup announcement, effect chips with countdown bars (bottom center), x2 badge beside the points, and the
+        // full-screen pulse. All driven by PickupHud.
+        static void BuildPickupHud(RectTransform hudRoot, RectTransform points)
+        {
+            var root = CreateStretched("PickupHud", hudRoot);
+            var hud = root.gameObject.AddComponent<PickupHud>();
+            Color panelColor = Palette.WithAlpha(Palette.UiDark, 0.85f);
+            Color soft = Palette.WithAlpha(Palette.UiLight, 0.85f);
+
+            var overlay = CreateOverlay(root, "PickupPulse", Palette.WithAlpha(Color.white, 0f));
+
+            // Announcement, upper middle: the drop's name in its color, a short line under it.
+            var announce = NewRect("PickupAnnounce", root);
+            Place(announce, new Vector2(0.5f, 0.4f), Vector2.zero, new Vector2(1500f, 200f));
+            var announceGroup = announce.gameObject.AddComponent<CanvasGroup>();
+            announceGroup.interactable = false;
+            announceGroup.blocksRaycasts = false;
+            var announceText = CreateText(announce, "PickupName", "DEADEYE", 112, Palette.PickupRed, 10f, true);
+            Place(announceText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 24f), new Vector2(1500f, 130f));
+            var announceSub = CreateText(announce, "PickupSub", string.Empty, 42, Palette.UiLight, 6f, true);
+            Place(announceSub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -64f), new Vector2(1500f, 56f));
+
+            // Effect chips: name, seconds left, and a draining bar.
+            string[] names = { "DEADEYE", "PAYDAY" };
+            string[] hints = { "ONE SHOT", "DOUBLE POINTS" };
+            Color[] colors = { Palette.PickupRed, Palette.PickupLime };
+            var chipRects = new RectTransform[2];
+            var chipGroups = new CanvasGroup[2];
+            var chipFills = new UnityEngine.UI.Image[2];
+            var chipAccents = new UnityEngine.UI.Image[2];
+            var chipTimes = new TMP_Text[2];
+            for (int i = 0; i < 2; i++)
+            {
+                var chip = CreateImage(root, "EffectChip_" + names[i], s_RoundedRect, panelColor, true);
+                PlaceCorner(chip.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 44f), new Vector2(300f, 78f));
+                chip.rectTransform.pivot = new Vector2(0.5f, 0f);
+                chipRects[i] = chip.rectTransform;
+                chipGroups[i] = chip.gameObject.AddComponent<CanvasGroup>();
+                chipGroups[i].interactable = false;
+                chipGroups[i].blocksRaycasts = false;
+
+                var accent = CreateImage(chip.rectTransform, "Accent", s_RoundedRect, colors[i], true);
+                PlaceCorner(accent.rectTransform, new Vector2(0f, 0.5f), new Vector2(10f, 0f), new Vector2(8f, 54f));
+                chipAccents[i] = accent;
+
+                var label = CreateText(chip.rectTransform, "Name", names[i], 28, colors[i], 5f, false);
+                label.alignment = TextAlignmentOptions.MidlineLeft;
+                PlaceCorner(label.rectTransform, new Vector2(0f, 1f), new Vector2(30f, -8f), new Vector2(180f, 34f));
+                var hint = CreateText(chip.rectTransform, "Hint", hints[i], 18, soft, 3f, false);
+                hint.alignment = TextAlignmentOptions.MidlineLeft;
+                PlaceCorner(hint.rectTransform, new Vector2(0f, 1f), new Vector2(30f, -40f), new Vector2(200f, 22f));
+                var time = CreateText(chip.rectTransform, "Time", "30S", 32, Palette.UiLight, 2f, false);
+                time.alignment = TextAlignmentOptions.MidlineRight;
+                PlaceCorner(time.rectTransform, new Vector2(1f, 1f), new Vector2(-16f, -8f), new Vector2(100f, 40f));
+                chipTimes[i] = time;
+
+                var back = CreateImage(chip.rectTransform, "BarBack", s_RoundedRect, Palette.Shadow, true);
+                back.pixelsPerUnitMultiplier = 2f;
+                PlaceCorner(back.rectTransform, new Vector2(0f, 0f), new Vector2(30f, 10f), new Vector2(256f, 10f));
+                var fill = CreateImage(back.rectTransform, "BarFill", s_RoundedRect, colors[i], false);
+                fill.type = UnityEngine.UI.Image.Type.Filled;
+                fill.fillMethod = UnityEngine.UI.Image.FillMethod.Horizontal;
+                fill.fillOrigin = (int)UnityEngine.UI.Image.OriginHorizontal.Left;
+                fill.fillAmount = 1f;
+                Stretch(fill.rectTransform);
+                fill.rectTransform.offsetMin = new Vector2(1f, 1f);
+                fill.rectTransform.offsetMax = new Vector2(-1f, -1f);
+                chipFills[i] = fill;
+            }
+
+            // x2 badge beside the points readout, left of the POINTS label.
+            var badge = CreateImage(root, "PaydayBadge", s_RoundedRect, Palette.PickupLime, true);
+            PlaceCorner(badge.rectTransform, new Vector2(1f, 1f), new Vector2(-236f, -32f), new Vector2(96f, 44f));
+            var badgeGroup = badge.gameObject.AddComponent<CanvasGroup>();
+            badgeGroup.interactable = false;
+            badgeGroup.blocksRaycasts = false;
+            var badgeText = CreateText(badge.rectTransform, "BadgeText", "x2", 36, Palette.UiDark, 1f, false);
+            Stretch(badgeText.rectTransform);
+
+            var so = new SerializedObject(hud);
+            Wire(so, "announceRect", announce);
+            Wire(so, "announceGroup", announceGroup);
+            Wire(so, "announceText", announceText);
+            Wire(so, "announceSub", announceSub);
+            WireArray(so, "chipRects", chipRects);
+            WireArray(so, "chipGroups", chipGroups);
+            WireArray(so, "chipFills", chipFills);
+            WireArray(so, "chipAccents", chipAccents);
+            WireArray(so, "chipTimes", chipTimes);
+            Wire(so, "badgeRect", badge.rectTransform);
+            Wire(so, "badgeGroup", badgeGroup);
+            Wire(so, "overlay", overlay);
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            announce.gameObject.SetActive(false);
+            for (int i = 0; i < 2; i++) chipRects[i].gameObject.SetActive(false);
+            badge.gameObject.SetActive(false);
         }
 
         static GameObject BuildPause(RectTransform parent, out UnityEngine.UI.Button resume,

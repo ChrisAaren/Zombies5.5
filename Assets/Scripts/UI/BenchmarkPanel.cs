@@ -8,8 +8,9 @@ using UnityEngine.UI;
 
 namespace Zombies55
 {
-    // The BENCHMARK tab of the settings menu: run options, the history list and the results screen (numbers, frame-time graph,
-    // settings used, system info, verdict and a side-by-side comparison with the previous run or any chosen run).
+    // The BENCHMARK tab of the settings menu. Home: your settings (what differs from the preset), the run button and options, and a
+    // table of past runs. Results: two big headline numbers with a rating, the plain-language verdict, the frame-time graph, and a
+    // DETAILS view for everything else. A previous run can be compared: the change shows next to the headline numbers.
     public class BenchmarkPanel : MonoBehaviour
     {
         // Raised when the home or results view is shown: the menu footer follows.
@@ -17,51 +18,68 @@ namespace Zombies55
 
         [Header("Home")]
         [SerializeField] GameObject home;
-        [SerializeField] TMP_Text summaryText;
+        [SerializeField] TMP_Text presetText;
+        [SerializeField] TMP_Text displayText;
+        [SerializeField] TMP_Text changedText;
         [SerializeField] TMP_Text noteText;
         [SerializeField] Button runButton;
-        [SerializeField] Button viewLastButton;
         [SerializeField] RectTransform historyContent;
         [SerializeField] Button historyTemplate;
         [SerializeField] TMP_Text historyEmptyText;
 
         [Header("Results")]
         [SerializeField] GameObject results;
-        [SerializeField] TMP_Text bigText;
-        [SerializeField] TMP_Text systemText;
-        [SerializeField] TMP_Text statsText;
-        [SerializeField] TMP_Text settingsText;
-        [SerializeField] TMP_Text compareText;
-        [SerializeField] TMP_Text compareDiffText;
+        [SerializeField] TMP_Text avgNumber;
+        [SerializeField] TMP_Text avgInfo;
+        [SerializeField] TMP_Text avgDelta;
+        [SerializeField] TMP_Text lowNumber;
+        [SerializeField] TMP_Text lowInfo;
+        [SerializeField] TMP_Text lowDelta;
+        [SerializeField] GameObject summaryGroup;
+        [SerializeField] GameObject detailsGroup;
         [SerializeField] TMP_Text verdictText;
-        [SerializeField] TMP_Text legendText;
+        [SerializeField] TMP_Text captionText;
         [SerializeField] GraphicsGraph graph;
+        [SerializeField] RectTransform graphLabel60;
+        [SerializeField] RectTransform graphLabel120;
+        [SerializeField] TMP_Text timesText;
+        [SerializeField] TMP_Text systemText;
+        [SerializeField] TMP_Text settingsTextA;
+        [SerializeField] TMP_Text settingsTextB;
         [SerializeField] Button compareButton;
         [SerializeField] TMP_Text compareButtonLabel;
         [SerializeField] Button againButton;
+        [SerializeField] Button detailsButton;
+        [SerializeField] TMP_Text detailsButtonLabel;
         [SerializeField] Button deleteButton;
         [SerializeField] Button backButton;
 
         const float Seconds = 60f;   // the measured window of a menu run (the user-facing benchmark length)
+        const int MaxChanged = 5;
 
         readonly List<GameObject> _rows = new List<GameObject>();
         BenchmarkResult _shown;
         int _compareIndex = -1;   // index into the history, -1 = no comparison
         bool _wired;
+        bool _details;
         string _note;
 
         public GameObject FirstSelectable => runButton != null ? runButton.gameObject : null;
         public bool ShowingResults => results != null && results.activeSelf;
+
+        // Test hooks (the clipping check): show a result without touching the history, and flip the details view.
+        public bool DetailsShown => _details;
+        public void SetDetails(bool on) { _details = on; if (_shown != null) ApplyDetails(); }
 
         void Wire()
         {
             if (_wired) return;
             _wired = true;
             runButton.onClick.AddListener(Run);
-            viewLastButton.onClick.AddListener(() => { Click(); var h = BenchmarkHistory.Runs; if (h.Count > 0) ShowResult(h[0]); });
             againButton.onClick.AddListener(Run);
             backButton.onClick.AddListener(() => { Click(); ShowHome(); });
             compareButton.onClick.AddListener(CycleCompare);
+            detailsButton.onClick.AddListener(() => { Click(); _details = !_details; ApplyDetails(); });
             deleteButton.onClick.AddListener(DeleteShown);
         }
 
@@ -75,6 +93,9 @@ namespace Zombies55
         }
 
         void OnDisable() => GameSettings.Changed -= RefreshHome;
+
+        static string Acc => ColorUtility.ToHtmlStringRGB(Palette.Accent);
+        static string Hex(Color c) => ColorUtility.ToHtmlStringRGB(c);
 
         // ---------------------------------------------------------------- home
 
@@ -92,46 +113,58 @@ namespace Zombies55
             if (EventSystem.current != null && s != null && s.gameObject.activeInHierarchy) EventSystem.current.SetSelectedGameObject(s.gameObject);
         }
 
+        // "MotionBlur" -> "Motion Blur"
+        static string Title(string id) => System.Text.RegularExpressions.Regex.Replace(id, "([a-z])([A-Z])", "$1 $2");
+
         void RefreshHome()
         {
             if (!home.activeSelf) return;
+            int preset = GameSettings.QualityPreset;
+            string presetName = GameSettings.PresetNames[Mathf.Clamp(preset, 0, GameSettings.PresetCustom)];
+            presetText.text = presetName;
+            displayText.text = Screen.width + "x" + Screen.height + "  ·  " + (Screen.fullScreenMode == FullScreenMode.Windowed ? "WINDOWED" : "BORDERLESS");
+
+            var ids = new List<SettingId>();
+            string header;
+            if (preset < GameSettings.PresetCustom)
+            {
+                foreach (var id in GameSettings.PresetIds)
+                    if (GameSettings.GetInt(id) != GameSettings.PresetValue(preset, id)) ids.Add(id);
+                header = ids.Count == 0 ? "Matches the " + presetName + " preset" : "Changed from " + presetName;
+            }
+            else
+            {
+                ids.AddRange(new[] { SettingId.RenderScale, SettingId.ShadowQuality, SettingId.AmbientOcclusion, SettingId.AntiAliasing, SettingId.EffectsQuality });
+                header = "Key settings";
+            }
             var sb = new StringBuilder();
-            string hex = ColorUtility.ToHtmlStringRGB(Palette.Accent);
-            sb.Append("<color=#").Append(hex).Append(">THESE SETTINGS WILL BE MEASURED</color>\n");
-            sb.Append("RESOLUTION  ").Append(Screen.width).Append("x").Append(Screen.height).Append("   ").Append(Screen.fullScreenMode == FullScreenMode.Windowed ? "WINDOWED" : "BORDERLESS").Append('\n');
-            foreach (var line in GraphicsApplier.Snapshot()) sb.Append(Pretty(line)).Append('\n');
-            summaryText.text = sb.ToString();
+            sb.Append("<color=#").Append(Acc).Append(">").Append(header).Append("</color>");
+            for (int i = 0; i < ids.Count && i < MaxChanged; i++)
+                sb.Append('\n').Append(Title(ids[i].ToString())).Append("  <color=#").Append(Acc).Append(">").Append(GameSettings.Format(ids[i])).Append("</color>");
+            if (ids.Count > MaxChanged) sb.Append("\n+").Append(ids.Count - MaxChanged).Append(" more");
+            changedText.text = sb.ToString();
 
             if (!string.IsNullOrEmpty(BenchmarkRunner.Note)) { _note = BenchmarkRunner.Note; BenchmarkRunner.Note = null; }
-            string note = _note;
-            noteText.text = string.IsNullOrEmpty(note)
-                ? "A FIXED ROUTE THROUGH THE CITY WITH ALL DISTRICTS OPEN AND 48 ENEMIES. ABOUT 70 SECONDS. ESC CANCELS."
-                : note;
+            noteText.text = string.IsNullOrEmpty(_note) ? "About 70 seconds  ·  48 enemies  ·  Esc cancels" : _note;
             runButton.interactable = !BenchmarkRunner.Active;
 
-            foreach (var r in _rows) if (r != null) Destroy(r);
+            foreach (var r in _rows) if (r != null) { r.SetActive(false); Destroy(r); }
             _rows.Clear();
             var runs = BenchmarkHistory.Runs;
             historyEmptyText.gameObject.SetActive(runs.Count == 0);
-            viewLastButton.interactable = runs.Count > 0;
             for (int i = 0; i < runs.Count; i++)
             {
                 var run = runs[i];
                 var row = Instantiate(historyTemplate, historyContent);
                 row.gameObject.SetActive(true);
-                var label = row.GetComponentInChildren<TMP_Text>();
-                label.text = run.Label + "  " + run.preset + "  " + Mathf.RoundToInt(run.avgFps) + " / " + Mathf.RoundToInt(run.low1PctFps);
+                var cells = row.GetComponentsInChildren<TMP_Text>();
+                cells[0].text = run.Label;
+                cells[1].text = run.preset;
+                cells[2].text = F0(run.avgFps);
+                cells[3].text = F0(run.low1PctFps);
                 row.onClick.AddListener(() => { Click(); ShowResult(run); });
                 _rows.Add(row.gameObject);
             }
-        }
-
-        static string Pretty(string kv)
-        {
-            int eq = kv.IndexOf('=');
-            if (eq < 0) return kv;
-            string name = System.Text.RegularExpressions.Regex.Replace(kv.Substring(0, eq), "([a-z])([A-Z])", "$1 $2").ToUpperInvariant();
-            return name + "  <color=#" + ColorUtility.ToHtmlStringRGB(Palette.Accent) + ">" + kv.Substring(eq + 1) + "</color>";
         }
 
         void Run()
@@ -154,6 +187,7 @@ namespace Zombies55
         {
             if (r == null) { ShowHome(); return; }
             _shown = r;
+            _details = false;
             home.SetActive(false);
             results.SetActive(true);
             ViewChanged?.Invoke();
@@ -188,6 +222,13 @@ namespace Zombies55
             Refresh();
         }
 
+        // Test hook: compare against a given run (or none) without needing it in the history.
+        public void SetCompare(int historyIndex)
+        {
+            _compareIndex = historyIndex;
+            Refresh();
+        }
+
         void DeleteShown()
         {
             Click();
@@ -205,105 +246,137 @@ namespace Zombies55
             }
         }
 
+        void ApplyDetails()
+        {
+            summaryGroup.SetActive(!_details);
+            detailsGroup.SetActive(_details);
+            detailsButtonLabel.text = _details ? "SUMMARY" : "DETAILS";
+        }
+
         static string F0(float v) => Mathf.RoundToInt(v).ToString(CultureInfo.InvariantCulture);
         static string F1(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+
+        // GREAT / GOOD / PLAYABLE / POOR for a frame rate.
+        static void Rate(float fps, out string word, out Color color)
+        {
+            if (fps >= 120f) { word = "GREAT"; color = Palette.CrosshairGreen; }
+            else if (fps >= 60f) { word = "GOOD"; color = Palette.Accent; }
+            else if (fps >= 30f) { word = "PLAYABLE"; color = Palette.FireOrange; }
+            else { word = "POOR"; color = Palette.Danger; }
+        }
+
+        static void Headline(TMP_Text number, TMP_Text info, TMP_Text delta, string label, string caption, float fps, float was, bool hasWas, string wasLabel)
+        {
+            Rate(fps, out string word, out Color col);
+            string c = Hex(col);
+            number.text = "<color=#" + c + ">" + F0(fps) + "</color>";
+            info.text = label + "   <color=#" + c + ">" + word + "</color>\n<alpha=#B0>" + caption;
+            if (!hasWas) { delta.text = string.Empty; return; }
+            int d = Mathf.RoundToInt(fps - was);
+            int pct = was > 0.0001f ? Mathf.RoundToInt((fps - was) / was * 100f) : 0;
+            Color dc = pct == 0 && d == 0 ? Palette.UiLight : d >= 0 ? Palette.CrosshairGreen : Palette.Danger;
+            delta.text = "<color=#" + Hex(dc) + ">" + (d >= 0 ? "+" : "-") + Mathf.Abs(d) + " fps (" + (pct >= 0 ? "+" : "-") + Mathf.Abs(pct) + "%)</color>   <alpha=#B0>vs " + wasLabel;
+        }
 
         void Refresh()
         {
             var r = _shown;
             if (r == null) return;
-            string acc = ColorUtility.ToHtmlStringRGB(Palette.Accent);
-            bigText.text =
-                "<size=22>AVERAGE FPS</size>\n<size=84><color=#" + acc + ">" + F0(r.avgFps) + "</color></size>\n" +
-                "<size=26>1% LOW  <color=#" + acc + ">" + F0(r.low1PctFps) + "</color>\n0.1% LOW  <color=#" + acc + ">" + F0(r.low01PctFps) + "</color>\n" +
-                "MIN  <color=#" + acc + ">" + F0(r.minFps) + "</color>    MAX  <color=#" + acc + ">" + F0(r.maxFps) + "</color></size>";
+            var other = Other;
 
-            systemText.text =
-                "<color=#" + acc + ">SYSTEM</color>\n" +
-                "GPU  " + r.gpu + " (" + (r.vramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB, " + r.api + ")\n" +
-                "CPU  " + r.cpu + " (" + r.cores + " threads)\n" +
-                "RAM  " + (r.ramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB\n" +
-                "DISPLAY  " + r.display + "\n" +
-                "RESOLUTION  " + r.resolution + " (RENDERED " + r.renderResolution + ")\n" +
-                "MODE  " + r.mode + ", " + r.refresh + "\n" +
-                "RUN  " + r.capNote + (r.explosions ? ", explosions" : "") +
-                (!string.IsNullOrEmpty(r.bottleneckHow) ? "\nLIMIT  " + r.bottleneck + " (" + r.bottleneckHow + ")" : "");
-
-            statsText.text =
-                "FRAME TIME  AVG " + F1(r.frameMsAvg) + "   P50 " + F1(r.frameMsP50) + "   P95 " + F1(r.frameMsP95) + "   P99 " + F1(r.frameMsP99) + "   MAX " + F1(r.frameMsMax) + " MS\n" +
-                "FRAMES OVER 8.3 MS " + r.framesOver8_3 + "   16.7 MS " + r.framesOver16_6 + "   33 MS " + r.framesOver33 + "   HITCHES " + r.hitches +
-                "";
-
-            var sb = new StringBuilder();
-            sb.Append("<color=#").Append(acc).Append(">SETTINGS USED</color>\n");
-            if (r.settings != null) foreach (var s in r.settings) sb.Append(Pretty(s)).Append('\n');
-            settingsText.text = sb.ToString();
+            Headline(avgNumber, avgInfo, avgDelta, "AVG FPS", "average over the run", r.avgFps, other != null ? other.avgFps : 0f, other != null, other != null ? other.Label : "");
+            Headline(lowNumber, lowInfo, lowDelta, "1% LOW", "slowest 1% of frames", r.low1PctFps, other != null ? other.low1PctFps : 0f, other != null, other != null ? other.Label : "");
 
             verdictText.text = r.verdict;
-            var other = Other;
+
             graph.Set(r.graph, other != null ? other.graph : null, new[] { 1000f / 60f, 1000f / 120f },
                 new[] { Palette.WithAlpha(Palette.Danger, 0.7f), Palette.WithAlpha(Palette.CharacterPrimary, 0.8f) });
-            legendText.text = "FRAME TIME (MS), MAX 0-" + F0(graph.YMax) + "    <color=#" + ColorUtility.ToHtmlStringRGB(Palette.Danger) + ">60 FPS</color>    <color=#" + ColorUtility.ToHtmlStringRGB(Palette.CharacterPrimary) + ">120 FPS</color>    SOLID: THIS RUN" + (other != null ? "    DASHED: COMPARED" : "");
-            compareButtonLabel.text = other == null ? "COMPARE: OFF" : "VS " + other.Label + " " + other.preset;
-            if (other == null)
+            PlaceGraphLabel(graphLabel60, 1000f / 60f);
+            PlaceGraphLabel(graphLabel120, 1000f / 120f);
+            string caption = "Frame time during the run: lower is smoother, spikes are stutters.";
+            if (other != null)
             {
-                compareText.text = "<color=#" + acc + ">COMPARE</color>\nCHOOSE A PREVIOUS RUN WITH THE COMPARE BUTTON\nTO SEE WHAT A SETTINGS CHANGE DID.";
-                compareDiffText.text = string.Empty;
+                caption += "  Dashed line: " + other.Label + ".";
+                if (other.scenario != r.scenario) caption += "  <color=#" + Hex(Palette.Danger) + ">Different test route: not comparable.</color>";
+                else if (other.resolution != r.resolution) caption += "  <color=#" + Hex(Palette.Danger) + ">Different resolution.</color>";
             }
-            else
-            {
-                compareText.text = Compare(other, r, out string diff);
-                compareDiffText.text = diff;
-            }
+            captionText.text = caption;
+            compareButtonLabel.text = other == null ? "COMPARE: OFF" : "COMPARE: " + other.Label;
+
+            BuildDetails(r);
+            ApplyDetails();
         }
 
-        static string Delta(float was, float now, bool higherIsBetter, string fmt)
+        void PlaceGraphLabel(RectTransform label, float ms)
         {
-            float pct = was > 0.0001f ? (now - was) / was * 100f : 0f;
-            bool good = higherIsBetter ? pct >= 0f : pct <= 0f;
-            string col = Mathf.Abs(pct) < 1f ? ColorUtility.ToHtmlStringRGB(Palette.UiLight) : good ? ColorUtility.ToHtmlStringRGB(Palette.CrosshairGreen) : ColorUtility.ToHtmlStringRGB(Palette.Danger);
-            return "<color=#" + col + ">" + (pct >= 0 ? "+" : "") + pct.ToString("0.0", CultureInfo.InvariantCulture) + "%</color>";
+            bool visible = ms < graph.YMax;
+            label.gameObject.SetActive(visible);
+            if (!visible) return;
+            float h = graph.rectTransform.rect.height;
+            var pos = label.anchoredPosition;
+            pos.y = graph.rectTransform.offsetMin.y + ms / graph.YMax * h;
+            label.anchoredPosition = pos;
         }
 
-        static string Compare(BenchmarkResult was, BenchmarkResult now, out string diffText)
+        // ---------------------------------------------------------------- details
+
+        static string Head(string t) => "<color=#" + Acc + "><size=20>" + t + "</size></color>\n";
+        static string Line(string label, string value, string pos = "<pos=290>") => label + pos + "<color=#" + Acc + ">" + value + "</color>\n";
+        static string Dim(string t) => "<alpha=#B0>" + t + "<alpha=#FF>\n";
+
+        void BuildDetails(BenchmarkResult r)
         {
-            string acc = ColorUtility.ToHtmlStringRGB(Palette.Accent);
-            var sb = new StringBuilder();
-            sb.Append("<color=#").Append(acc).Append(">COMPARED RUN  ->  THIS RUN</color>");
-            if (was.scenario != now.scenario) sb.Append("   <color=#").Append(ColorUtility.ToHtmlStringRGB(Palette.Danger)).Append(">DIFFERENT TEST ROUTE: NOT COMPARABLE</color>");
-            else if (was.resolution != now.resolution) sb.Append("   <color=#").Append(ColorUtility.ToHtmlStringRGB(Palette.Danger)).Append(">DIFFERENT RESOLUTION</color>");
-            sb.Append('\n');
-            void Row(string name, float a, float b, bool hib, bool dec = false)
+            var t = new StringBuilder();
+            t.Append(Head("FRAME TIME"));
+            t.Append(Line("Median frame", F1(r.frameMsP50) + " ms"));
+            t.Append(Line("Average frame", F1(r.frameMsAvg) + " ms"));
+            t.Append(Line("95% of frames under", F1(r.frameMsP95) + " ms"));
+            t.Append(Line("99% of frames under", F1(r.frameMsP99) + " ms"));
+            t.Append(Line("Slowest frame", F1(r.frameMsMax) + " ms"));
+            t.Append(Line("Lowest 0.1% of frames", F0(r.low01PctFps) + " fps"));
+            t.Append(Line("Lowest / highest", F0(r.minFps) + " / " + F0(r.maxFps)));
+            t.Append("<size=40%> </size>\n");
+            t.Append(Head("SLOW FRAMES"));
+            t.Append(Line("Over 8.3 ms (under 120 fps)", r.framesOver8_3.ToString()));
+            t.Append(Line("Over 16.7 ms (under 60 fps)", r.framesOver16_6.ToString()));
+            t.Append(Line("Over 33 ms (under 30 fps)", r.framesOver33.ToString()));
+            t.Append(Line("Hitches", r.hitches.ToString()));
+            timesText.text = t.ToString();
+
+            var sy = new StringBuilder();
+            sy.Append(Head("SYSTEM"));
+            sy.Append(Dim("Graphics card (" + (r.vramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB, " + r.api + ")"));
+            sy.Append(r.gpu).Append('\n');
+            sy.Append(Dim("Processor (" + r.cores + " threads)"));
+            sy.Append(r.cpu).Append('\n');
+            sy.Append(Line("Memory", (r.ramMb / 1024f).ToString("0.#", CultureInfo.InvariantCulture) + " GB", "<pos=130>"));
+            sy.Append(Line("Display", r.display, "<pos=130>"));
+            sy.Append(Line("Resolution", r.resolution + (r.renderResolution != r.resolution ? " (rendered " + r.renderResolution + ")" : ""), "<pos=130>"));
+            sy.Append(Line("Mode", r.mode + ", " + r.refresh, "<pos=130>"));
+            sy.Append("<size=40%> </size>\n");
+            sy.Append(Head("RUN"));
+            string cap = string.IsNullOrEmpty(r.capNote) ? "" : char.ToUpperInvariant(r.capNote[0]) + r.capNote.Substring(1);
+            sy.Append(cap).Append('\n');
+            sy.Append(r.explosions ? "Explosions on\n" : "Explosions off\n");
+            if (!string.IsNullOrEmpty(r.bottleneck))
             {
-                string fa = dec ? F1(a) : F0(a), fb = dec ? F1(b) : F0(b);
-                sb.Append(name).Append("<pos=135>").Append(fa).Append("<pos=205>").Append(fb).Append("<pos=270>").Append(Delta(a, b, hib, "")).Append('\n');
+                sy.Append("Limit: <color=#").Append(Acc).Append(">").Append(r.bottleneck).Append("</color>\n");
+                if (!string.IsNullOrEmpty(r.bottleneckHow)) sy.Append(Dim(r.bottleneckHow.Contains(" (") ? r.bottleneckHow.Replace(" (", " <nobr>(") + "</nobr>" : r.bottleneckHow));
             }
-            Row("AVG FPS", was.avgFps, now.avgFps, true);
-            Row("1% LOW", was.low1PctFps, now.low1PctFps, true);
-            Row("0.1% LOW", was.low01PctFps, now.low01PctFps, true);
-            Row("MIN FPS", was.minFps, now.minFps, true);
-            Row("MAX FPS", was.maxFps, now.maxFps, true);
-            var d = new StringBuilder();
-            d.Append("<color=#").Append(acc).Append(">SETTINGS THAT DIFFER</color>\n");
-            int diffs = 0;
-            if (was.settings != null && now.settings != null)
-            {
-                var map = new Dictionary<string, string>();
-                foreach (var s in was.settings) { int e = s.IndexOf('='); if (e > 0) map[s.Substring(0, e)] = s.Substring(e + 1); }
-                foreach (var s in now.settings)
+            systemText.text = sy.ToString();
+
+            var a = new StringBuilder(); var b = new StringBuilder();
+            a.Append(Head("SETTINGS USED")); b.Append("<size=20> </size>\n");
+            if (r.settings != null)
+                for (int i = 0; i < r.settings.Length; i++)
                 {
-                    int e = s.IndexOf('='); if (e <= 0) continue;
-                    string k = s.Substring(0, e), v = s.Substring(e + 1);
-                    if (map.TryGetValue(k, out var old) && old != v && k != "QualityPreset")
-                    {
-                        if (diffs++ < 9) d.Append(System.Text.RegularExpressions.Regex.Replace(k, "([a-z])([A-Z])", "$1 $2").ToUpperInvariant()).Append(":  ").Append(old).Append("  ->  ").Append(v).Append('\n');
-                    }
+                    string kv = r.settings[i];
+                    int eq = kv.IndexOf('=');
+                    string line = eq < 0 ? kv + "\n" : Line(Title(kv.Substring(0, eq)), kv.Substring(eq + 1), "<pos=185>");
+                    (i < 10 ? a : b).Append(line);
                 }
-            }
-            if (diffs == 0) d.Append("NONE (SAME SETTINGS)\n");
-            else if (diffs > 9) d.Append("+ ").Append(diffs - 9).Append(" MORE\n");
-            diffText = d.ToString();
-            return sb.ToString();
+            settingsTextA.text = a.ToString();
+            settingsTextB.text = b.ToString();
         }
     }
 }

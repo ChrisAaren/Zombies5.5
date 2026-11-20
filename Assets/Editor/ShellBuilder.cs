@@ -54,7 +54,8 @@ namespace Zombies55.EditorTools
 
             var title = BuildTitle(root, out var promptText, out var titleSettings);
             var hud = BuildHud(root, out var survivalHud);
-            var pause = BuildPause(root, out var resume, out var pauseSettings, out var pauseRestart, out var pauseTitle);
+            var pauseParts = BuildPause(root);
+            var pause = pauseParts.Root;
             var end = BuildEnded(root, out var bannerText, out var bannerRect, out var statsText,
                 out var extraText, out var endRestart, out var endTitle);
 
@@ -71,10 +72,15 @@ namespace Zombies55.EditorTools
             Wire(so, "hudRoot", hud);
             Wire(so, "survivalHud", survivalHud);
             Wire(so, "pauseRoot", pause);
-            Wire(so, "resumeButton", resume);
-            Wire(so, "pauseRestartButton", pauseRestart);
-            Wire(so, "pauseTitleButton", pauseTitle);
-            Wire(so, "pauseSettingsButton", pauseSettings);
+            Wire(so, "resumeButton", pauseParts.Resume);
+            Wire(so, "pauseRestartButton", pauseParts.Restart);
+            Wire(so, "pauseTitleButton", pauseParts.Title);
+            Wire(so, "pauseSettingsButton", pauseParts.Settings);
+            Wire(so, "pauseQuitButton", pauseParts.Quit);
+            Wire(so, "pauseCard", pauseParts.Card);
+            Wire(so, "quitConfirmRoot", pauseParts.Confirm);
+            Wire(so, "quitConfirmButton", pauseParts.ConfirmQuit);
+            Wire(so, "quitCancelButton", pauseParts.ConfirmCancel);
             Wire(so, "settingsMenu", settings);
             Wire(so, "endRoot", end);
             Wire(so, "bannerText", bannerText);
@@ -464,27 +470,49 @@ namespace Zombies55.EditorTools
             badge.gameObject.SetActive(false);
         }
 
-        static GameObject BuildPause(RectTransform parent, out UnityEngine.UI.Button resume,
-            out UnityEngine.UI.Button settings, out UnityEngine.UI.Button restart, out UnityEngine.UI.Button toTitle)
+        sealed class PauseParts
         {
+            public GameObject Root, Card, Confirm;
+            public UnityEngine.UI.Button Resume, Settings, Restart, Title, Quit, ConfirmQuit, ConfirmCancel;
+        }
+
+        static PauseParts BuildPause(RectTransform parent)
+        {
+            var p = new PauseParts();
             var root = CreateStretched("PauseScreen", parent);
+            p.Root = root.gameObject;
 
             var scrim = CreateImage(root, "Scrim", null, Palette.WithAlpha(Palette.UiDark, 0.7f), true);
             scrim.raycastTarget = true; // blocks clicks behind the menu
             Stretch(scrim.rectTransform);
 
             var card = CreateImage(root, "Card", s_RoundedRect, Palette.WithAlpha(Palette.UiDark, 0.8f), true);
-            Place(card.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760f, 700f));
+            Place(card.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760f, 800f));
+            p.Card = card.gameObject;
 
             var heading = CreateText(card.rectTransform, "Heading", "PAUSED", 110, Palette.Accent, 8f, true);
-            Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 250f), new Vector2(700f, 140f));
+            Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 300f), new Vector2(700f, 140f));
 
-            resume = CreateButton(card.rectTransform, "ResumeButton", "RESUME", new Vector2(0f, 100f));
-            settings = CreateButton(card.rectTransform, "SettingsButton", "SETTINGS", new Vector2(0f, -10f));
-            restart = CreateButton(card.rectTransform, "RestartButton", "RESTART", new Vector2(0f, -120f));
-            toTitle = CreateButton(card.rectTransform, "TitleButton", "TITLE", new Vector2(0f, -230f));
+            p.Resume = CreateButton(card.rectTransform, "ResumeButton", "RESUME", new Vector2(0f, 140f));
+            p.Settings = CreateButton(card.rectTransform, "SettingsButton", "SETTINGS", new Vector2(0f, 30f));
+            p.Restart = CreateButton(card.rectTransform, "RestartButton", "RESTART", new Vector2(0f, -80f));
+            p.Title = CreateButton(card.rectTransform, "TitleButton", "TITLE", new Vector2(0f, -190f));
+            p.Quit = CreateButton(card.rectTransform, "QuitButton", "QUIT GAME", new Vector2(0f, -300f));
 
-            return root.gameObject;
+            // Confirmation: replaces the pause card while it is open.
+            var confirm = CreateImage(root, "QuitConfirm", s_RoundedRect, Palette.WithAlpha(Palette.UiDark, 0.85f), true);
+            Place(confirm.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(920f, 500f));
+            p.Confirm = confirm.gameObject;
+            var ch = CreateText(confirm.rectTransform, "Heading", "QUIT TO DESKTOP?", 70, Palette.Accent, 6f, true);
+            Place(ch.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 150f), new Vector2(860f, 110f));
+            var msg = CreateText(confirm.rectTransform, "Message", "Your current run will be lost.", 32,
+                Palette.WithAlpha(Palette.UiLight, 0.9f), 2f, true);
+            msg.fontStyle = FontStyles.Normal;
+            Place(msg.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 40f), new Vector2(800f, 50f));
+            p.ConfirmQuit = CreateButton(confirm.rectTransform, "QuitConfirmButton", "QUIT", new Vector2(-200f, -130f), new Vector2(340f, 90f));
+            p.ConfirmCancel = CreateButton(confirm.rectTransform, "QuitCancelButton", "CANCEL", new Vector2(200f, -130f), new Vector2(340f, 90f));
+            p.Confirm.SetActive(false);
+            return p;
         }
 
         // ------------------------------------------------------------------ settings screen
@@ -615,14 +643,14 @@ namespace Zombies55.EditorTools
             var description = CreateText(cardRt, "Description", string.Empty, 24,
                 Palette.WithAlpha(Palette.UiLight, 0.92f), 1f, true);
             description.fontStyle = FontStyles.Normal;
-            Place(description.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -302f), new Vector2(1440f, 40f));
+            Place(description.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -337f), new Vector2(1440f, 30f));
 
-            var reset = CreateButton(cardRt, "ResetButton", "RESET TO DEFAULTS", new Vector2(-250f, -385f), new Vector2(440f, 80f), 34f);
-            var back = CreateButton(cardRt, "BackButton", "BACK", new Vector2(250f, -385f), new Vector2(440f, 80f), 38f);
+            var reset = CreateButton(cardRt, "ResetButton", "RESET TO DEFAULTS", new Vector2(-250f, -388f), new Vector2(440f, 58f), 32f);
+            var back = CreateButton(cardRt, "BackButton", "BACK", new Vector2(250f, -388f), new Vector2(440f, 58f), 34f);
 
             var hint = CreateText(cardRt, "Hint", "LB / RB  TABS        ESC / B  BACK", 22,
                 Palette.WithAlpha(Palette.UiLight, 0.7f), 6f, true);
-            Place(hint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -447f), new Vector2(900f, 30f));
+            Place(hint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -446f), new Vector2(900f, 28f));
 
             var so = new SerializedObject(menu);
             WireArray(so, "tabButtons", tabButtons);
@@ -748,89 +776,175 @@ namespace Zombies55.EditorTools
             return t;
         }
 
+        // Text box placed by its top-left corner, in the coordinates of a stretched ancestor (origin = centre, y up).
+        static TextMeshProUGUI TextAt(RectTransform parent, string name, float x, float yTop, float w, float h, float size,
+            TextAlignmentOptions align, Color color, bool wrap = true, bool bold = false)
+        {
+            var t = BodyText(parent, name, new Vector2(x + w * 0.5f, yTop - h * 0.5f), new Vector2(w, h), size, align, wrap);
+            t.color = color;
+            if (bold) t.fontStyle = FontStyles.Bold;
+            return t;
+        }
+
+        // Column title: accent caps with a thin rule under it.
+        static void ColumnHeading(RectTransform parent, string title, float x, float yTop, float w)
+        {
+            var t = CreateText(parent, title + "Title", title, 24, Palette.Accent, 6f, true);
+            t.alignment = TextAlignmentOptions.MidlineLeft;
+            Place(t.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(x + w * 0.5f, yTop - 17f), new Vector2(w, 34f));
+            var rule = CreateImage(parent, title + "Rule", null, Palette.WithAlpha(Palette.Accent, 0.55f), false);
+            Place(rule.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(x + w * 0.5f, yTop - 38f), new Vector2(w, 2f));
+        }
+
+        static UnityEngine.UI.Button TabButton(RectTransform parent, string name, string label, ref float x, float w, float y, float font)
+        {
+            var b = CreateButton(parent, name, label, new Vector2(x + w * 0.5f, y), new Vector2(w, 56f), font);
+            x += w + 20f;
+            return b;
+        }
+
         static BenchmarkPanel BuildBenchmarkTab(RectTransform tab, out UnityEngine.UI.Selectable runButton)
         {
             var panel = tab.gameObject.AddComponent<BenchmarkPanel>();
+            var dim = Palette.WithAlpha(Palette.UiLight, 0.8f);
+            const float L = -730f, Top = 255f;
 
-            // ---- home
+            // ---- home: three columns (settings | run | past runs)
             var home = CreateStretched("Home", tab);
-            var summary = BodyText(home, "Summary", new Vector2(-560f, -5f), new Vector2(400f, 520f), 19f, TextAlignmentOptions.TopLeft);
-            summary.lineSpacing = 6f;
-            AddToggleRow(home, SettingId.BenchUncapped, "IGNORE FRAME CAP + VSYNC", new Vector2(0f, 215f), 640f, 54f, 0.74f, false, null);
-            AddToggleRow(home, SettingId.BenchExplosions, "INCLUDE EXPLOSIONS", new Vector2(0f, 150f), 640f, 54f, 0.74f, false, null);
-            var run = CreateButton(home, "RunButton", "RUN BENCHMARK", new Vector2(0f, 58f), new Vector2(640f, 100f), 44f);
-            var viewLast = CreateButton(home, "ViewLastButton", "VIEW LAST RESULT", new Vector2(0f, -55f), new Vector2(640f, 70f), 30f);
-            var note = BodyText(home, "Note", new Vector2(0f, -170f), new Vector2(620f, 110f), 20f, TextAlignmentOptions.Top);
-            note.color = Palette.WithAlpha(Palette.UiLight, 0.8f);
+            ColumnHeading(home, "YOUR SETTINGS", L, Top, 440f);
+            var presetText = TextAt(home, "Preset", L, Top - 50f, 440f, 90f, 76f, TextAlignmentOptions.MidlineLeft, Palette.UiLight, false, true);
+            var displayText = TextAt(home, "Display", L, Top - 142f, 440f, 34f, 24f, TextAlignmentOptions.MidlineLeft, dim, false);
+            var changed = TextAt(home, "Changed", L, Top - 196f, 440f, 210f, 24f, TextAlignmentOptions.TopLeft, Palette.UiLight);
+            changed.lineSpacing = 8f;
 
-            var histTitle = CreateText(home, "HistoryTitle", "HISTORY", 24, Palette.Accent, 6f, true);
-            Place(histTitle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(545f, 245f), new Vector2(420f, 34f));
-            var histScroll = BuildScrollList(home, "HistoryScroll", new Vector2(545f, -25f), new Vector2(430f, 440f), out var histContent, true);
+            var run = CreateButton(home, "RunButton", "RUN BENCHMARK", new Vector2(0f, 150f), new Vector2(500f, 100f), 42f);
+            AddToggleRow(home, SettingId.BenchUncapped, "UNCAPPED FPS", new Vector2(0f, 40f), 500f, 54f, 0.6f, false,
+                "Ignores the frame cap and VSync during the run, to measure what this PC can really do.");
+            AddToggleRow(home, SettingId.BenchExplosions, "EXPLOSIONS", new Vector2(0f, -26f), 500f, 54f, 0.6f, false,
+                "Blows up a car or barrel near the route every few seconds: a harder test for the CPU and effects.");
+            var note = TextAt(home, "Note", -250f, -70f, 500f, 64f, 21f, TextAlignmentOptions.Top, dim);
+
+            const float HX = 290f, HW = 440f;
+            ColumnHeading(home, "PAST RUNS", HX, Top, HW);
+            // Column titles of the table, aligned with the row cells below.
+            float[] cx = { 14f, 160f, 244f, 316f }, cw = { 140f, 84f, 64f, 92f };
+            string[] titles = { "DATE", "PRESET", "AVG", "1% LOW" };
+            for (int i = 0; i < 4; i++)
+            {
+                var h = TextAt(home, "Col" + titles[i].Replace("% ", ""), HX + cx[i], Top - 46f, cw[i], 26f, 15f,
+                    i >= 2 ? TextAlignmentOptions.MidlineRight : TextAlignmentOptions.MidlineLeft, dim, false, true);
+                h.characterSpacing = 1f;
+                h.text = titles[i];
+            }
+            var histScroll = BuildScrollList(home, "HistoryScroll", new Vector2(HX + HW * 0.5f, -45f), new Vector2(HW, 434f), out var histContent, true);
             histScroll.GetComponent<SettingsScrollFollow>().enabled = true;
-            var template = CreateButton(histContent, "RowTemplate", "ROW", Vector2.zero, new Vector2(400f, 44f), 17f);
+            // Keep the scrollbar's space even when the list is short, so the rows stay under the column titles.
+            histScroll.verticalScrollbarVisibility = UnityEngine.UI.ScrollRect.ScrollbarVisibility.Permanent;
+            var template = CreateButton(histContent, "RowTemplate", "ROW", Vector2.zero, new Vector2(418f, 44f), 18f);
             var tl = template.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
-            tl.preferredWidth = 400f; tl.preferredHeight = 44f;
-            var tlabel = template.GetComponentInChildren<TextMeshProUGUI>();
-            tlabel.characterSpacing = 1f;
+            tl.preferredWidth = 418f; tl.preferredHeight = 44f;
+            // Four aligned cells instead of the single label.
+            UnityEngine.Object.DestroyImmediate(template.GetComponentInChildren<TextMeshProUGUI>().gameObject);
+            for (int i = 0; i < 4; i++)
+            {
+                var cell = CreateText(template.transform, "Cell" + i, "-", 18f, Palette.UiDark, 0.5f, false);
+                cell.alignment = i >= 2 ? TextAlignmentOptions.MidlineRight : TextAlignmentOptions.MidlineLeft;
+                PlaceCorner(cell.rectTransform, new Vector2(0f, 0.5f), new Vector2(cx[i], 0f), new Vector2(cw[i], 44f));
+            }
             template.gameObject.SetActive(false);
-            var empty = BodyText(home, "HistoryEmpty", new Vector2(545f, -25f), new Vector2(400f, 60f), 22f, TextAlignmentOptions.Center);
+            var empty = TextAt(home, "HistoryEmpty", HX, -20f, HW, 60f, 22f, TextAlignmentOptions.Center, Palette.WithAlpha(Palette.UiLight, 0.6f), false);
             empty.text = "NO RUNS YET";
-            empty.color = Palette.WithAlpha(Palette.UiLight, 0.6f);
 
             // ---- results
             var results = CreateStretched("Results", tab);
-            var big = BodyText(results, "BigNumbers", new Vector2(-570f, 150f), new Vector2(400f, 200f), 26f, TextAlignmentOptions.TopLeft);
-            big.lineSpacing = -2f;
-            var system = BodyText(results, "System", new Vector2(-570f, -80f), new Vector2(400f, 230f), 15f, TextAlignmentOptions.TopLeft);
-            system.lineSpacing = 4f;
 
-            var graphBg = CreateImage(results, "GraphBackground", s_RoundedRect, Palette.WithAlpha(Palette.InteriorDark, 0.85f), true);
-            Place(graphBg.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 150f), new Vector2(700f, 200f));
+            // Headline: two big numbers, each with its label, rating word, caption and (when comparing) the change.
+            TextMeshProUGUI avgNumber = TextAt(results, "AvgNumber", L, Top, 250f, 112f, 96f, TextAlignmentOptions.MidlineLeft, Palette.UiLight, false, true);
+            TextMeshProUGUI avgInfo = TextAt(results, "AvgInfo", L + 262f, Top - 6f, 440f, 70f, 28f, TextAlignmentOptions.TopLeft, Palette.UiLight, false, true);
+            avgInfo.lineSpacing = 4f;
+            TextMeshProUGUI avgDelta = TextAt(results, "AvgDelta", L + 262f, Top - 80f, 440f, 32f, 22f, TextAlignmentOptions.TopLeft, Palette.UiLight, false, true);
+            TextMeshProUGUI lowNumber = TextAt(results, "LowNumber", 30f, Top, 250f, 112f, 96f, TextAlignmentOptions.MidlineLeft, Palette.UiLight, false, true);
+            TextMeshProUGUI lowInfo = TextAt(results, "LowInfo", 292f, Top - 6f, 438f, 70f, 28f, TextAlignmentOptions.TopLeft, Palette.UiLight, false, true);
+            lowInfo.lineSpacing = 4f;
+            TextMeshProUGUI lowDelta = TextAt(results, "LowDelta", 292f, Top - 80f, 438f, 32f, 22f, TextAlignmentOptions.TopLeft, Palette.UiLight, false, true);
+
+            // Summary: verdict box, graph, caption.
+            var summary = CreateStretched("Summary", results);
+            var verdictBg = CreateImage(summary, "VerdictBox", s_RoundedRect, Palette.WithAlpha(Palette.Shadow, 0.55f), true);
+            Place(verdictBg.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 90f), new Vector2(1460f, 84f));
+            var verdict = TextAt(summary, "Verdict", L + 24f, 132f, 1412f, 76f, 25f, TextAlignmentOptions.Center, Palette.UiLight);
+            var graphBg = CreateImage(summary, "GraphBackground", s_RoundedRect, Palette.WithAlpha(Palette.InteriorDark, 0.85f), true);
+            Place(graphBg.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -88f), new Vector2(1460f, 250f));
             var graphRt = NewRect("Graph", graphBg.rectTransform);
             SetAnchors(graphRt, Vector2.zero, Vector2.one);
-            graphRt.offsetMin = new Vector2(10f, 10f); graphRt.offsetMax = new Vector2(-10f, -10f);
+            graphRt.offsetMin = new Vector2(14f, 14f); graphRt.offsetMax = new Vector2(-104f, -14f);
             graphRt.gameObject.AddComponent<CanvasRenderer>();
             var graph = graphRt.gameObject.AddComponent<GraphicsGraph>();
             graph.raycastTarget = false;
-            var legend = BodyText(results, "Legend", new Vector2(0f, 38f), new Vector2(700f, 22f), 13f, TextAlignmentOptions.Center, false);
-            var stats = BodyText(results, "Stats", new Vector2(0f, 4f), new Vector2(700f, 44f), 16f, TextAlignmentOptions.TopLeft);
-            stats.lineSpacing = 4f;
-            var compare = BodyText(results, "Compare", new Vector2(-175f, -112f), new Vector2(350f, 190f), 16f, TextAlignmentOptions.TopLeft, false);
-            compare.lineSpacing = 2f;
-            var compareDiff = BodyText(results, "CompareDiff", new Vector2(185f, -112f), new Vector2(330f, 190f), 16f, TextAlignmentOptions.TopLeft, false);
-            compareDiff.lineSpacing = 2f;
-            var settingsUsed = BodyText(results, "SettingsUsed", new Vector2(570f, 30f), new Vector2(380f, 440f), 16f, TextAlignmentOptions.TopLeft);
-            settingsUsed.lineSpacing = 4f;
+            RectTransform GraphLabel(string text, Color col)
+            {
+                var t = CreateText(graphBg.rectTransform, "Label" + text.Replace(" ", ""), text, 20, col, 1f, false);
+                t.alignment = TextAlignmentOptions.MidlineLeft;
+                PlaceCorner(t.rectTransform, new Vector2(1f, 0f), new Vector2(-8f, 14f), new Vector2(92f, 26f));
+                t.rectTransform.pivot = new Vector2(1f, 0.5f);
+                return t.rectTransform;
+            }
+            var label60 = GraphLabel("60 FPS", Palette.Danger);
+            var label120 = GraphLabel("120 FPS", Palette.CharacterPrimary);
+            var caption = TextAt(summary, "Caption", L, -222f, 1460f, 30f, 20f, TextAlignmentOptions.Center, dim);
 
-            var compareBtn = CreateButton(results, "CompareButton", "COMPARE", new Vector2(-440f, -240f), new Vector2(430f, 52f), 22f);
-            var againBtn = CreateButton(results, "RunAgainButton", "RUN AGAIN", new Vector2(-60f, -240f), new Vector2(280f, 52f), 24f);
-            var deleteBtn = CreateButton(results, "DeleteButton", "DELETE", new Vector2(180f, -240f), new Vector2(180f, 52f), 24f);
-            var backBtn = CreateButton(results, "BackToBenchmarkButton", "BACK", new Vector2(420f, -240f), new Vector2(240f, 52f), 24f);
-            var verdict = BodyText(results, "Verdict", new Vector2(0f, -300f), new Vector2(1440f, 56f), 21f, TextAlignmentOptions.Center);
-            verdict.color = Palette.Accent;
+            // Details: three headed columns.
+            var details = CreateStretched("Details", results);
+            var timesText = TextAt(details, "FrameTimes", L, 132f, 380f, 386f, 18f, TextAlignmentOptions.TopLeft, Palette.UiLight);
+            var systemText = TextAt(details, "System", -330f, 132f, 480f, 386f, 17f, TextAlignmentOptions.TopLeft, Palette.UiLight);
+            var settingsA = TextAt(details, "SettingsA", 170f, 132f, 270f, 386f, 18f, TextAlignmentOptions.TopLeft, Palette.UiLight);
+            var settingsB = TextAt(details, "SettingsB", 450f, 132f, 270f, 386f, 18f, TextAlignmentOptions.TopLeft, Palette.UiLight);
+            foreach (var t in new[] { timesText, systemText, settingsA, settingsB }) t.lineSpacing = 3f;
+            details.gameObject.SetActive(false);
+
+            // One row of buttons.
+            float bx = -690f, by = -288f;
+            var againBtn = TabButton(results, "RunAgainButton", "RUN AGAIN", ref bx, 280f, by, 26f);
+            var cols = againBtn.colors; cols.normalColor = Palette.Accent; cols.highlightedColor = Color.Lerp(Palette.Accent, Palette.UiLight, 0.35f);
+            cols.selectedColor = Color.Lerp(Palette.Accent, Palette.UiLight, 0.35f); againBtn.colors = cols;
+            var compareBtn = TabButton(results, "CompareButton", "COMPARE", ref bx, 400f, by, 22f);
+            var detailsBtn = TabButton(results, "DetailsButton", "DETAILS", ref bx, 220f, by, 24f);
+            var deleteBtn = TabButton(results, "DeleteButton", "DELETE", ref bx, 200f, by, 24f);
+            var backBtn = TabButton(results, "BackToBenchmarkButton", "BACK", ref bx, 200f, by, 24f);
 
             var so = new SerializedObject(panel);
             Wire(so, "home", home.gameObject);
-            Wire(so, "summaryText", summary);
+            Wire(so, "presetText", presetText);
+            Wire(so, "displayText", displayText);
+            Wire(so, "changedText", changed);
             Wire(so, "noteText", note);
             Wire(so, "runButton", run);
-            Wire(so, "viewLastButton", viewLast);
             Wire(so, "historyContent", histContent);
             Wire(so, "historyTemplate", template);
             Wire(so, "historyEmptyText", empty);
             Wire(so, "results", results.gameObject);
-            Wire(so, "bigText", big);
-            Wire(so, "systemText", system);
-            Wire(so, "statsText", stats);
-            Wire(so, "settingsText", settingsUsed);
-            Wire(so, "compareText", compare);
-            Wire(so, "compareDiffText", compareDiff);
+            Wire(so, "avgNumber", avgNumber);
+            Wire(so, "avgInfo", avgInfo);
+            Wire(so, "avgDelta", avgDelta);
+            Wire(so, "lowNumber", lowNumber);
+            Wire(so, "lowInfo", lowInfo);
+            Wire(so, "lowDelta", lowDelta);
+            Wire(so, "summaryGroup", summary.gameObject);
+            Wire(so, "detailsGroup", details.gameObject);
             Wire(so, "verdictText", verdict);
-            Wire(so, "legendText", legend);
+            Wire(so, "captionText", caption);
             Wire(so, "graph", graph);
+            Wire(so, "graphLabel60", label60);
+            Wire(so, "graphLabel120", label120);
+            Wire(so, "timesText", timesText);
+            Wire(so, "systemText", systemText);
+            Wire(so, "settingsTextA", settingsA);
+            Wire(so, "settingsTextB", settingsB);
             Wire(so, "compareButton", compareBtn);
             Wire(so, "compareButtonLabel", compareBtn.GetComponentInChildren<TextMeshProUGUI>());
             Wire(so, "againButton", againBtn);
+            Wire(so, "detailsButton", detailsBtn);
+            Wire(so, "detailsButtonLabel", detailsBtn.GetComponentInChildren<TextMeshProUGUI>());
             Wire(so, "deleteButton", deleteBtn);
             Wire(so, "backButton", backBtn);
             so.ApplyModifiedPropertiesWithoutUndo();
@@ -885,7 +999,7 @@ namespace Zombies55.EditorTools
             bg.color = Palette.WithAlpha(Palette.Shadow, 0.4f);
             var row = bg.rectTransform;
 
-            const float valueW = 130f;
+            const float valueW = 150f;
             var slider = CreateSlider(row, "Slider", Vector2.zero);
             float sx = 22f + width * 0.34f + 14f;
             PlaceCorner((RectTransform)slider.transform, new Vector2(0f, 0.5f), new Vector2(sx, 0f),
@@ -909,7 +1023,8 @@ namespace Zombies55.EditorTools
         static UnityEngine.UI.Selectable AddStepperRow(RectTransform parent, SettingId id, string label, Vector2 pos,
             float width, float height, bool withSwatch, float valueWidth = 260f, bool inLayout = false, string description = null)
         {
-            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true, inLayout ? 0.4f : 0.34f, inLayout);
+            var bg = CreateRowBase(parent, id + "Row", label, pos, width, height, true,
+                inLayout ? Mathf.Min(0.4f, (width - valueWidth - 190f) / width) : 0.34f, inLayout);
             var row = bg.rectTransform;
             var comp = bg.gameObject.AddComponent<SettingsStepperRow>();
             StyleRowSelectable(comp, bg);

@@ -27,6 +27,11 @@ namespace Zombies55
         [SerializeField] UnityEngine.UI.Button pauseRestartButton;
         [SerializeField] UnityEngine.UI.Button pauseTitleButton;
         [SerializeField] UnityEngine.UI.Button pauseSettingsButton;
+        [SerializeField] UnityEngine.UI.Button pauseQuitButton;
+        [SerializeField] GameObject pauseCard;            // the RESUME / SETTINGS / ... card, hidden while the quit confirmation shows
+        [SerializeField] GameObject quitConfirmRoot;
+        [SerializeField] UnityEngine.UI.Button quitConfirmButton;
+        [SerializeField] UnityEngine.UI.Button quitCancelButton;
 
         [Header("Settings")]
         [SerializeField] SettingsMenu settingsMenu;
@@ -55,6 +60,7 @@ namespace Zombies55
         float _fadeAlpha;
 
         bool _settingsOpen;
+        bool _quitConfirmOpen;
         RunState _settingsFrom;
         float _ignoreStartUntil;
 
@@ -74,6 +80,9 @@ namespace Zombies55
             resumeButton.onClick.AddListener(() => Click(_loop.Resume));
             pauseRestartButton.onClick.AddListener(() => Click(Restart));
             pauseTitleButton.onClick.AddListener(() => Click(ToTitle));
+            pauseQuitButton.onClick.AddListener(() => Click(() => SetQuitConfirm(true)));
+            quitCancelButton.onClick.AddListener(() => Click(() => SetQuitConfirm(false)));
+            quitConfirmButton.onClick.AddListener(() => Click(QuitGame));
             endRestartButton.onClick.AddListener(() => Click(Restart));
             endTitleButton.onClick.AddListener(() => Click(ToTitle));
 
@@ -146,7 +155,12 @@ namespace Zombies55
                     break;
 
                 case RunState.Paused:
-                    if (PausePressed()) _loop.Resume();
+                    if (_quitConfirmOpen)
+                    {
+                        // The confirmation swallows the pause key: Esc, B and Start only close it, the game stays paused.
+                        if (BackPressed()) SetQuitConfirm(false);
+                    }
+                    else if (PausePressed()) _loop.Resume();
                     break;
 
                 case RunState.Lost:
@@ -254,6 +268,9 @@ namespace Zombies55
             titleRoot.SetActive(state == RunState.Ready);
             hudRoot.SetActive(state == RunState.Running || state == RunState.Paused);
             pauseRoot.SetActive(state == RunState.Paused);
+            _quitConfirmOpen = false;
+            pauseCard.SetActive(true);
+            quitConfirmRoot.SetActive(false);
             endRoot.SetActive(state == RunState.Lost);
 
             switch (state)
@@ -352,6 +369,25 @@ namespace Zombies55
             // Keep the key or click that closed the menu from starting a run or reopening it.
             _ignoreStartUntil = Time.unscaledTime + 0.25f;
             if (_settingsFrom == RunState.Paused && _loop.State == RunState.Paused) Select(pauseSettingsButton);
+        }
+
+        // The confirmation replaces the pause card. Focus starts on CANCEL; closing returns it to QUIT GAME.
+        void SetQuitConfirm(bool open)
+        {
+            _quitConfirmOpen = open;
+            pauseCard.SetActive(!open);
+            quitConfirmRoot.SetActive(open);
+            Select(open ? quitCancelButton : pauseQuitButton);
+        }
+
+        void QuitGame()
+        {
+            PlayerPrefs.Save();
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
 
         void Restart()

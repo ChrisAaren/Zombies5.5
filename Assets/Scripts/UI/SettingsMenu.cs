@@ -84,6 +84,10 @@ namespace Zombies55
             bool bench = _tab == BenchmarkTab;
             resetButton.gameObject.SetActive(!bench);
             backButton.gameObject.SetActive(!(bench && benchmarkPanel != null && benchmarkPanel.ShowingResults));
+            // With RESET hidden, BACK takes the middle.
+            var pos = ((RectTransform)backButton.transform).anchoredPosition;
+            pos.x = bench ? 0f : 250f;
+            ((RectTransform)backButton.transform).anchoredPosition = pos;
         }
 
         void SelectTab(int index, bool focus)

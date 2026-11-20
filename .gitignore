@@ -152,3 +152,7 @@ crashlytics-build.properties
 
 # Mocap retarget output (regenerable; research only, not used by the game)
 /Tools/Blender/mocap/out/
+
+# Blender staging output (imported into Assets by Unity tasks) and Python caches
+/Tools/Blender/staging/
+__pycache__/

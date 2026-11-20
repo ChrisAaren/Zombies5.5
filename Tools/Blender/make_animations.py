@@ -145,6 +145,10 @@ def default_channels():
         for n in ("Ax", "Ay", "Az", "Fp", "Fy", "Fr", "T"):
             c[s + n] = 0.0
         c[s + "Ax"] = 0.095 * SIDE[s][1]; c[s + "Ay"] = 0.02; c[s + "Az"] = 0.085
+        # knee pole direction (world); default is the standing knee-forward pole
+        c[s + "Px"] = 0.03 * SIDE[s][1]; c[s + "Py"] = -1.0; c[s + "Pz"] = 0.0
+        # knee-plant (get-up clips only, see gu_resolve): weight, knee ground xy, shin pitch
+        c[s + "Kw"] = 0.0; c[s + "Kx"] = 0.0; c[s + "Ky"] = 0.0; c[s + "Ka"] = 0.0
         # leg FK
         for n in ("hf", "ha", "hr", "k", "ap", "t"):
             c[s + n] = 0.0
@@ -283,7 +287,7 @@ def solve(c, cfg):
         if cfg.get("legs", "ik") == "ik":
             H = P[UL]
             A = Vector((c[sd + "Ax"], c[sd + "Ay"], c[sd + "Az"]))
-            pole = Vector((s * KNEE_POLE_OUT, -1.0, 0.0))
+            pole = Vector((c[sd + "Px"], c[sd + "Py"], c[sd + "Pz"]))
             K, Ae, n = two_bone(H, A, LEN[UL], LEN[LL], pole)
             D[UL] = frame_rot(REST_DIR[UL], apex_rest, K - H, n)
             put(LL, frame_rot(REST_DIR[LL], apex_rest, Ae - K, n))
@@ -1087,6 +1091,8 @@ def run(names, preview=True, export=True):
     setup_scene()
     if preview:
         build_proxy(); setup_render()
+        if any(CLIPS[n].get("sheetfn") for n in names):
+            setup_gu_cams()
     res = {}
     for nm in names:
         cl = CLIPS[nm]
@@ -1117,7 +1123,13 @@ def run(names, preview=True, export=True):
                 clear_guns()
             n = cl["frames"]
             fr = [n * i / 8.0 for i in range(8)] if cl["loop"] else [n * i / 7.0 for i in range(8)]
-            render_sheet(nm, fr, scale=cl.get("scale", 2.3), cam_z=cl.get("camz", 0.95))
+            if cl.get("sheetfn"):
+                ns = int(os.environ.get("GU_N", "8"))
+                cl["sheetfn"](nm, [n * i / float(ns - 1) for i in range(ns)])
+            else:
+                render_sheet(nm, fr, scale=cl.get("scale", 2.3), cam_z=cl.get("camz", 0.95))
+        if cl.get("verify"):
+            info["verify"] = cl["verify"](cl)
         res[nm] = info
         print("CLIP", nm, info)
     return res
@@ -1977,12 +1989,616 @@ def report_hands(cl):
         nm = SIDE[sd][0] + "Hand"
         tgt = Vector((c[sd + "Wx"], c[sd + "Wy"], c[sd + "Wz"]))
         print("HANDS", cl["name"], "  %s wrist IK miss=%.4f m" % (sd, (P[nm] - tgt).length))
+# ============================================================================ get-up clips
+# GetUpBack (from supine) and GetUpFront (from prone). Authored in WORLD space with IK for hands and feet:
+# a planted hand/foot holds one identical world target over consecutive keys (zero slip by construction).
+# Frame 0 is a ragdoll-like lying pose with the hips at (0, GU_Y0, ~0.11); the last frame is Idle frame 0
+# (hips at the origin), so the root is fixed and the body travels GU_Y0 m toward the character's front.
+GU_CFG = {"legs": "ik", "arms": {"L": "ik", "R": "ik"}, "space": "world"}
+GU_Y0 = 0.42                      # lying hips offset along +Y (behind the standing spot), Blender metres
+KNEE_Z = 0.06                     # knee-joint height when a knee rests on the ground
+L_UL, L_LL = LEN["LeftUpperLeg"], LEN["LeftLowerLeg"]
+FOOT_BOX = [(x, y, z) for x in (-0.045, 0.045) for y in (-0.115, 0.085) for z in (0.0, 0.07)]
+TOE_BOX = [(x, y, z) for x in (-0.045, 0.045) for y in (-0.19, -0.105) for z in (0.0, 0.04)]
+
+
+def foot_corners(c, sd, ank=None):
+    """World positions of the foot and toe box corners (proxy extents) for the leg IK targets in c."""
+    nm, s = SIDE[sd]
+    Df = qz(s * c[sd + "Fy"]) @ qy(c[sd + "Fr"]) @ qx(-c[sd + "Fp"])
+    Dt = Df @ qx(-c[sd + "T"])
+    A = Vector(ank) if ank is not None else Vector((c[sd + "Ax"], c[sd + "Ay"], c[sd + "Az"]))
+    hx = HEAD[nm + "Foot"].x
+    hf = HEAD[nm + "Foot"]
+    ht = HEAD[nm + "Toes"]
+    pt = A + Df @ (ht - hf)
+    out = [A + Df @ (Vector((hx + x, y, z)) - hf) for (x, y, z) in FOOT_BOX]
+    out += [pt + Dt @ (Vector((hx + x, y, z)) - ht) for (x, y, z) in TOE_BOX]
+    return out
+
+
+def gu_hips(c, x, y, z, rx=0.0, ry=0.0, rz=0.0):
+    c["hip_tx"] = x; c["hip_ty"] = y; c["hip_tz"] = z - HEAD["Hips"].z
+    c["hip_rx"] = rx; c["hip_ry"] = ry; c["hip_rz"] = rz
+
+
+def gu_hand(c, sd, pos, f=(0, -1, 0), d=(0, 0, 1), pole=None, curl=0.2):
+    s = SIDE[sd][1]
+    c[sd + "Wx"], c[sd + "Wy"], c[sd + "Wz"] = pos
+    c[sd + "Hfx"], c[sd + "Hfy"], c[sd + "Hfz"] = unit(*f)
+    c[sd + "Hdx"], c[sd + "Hdy"], c[sd + "Hdz"] = unit(*d)
+    c[sd + "Ex"], c[sd + "Ey"], c[sd + "Ez"] = pole if pole else (0.6 * s, 0.8, 0.0)
+    c[sd + "c"] = curl
+
+
+def gu_foot(c, sd, pos, fp=0.0, fr=0.0, fy=6.0, toe=0.0, pole=None, z=None):
+    """Leg IK target. z=None: lower the ankle so the lowest foot corner just touches the ground."""
+    c[sd + "Fp"] = fp; c[sd + "Fr"] = fr; c[sd + "Fy"] = fy; c[sd + "T"] = toe
+    if z is None:
+        low = min(p.z for p in foot_corners(c, sd, (0.0, 0.0, 0.0)))
+        z = -low + 0.001
+    c[sd + "Ax"], c[sd + "Ay"], c[sd + "Az"] = pos[0], pos[1], z
+    if pole:
+        c[sd + "Px"], c[sd + "Py"], c[sd + "Pz"] = pole
+
+
+def tuck_fp(c, sd, z, fr=0.0, fy=0.0):
+    """Foot pitch (toes tucked, ball on the ground) for an ankle at height z."""
+    lo, hi = -100.0, 20.0
+    for _ in range(40):
+        mid = 0.5 * (lo + hi)
+        c[sd + "Fp"] = mid; c[sd + "Fr"] = fr; c[sd + "Fy"] = fy; c[sd + "T"] = 0.0
+        low = min(p.z for p in foot_corners(c, sd, (0.0, 0.0, z)))
+        if low > 0.0:
+            hi = mid
+        else:
+            lo = mid
+    return 0.5 * (lo + hi)
+
+
+def gu_resolve(c):
+    """Knee-plant: with weight Kw the planted knee (Kx, Ky, KNEE_Z) fixes the hip height and the ankle."""
+    c = dict(c)
+    for sd in "LR":
+        w = c[sd + "Kw"]
+        if w <= 1e-5:
+            continue
+        nm = SIDE[sd][0]
+        Dh, Ph = hips_xform(c)
+        hj = Ph + Dh @ (HEAD[nm + "UpperLeg"] - HEAD["Hips"])
+        dxy2 = (hj.x - c[sd + "Kx"]) ** 2 + (hj.y - c[sd + "Ky"]) ** 2
+        if dxy2 < L_UL * L_UL:
+            zt = KNEE_Z + math.sqrt(L_UL * L_UL - dxy2)
+            c["hip_tz"] += w * (zt - hj.z)
+        a = rad(c[sd + "Ka"])
+        A = (c[sd + "Kx"], c[sd + "Ky"] + math.cos(a) * L_LL, KNEE_Z + math.sin(a) * L_LL)
+        for i, k in enumerate("xyz"):
+            c[sd + "A" + k] = lerp(c[sd + "A" + k], A[i], w)
+        # knee pole: from the hip-ankle line toward the planted knee, so the IK knee lands on it
+        Av = Vector(A); Kv = Vector((c[sd + "Kx"], c[sd + "Ky"], KNEE_Z))
+        Dh, Ph = hips_xform(c)
+        hj = Ph + Dh @ (HEAD[nm + "UpperLeg"] - HEAD["Hips"])
+        ax = (Av - hj).normalized()
+        pk = (Kv - hj) - ax * (Kv - hj).dot(ax)
+        if pk.length > 1e-4:
+            pk.normalize()
+            cur = Vector((c[sd + "Px"], c[sd + "Py"], c[sd + "Pz"])).normalized()
+            pm = cur.lerp(pk, w)
+            c[sd + "Px"], c[sd + "Py"], c[sd + "Pz"] = pm
+    return c
+
+
+def arm_rel(c, sd, off, f=(0, -1, 0), d=(0, 0, 1), pole=None, curl=0.3):
+    """Free arm: wrist at (current shoulder joint + off) given the hips/spine channels already in c."""
+    cfg = {"legs": "fk", "arms": {"L": "fk", "R": "fk"}}
+    D, P = solve(c, cfg)
+    S = P[SIDE[sd][0] + "UpperArm"]
+    gu_hand(c, sd, (S.x + off[0], S.y + off[1], S.z + off[2]), f, d, pole, curl)
+
+
+def arms_idle(c, sd_list="LR", pole_out=0.8):
+    """Free arms hanging as in Idle, placed relative to the current shoulder joints."""
+    ci = idle_pose(0)
+    D, P = solve(ci, {"legs": "ik"})
+    for sd in sd_list:
+        nm = SIDE[sd][0]
+        off = P[nm + "Hand"] - P[nm + "UpperArm"]
+        arm_rel(c, sd, off, (0.3 * SIDE[sd][1], -1, 0), (0, 0, 1), (pole_out * SIDE[sd][1], 0.6, -0.3), 0.3)
+
+
+def idle_ik():
+    """Idle frame 0 expressed in the get-up (world IK) channel set."""
+    c = idle_pose(0)
+    D, P = solve(c, {"legs": "ik"})
+    for sd in "LR":
+        nm = SIDE[sd][0]
+        S = P[nm + "UpperArm"]; E = P[nm + "LowerArm"]; W = P[nm + "Hand"]
+        ax = (W - S).normalized()
+        pole = (E - S) - ax * (E - S).dot(ax)
+        fv = D[nm + "Hand"] @ REST_DIR[nm + "Hand"]
+        dv = D[nm + "Hand"] @ Vector((0, 0, 1))
+        c[sd + "Wx"], c[sd + "Wy"], c[sd + "Wz"] = W
+        c[sd + "Hfx"], c[sd + "Hfy"], c[sd + "Hfz"] = fv
+        c[sd + "Hdx"], c[sd + "Hdy"], c[sd + "Hdz"] = dv
+        c[sd + "Ex"], c[sd + "Ey"], c[sd + "Ez"] = pole.normalized()
+    return c
+
+
+def gu_points(c, cfg):
+    """Contact candidates for slip checks: {name: world point}."""
+    D, P = solve(c, cfg)
+    pts = {}
+    for sd in "LR":
+        nm = SIDE[sd][0]
+        pts[sd + "knee"] = P[nm + "LowerLeg"]
+        for i, p in enumerate(foot_corners(c, sd)):
+            pts["%sfoot%d" % (sd, i)] = p
+        h = nm + "Hand"
+        pts[sd + "hand0"] = P[h]
+        pts[sd + "hand1"] = P[h] + D[h] @ (REST_DIR[h] * 0.05)
+        pts[sd + "hand2"] = P[h] + D[h] @ (REST_DIR[h] * 0.09)
+    return pts
+
+
+def gu_clearance(c, cfg):
+    """(min clearance m, name) over proxy body capsules sampled along the bones."""
+    D, P = solve(c, cfg)
+    worst = [9.0, ""]
+
+    def chk(p, r, nm):
+        if p.z - r < worst[0]:
+            worst[0] = p.z - r; worst[1] = nm
+
+    def seg(a, b, ra, rb, nm, n=4):
+        for i in range(n + 1):
+            t = i / n
+            chk(a.lerp(b, t), lerp(ra, rb, t), nm)
+    for bn in ("Hips", "Spine", "Chest"):
+        seg(P[bn], P[bn] + D[bn] @ (TAIL[bn] - HEAD[bn]), 0.10, 0.10, bn)
+    seg(P["Neck"], P["Head"], 0.04, 0.04, "Neck", 2)
+    chk(P["Head"] + D["Head"] @ (Vector((0, 0.005, 1.695)) - HEAD["Head"]), 0.10, "Head")
+    for sd in "LR":
+        nm = SIDE[sd][0]
+        ual, lal, hnd = nm + "UpperArm", nm + "LowerArm", nm + "Hand"
+        seg(P[ual], P[lal], 0.05, 0.04, ual); seg(P[lal], P[hnd], 0.04, 0.03, lal)
+        seg(P[hnd], P[hnd] + D[hnd] @ (TAIL[hnd] - HEAD[hnd]), 0.015, 0.012, hnd, 2)
+        ull, lll, ft = nm + "UpperLeg", nm + "LowerLeg", nm + "Foot"
+        seg(P[ull], P[lll], 0.082, 0.062, ull); seg(P[lll], P[ft], 0.058, 0.042, lll)
+        for p in foot_corners(c, sd):
+            chk(p, 0.0, ft)
+    return tuple(worst)
+
+
+def gu_verify(cl, hold_thresh=0.012):
+    """Per-frame numbers: contact slip of hands/knees/feet, ground penetration, IK reach, frame-0 hips, last vs Idle."""
+    cfg = cl["cfg"]; N = cl["frames"]
+    prev = None
+    slips = []; worst_clear = (9.0, "", 0); reach = 0.0; reach_f = 0
+    slip_by = {}
+    thr = {"knee": 0.085, "foot": hold_thresh, "hand": 0.045}
+    for fr in range(N + 1):
+        c = cl["fn"](float(fr))
+        pts = gu_points(c, cfg)
+        cm = gu_clearance(c, cfg)
+        if cm[0] < worst_clear[0]:
+            worst_clear = (cm[0], cm[1], fr)
+        D, P = solve(c, cfg)
+        for sd in "LR":
+            nm = SIDE[sd][0]
+            A = Vector((c[sd + "Ax"], c[sd + "Ay"], c[sd + "Az"]))
+            e = (P[nm + "Foot"] - A).length
+            tw = Vector((c[sd + "Wx"], c[sd + "Wy"], c[sd + "Wz"]))
+            e2 = (P[nm + "Hand"] - tw).length
+            if max(e, e2) > reach:
+                reach = max(e, e2); reach_f = fr
+        if prev:
+            for k, p in pts.items():
+                kind = "knee" if "knee" in k else "foot" if "foot" in k else "hand"
+                if p.z < thr[kind] and prev[k].z < thr[kind]:
+                    d = p - prev[k]
+                    v = math.hypot(d.x, d.y) * FPS
+                    slips.append(v)
+                    key = k[0] + kind
+                    if v > slip_by.get(key, (0.0, 0))[0]:
+                        slip_by[key] = (v, fr)
+        prev = pts
+    slips.sort()
+    c0 = cl["fn"](0.0); cN = cl["fn"](float(N))
+    D0, P0 = solve(c0, cfg)
+    ci = idle_pose(0); Di, Pi = solve(ci, {"legs": "ik"})
+    Dn, Pn = solve(cN, cfg)
+    end_err = max((Pn[n] - Pi[n]).length for n in NAMES)
+    return dict(
+        slip_max=round(slips[-1], 3) if slips else 0, slip_p90=round(slips[int(len(slips) * 0.9)], 3) if slips else 0,
+        slip_mean=round(sum(slips) / len(slips), 3) if slips else 0, contact_samples=len(slips),
+        slip_by_part={k: (round(v[0], 3), 'f%d' % v[1]) for k, v in sorted(slip_by.items())},
+        min_clearance_m=round(worst_clear[0], 4), min_clearance_part=worst_clear[1], min_clearance_frame=worst_clear[2],
+        ik_reach_err_max_m=round(reach, 4), ik_reach_err_frame=reach_f,
+        hips0_world=tuple(round(v, 4) for v in P0["Hips"]),
+        hips0_euler_xyz_deg=(round(c0["hip_rx"], 2), round(c0["hip_ry"], 2), round(c0["hip_rz"], 2)),
+        hips_last_world=tuple(round(v, 4) for v in Pn["Hips"]),
+        last_vs_idle_joint_err_m=round(end_err, 4))
+
+
+def gu_dump(cl, step=3):
+    """Debug table: hips, clearance and IK reach error per frame."""
+    cfg = cl["cfg"]
+    for fr in range(0, cl["frames"] + 1, step):
+        c = cl["fn"](float(fr))
+        D, P = solve(c, cfg)
+        cm = gu_clearance(c, cfg)
+        reach = []
+        for sd in "LR":
+            nm = SIDE[sd][0]
+            reach.append(round((P[nm + "Foot"] - Vector((c[sd + "Ax"], c[sd + "Ay"], c[sd + "Az"]))).length, 3))
+            reach.append(round((P[nm + "Hand"] - Vector((c[sd + "Wx"], c[sd + "Wy"], c[sd + "Wz"]))).length, 3))
+        print("GU %3d t=%.2f hips=(%.2f %.2f %.2f) clr=%.3f %s reach(Lft,Lh,Rft,Rh)=%s" % (
+            fr, fr / FPS, P["Hips"].x, P["Hips"].y, P["Hips"].z, cm[0], cm[1], reach))
+
+
+GU_CAMS = {}
+
+
+def setup_gu_cams():
+    sc = bpy.context.scene
+    sc.render.resolution_x = 360; sc.render.resolution_y = 270
+    for i in range(-6, 7):
+        v, f = box_geo((i * 0.25 - 0.006, -2.6, -0.004), (i * 0.25 + 0.006, 2.6, 0.0))
+        PROXY_STATIC.append(_mk("gline", v, f, (0.25, 0.25, 0.28) if i % 4 else (0.3, 0.3, 0.9)))
+    for nm, d in (("side", (-1.0, 0.0, 0.0)), ("q34", (-0.62, -0.62, 0.42))):
+        cam = bpy.data.cameras.new("gu_" + nm); cam.type = 'ORTHO'; cam.ortho_scale = 2.75
+        cam.clip_start = 0.1; cam.clip_end = 40
+        co = bpy.data.objects.new("gu_" + nm, cam)
+        tgt = Vector((0.0, 0.28, 0.86))
+        co.location = tgt + Vector(d).normalized() * 8.0
+        co.rotation_euler = (tgt - co.location).to_track_quat('-Z', 'Y').to_euler()
+        bpy.context.scene.collection.objects.link(co)
+        GU_CAMS[nm] = co
+
+
+def render_sheet_gu(name, frames):
+    import numpy as np
+    sc = bpy.context.scene
+    tmp = os.path.join(PREV, "_tmp")
+    os.makedirs(tmp, exist_ok=True)
+    rows = []
+    for cn in ("side", "q34"):
+        sc.camera = GU_CAMS[cn]
+        tiles = []
+        for f in frames:
+            sc.frame_set(int(round(f)))
+            sc.render.filepath = os.path.join(tmp, "t.png")
+            bpy.ops.render.render(write_still=True)
+            img = bpy.data.images.load(sc.render.filepath)
+            arr = np.array(img.pixels[:], dtype=np.float32).reshape(img.size[1], img.size[0], 4)
+            tiles.append(arr)
+            bpy.data.images.remove(img)
+        rows.append(np.concatenate(tiles, axis=1))
+    sheet = np.concatenate(rows[::-1], axis=0)
+    h, w = sheet.shape[:2]
+    out = bpy.data.images.new("sheet", w, h, alpha=True)
+    out.pixels.foreach_set(sheet.ravel())
+    out.filepath_raw = os.path.join(PREV, "Anim_%s.png" % name)
+    out.file_format = 'PNG'
+    out.save()
+    bpy.data.images.remove(out)
+    try:
+        os.remove(os.path.join(tmp, "t.png")); os.rmdir(tmp)
+    except OSError:
+        pass
+
+
+def gu_clip(name, keys, T):
+    CLIPS[name] = dict(name=name, frames=T, loop=False, cfg=GU_CFG, fn=lambda f: gu_resolve(keys.eval(f / FPS)),
+                       speed=None, gun=None, sheetfn=render_sheet_gu, verify=gu_verify)
+
+
+# ---------------------------------------------------------------- GetUpBack (supine)
+# Head toward +Y (behind the standing character), face up, legs toward -Y. Left hand posts behind-left, the
+# right foot is drawn in flat (it stays planted until the end), the body sits up, bridges, the left leg sweeps
+# under and back to a toes-tucked knee (hand + knee + foot tripod), then half-kneel, lunge, stand.
+def getup_back_keys():
+    Y0 = GU_Y0
+    HP = (0.34, 0.60, 0.03)                      # posted left hand
+    FR = (-0.09, 0.03)                            # front (right) foot at the Idle foot spot
+    base = new_ch()
+    base["stab"] = 0.0
+    k = Keys(base)
+    POLE_AR = (-0.8, 0.5, -0.3)
+    POLE_AL = (0.8, 0.6, -0.3)
+
+    c = dict(base)
+    gu_hips(c, 0.0, Y0, 0.12, rx=-90, ry=3)
+    c.update(sp_rx=0, ch_rx=-2, sp_rz=2, nk_rz=5, hd_rz=12, hd_rx=-4)
+    gu_hand(c, 'L', HP, (0.6, -0.8, 0), (0, 0, 1), (1.0, 0.3, 0.2), 0.12)
+    gu_hand(c, 'R', (-0.31, 0.50, 0.03), (-0.3, -1, 0), (0, 0, 1), (-1.0, 0.2, 0.3), 0.25)
+    gu_foot(c, 'L', (0.22, -0.43), fp=84, fr=14, fy=0, pole=(0.1, 0.0, 1.0))
+    gu_foot(c, 'R', (-0.20, -0.43), fp=80, fr=-16, fy=0, pole=(-0.2, 0.0, 1.0))
+    k.keys.append((0.0, c))
+    c = dict(c)
+    gu_foot(c, 'R', (-0.15, -0.05, 0.20), fp=40, fr=-8, fy=3, pole=(-0.2, 0.0, 1.0), z=0.20)
+    c.update(nk_rx=6)
+    k.keys.append((0.12, c))
+    c = dict(c)
+    gu_foot(c, 'R', (FR[0], FR[1], 0.11), fp=6, fr=0, fy=6, pole=(-0.15, -0.2, 1.0), z=0.11)
+    k.keys.append((0.20, c))
+    c = dict(c)
+    gu_foot(c, 'R', FR, fp=0, fr=0, fy=6, pole=(-0.15, -0.2, 1.0), z=0.085)
+    c.update(nk_rx=14, sp_rx=6, ch_rx=10, hd_rz=6, hd_rx=-2)
+    gu_hips(c, 0.0, Y0, 0.115, rx=-86, ry=2)
+    k.keys.append((0.26, c))
+    c = dict(c)
+    gu_hips(c, 0.0, Y0, 0.12, rx=-62, ry=0)
+    c.update(sp_rx=4, ch_rx=4, nk_rx=14, hd_rx=-2, hd_rz=0)
+    arm_rel(c, 'R', (-0.03, -0.40, 0.18), (0, -1, 0), (0, 0, 1), POLE_AR)
+    k.keys.append((0.50, c))
+    c = dict(c)
+    gu_hips(c, 0.0, Y0, 0.125, rx=-32, ry=0)
+    c.update(sp_rx=-4, ch_rx=-4, nk_rx=18, hd_rx=-10)
+    arm_rel(c, 'R', (-0.03, -0.46, 0.04), (0, -1, 0), (0, 0, 1), POLE_AR)
+    k.keys.append((0.72, c))
+    c = dict(c)
+    gu_hips(c, 0.0, Y0 - 0.03, 0.17, rx=-40, ry=0)
+    k.keys.append((0.80, c))
+    # bridge: hips lift, left foot leaves the ground
+    c = dict(c)
+    gu_hips(c, 0.0, Y0 - 0.10, 0.28, rx=-50, ry=0)
+    c.update(sp_rx=-6, ch_rx=-6, nk_rx=16)
+    gu_foot(c, 'L', (0.20, -0.15, 0.24), fp=50, fr=0, fy=0, pole=(0.5, -1.0, 0.6), z=0.24)
+    arm_rel(c, 'R', (-0.03, -0.45, -0.02), (0, -1, 0), (0, 0, 1), POLE_AR)
+    k.keys.append((0.92, c))
+    # sweep: knee bent and swung outward-up, foot passing low under the hips
+    c = dict(c)
+    gu_hips(c, 0.0, Y0 - 0.20, 0.32, rx=-52, ry=0)
+    gu_foot(c, 'L', (0.17, 0.22, 0.20), fp=10, fr=0, fy=0, pole=(1.0, -0.3, 0.6), z=0.20)
+    k.keys.append((1.02, c))
+    # landing pose: left knee down behind the front foot, toes tucked. The pose is resolved once (hip height,
+    # ankle, knee pole) and keyed explicitly, so the later Kw hold does not move anything.
+    c = dict(c)
+    gu_hips(c, 0.0, 0.17, 0.30, rx=-52, ry=0)
+    ka = 12.0
+    zank = KNEE_Z + math.sin(rad(ka)) * L_LL
+    c["LKw"] = 1.0; c["LKx"] = 0.20; c["LKy"] = 0.50; c["LKa"] = ka
+    gu_foot(c, 'L', (0.20, 0.50 + math.cos(rad(ka)) * L_LL), fp=0, fr=0, fy=0, pole=(0.1, -1.0, 0.0), z=zank)
+    c["LFp"] = tuck_fp(c, 'L', zank)
+    r = gu_resolve(c)
+    for n in ("hip_tz", "LAx", "LAy", "LAz", "LPx", "LPy", "LPz"):
+        c[n] = r[n]
+    A_L = (c["LAx"], c["LAy"], c["LAz"]); FP_L = c["LFp"]
+    c2 = dict(c); c2["LKw"] = 0.0
+    c3 = dict(c2)      # hover: the same pose 9 cm higher, so the knee comes down vertically
+    c3["hip_tz"] += 0.09; c3["LAz"] += 0.09
+    k.keys.append((1.12, c3))
+    k.keys.append((1.22, c2))
+    k.keys.append((1.26, c))
+    # hands move onto the thighs and push; torso comes up
+    c = dict(c)
+    gu_hips(c, 0.0, 0.26, 0.40, rx=-36, ry=0)
+    c.update(sp_rx=-6, ch_rx=-6, nk_rx=8, hd_rx=-6)
+    gu_hand(c, 'L', (0.20, 0.30, 0.40), (0, -1, 0), (0, 0, 1), (0.8, 0.8, 0.2), 0.2)
+    arm_rel(c, 'R', (-0.08, -0.30, -0.36), (0, -1, 0), (0, 0, 1), POLE_AR)
+    k.keys.append((1.46, c))
+    # hand leaves the ground
+    c = dict(c)
+    gu_hips(c, 0.0, 0.36, 0.45, rx=-14, ry=0)
+    c.update(sp_rx=-2, ch_rx=-2, nk_rx=2, hd_rx=-2, stab=0.5)
+    arm_rel(c, 'L', (0.16, -0.12, -0.42), (0.3, -1, 0), (0, 0, 1), POLE_AL)
+    arm_rel(c, 'R', (-0.08, -0.30, -0.28), (0, -1, 0), (0, 0, 1), POLE_AR)
+    k.keys.append((1.58, c))
+    # half-kneel
+    c = dict(c)
+    gu_hips(c, 0.0, 0.44, 0.52, rx=-3, ry=0)
+    c.update(sp_rx=0, ch_rx=0, nk_rx=0, hd_rx=0, stab=0.6)
+    arm_rel(c, 'L', (0.12, -0.08, -0.46), (0.3, -1, 0), (0, 0, 1), POLE_AL)
+    arm_rel(c, 'R', (-0.08, -0.26, -0.34), (0, -1, 0), (0, 0, 1), POLE_AR)
+    k.keys.append((1.70, c))
+    # weight to the front foot, knee leaves the ground, rear toes stay planted
+    c = dict(c)
+    c["LKw"] = 0.0
+    gu_hips(c, 0.0, 0.33, 0.66, rx=8, ry=0)
+    c.update(sp_rx=4, ch_rx=4)
+    c["LAx"], c["LAy"], c["LAz"] = A_L; c["LFp"] = FP_L
+    c["LPx"], c["LPy"], c["LPz"] = 0.05, -1.0, -0.2
+    arm_rel(c, 'L', (0.10, -0.12, -0.44), (0.3, -1, 0), (0, 0, 1), POLE_AL)
+    arm_rel(c, 'R', (-0.08, -0.22, -0.40), (0, -1, 0), (0, 0, 1), POLE_AR)
+    k.keys.append((1.82, c))
+    c = dict(c)
+    gu_hips(c, 0.0, 0.14, 0.82, rx=8, ry=0)
+    c.update(sp_rx=3, ch_rx=3)
+    gu_foot(c, 'L', (0.11, 0.52, 0.26), fp=-25, fr=0, fy=3, pole=(0.05, -1.0, 0.0), z=0.26)
+    arms_idle(c)
+    k.keys.append((1.96, c))
+    c = dict(c)
+    gu_hips(c, 0.0, 0.05, 0.92, rx=5, ry=0)
+    c.update(sp_rx=2, ch_rx=2)
+    gu_foot(c, 'L', (0.10, 0.20, 0.13), fp=-6, fr=0, fy=5, pole=(0.05, -1.0, 0.0), z=0.13)
+    arms_idle(c)
+    k.keys.append((2.10, c))
+    c = dict(c)
+    gu_foot(c, 'L', (0.09, 0.03, 0.105), fp=-2, fr=0, fy=6, pole=(0.03, -1.0, 0.0), z=0.105)
+    gu_hips(c, 0.0, 0.01, 0.94, rx=3, ry=0)
+    arms_idle(c)
+    k.keys.append((2.16, c))
+    c = dict(c)
+    gu_hips(c, 0.0, 0.0, 0.945, rx=2, ry=0)
+    c.update(sp_rx=1, ch_rx=1)
+    gu_foot(c, 'L', (0.09, 0.03), fp=0, fr=0, fy=6, pole=(0.03, -1.0, 0.0), z=0.085)
+    arms_idle(c)
+    k.keys.append((2.22, c))
+    c = dict(c)
+    gu_hips(c, 0.0, -0.006, 0.962, rx=-1.5, ry=0)
+    c.update(sp_rx=-0.5, ch_rx=-1.0, hd_rx=1.0)
+    arms_idle(c)
+    k.keys.append((2.38, c))
+    k.keys.append((2.55, idle_ik()))
+    return k
+
+
+gu_clip("GetUpBack", getup_back_keys(), 77)
+
+
+# ---------------------------------------------------------------- GetUpFront (prone)
+# Head toward -Y (the character's front), face down, legs toward +Y. Hands re-plant under the shoulders, push-up
+# to a plank on the toes, the right foot steps up beside the hands (crouch), the left foot follows, hands come
+# off the ground, rise and step the left foot through to the Idle stance.
+def getup_front_keys():
+    Y0 = GU_Y0
+    FR = (-0.09, 0.03)
+    HX = 0.21
+    HY = -0.01
+    base = new_ch()
+    base["stab"] = 0.0
+    k = Keys(base)
+    PL = (0.7, 0.9, 0.9)      # elbows point back and up in the push-up
+    ka = 12.0
+    zt = KNEE_Z + math.sin(rad(ka)) * L_LL
+
+    def lying_feet(c):
+        gu_foot(c, 'L', (0.20, 1.29), fp=24.8, fr=180, fy=180, pole=(0.1, 0.0, 0.3))
+        gu_foot(c, 'R', (-0.18, 1.26), fp=24.8, fr=180, fy=180, pole=(-0.1, 0.0, 0.3))
+
+    def tuck(c, sd, x, y, z=0.15):
+        gu_foot(c, sd, (x, y), fp=0, fr=0, fy=0, z=z)
+        c[sd + "Fp"] = tuck_fp(c, sd, z)
+
+    def hands_planted(c):
+        gu_hand(c, 'L', (HX, HY, 0.03), (0, -1, 0), (0, 0, 1), (PL[0], PL[1], PL[2]), 0.1)
+        gu_hand(c, 'R', (-HX, HY, 0.03), (0, -1, 0), (0, 0, 1), (-PL[0], PL[1], PL[2]), 0.1)
+
+    c = dict(base)
+    gu_hips(c, 0.0, Y0, 0.12, rx=90, ry=-3)
+    c.update(sp_rx=0, ch_rx=2, sp_rz=-2, nk_rz=6, hd_rz=20, hd_rx=-4)
+    gu_hand(c, 'L', (0.48, -0.28, 0.03), (0.3, -1, 0), (0, 0, 1), (1.0, 0.5, 0.6), 0.25)
+    gu_hand(c, 'R', (-0.38, -0.22, 0.03), (-0.3, -1, 0), (0, 0, 1), (-1.0, 0.5, 0.6), 0.25)
+    lying_feet(c)
+    k.keys.append((0.0, c))
+    # hands lift, feet lift (flip to toes)
+    c = dict(c)
+    gu_hand(c, 'L', (0.24, -0.04, 0.09), (0.1, -1, 0), (0, 0, 1), (PL[0], PL[1], PL[2]), 0.15)
+    gu_hand(c, 'R', (-0.24, -0.04, 0.09), (-0.1, -1, 0), (0, 0, 1), (-PL[0], PL[1], PL[2]), 0.15)
+    gu_foot(c, 'L', (0.10, 1.26, 0.16), fp=10, fr=90, fy=90, z=0.16)
+    gu_foot(c, 'R', (-0.10, 1.26, 0.16), fp=10, fr=90, fy=90, z=0.16)
+    c.update(hd_rz=10, hd_rx=-12, nk_rx=-6)
+    k.keys.append((0.10, c))
+    c = dict(c)
+    hands_planted(c)
+    tuck(c, 'L', 0.10, 1.26); tuck(c, 'R', -0.10, 1.26)
+    c["LAz"] += 0.06; c["RAz"] += 0.06     # hovering, same foot pitch as the landing
+    c.update(hd_rz=4, hd_rx=-18, nk_rx=-10)
+    k.keys.append((0.22, c))
+    c = dict(c)
+    tuck(c, 'L', 0.10, 1.26); tuck(c, 'R', -0.10, 1.26)
+    LT = {n: c[n] for n in ("LAx", "LAy", "LAz", "LFp", "LFr", "LFy", "LT")}
+    RT = {n: c[n] for n in ("RAx", "RAy", "RAz", "RFp", "RFr", "RFy", "RT")}
+    c["LPx"], c["LPy"], c["LPz"] = 0.05, -1.0, 0.1
+    c["RPx"], c["RPy"], c["RPz"] = -0.05, -1.0, 0.1
+    c.update(hd_rz=0, hd_rx=-20, nk_rx=-12)
+    k.keys.append((0.30, c))
+    # half-way up the push-up
+    c = dict(c)
+    gu_hips(c, 0.0, Y0, 0.22, rx=78, ry=0)
+    k.keys.append((0.55, c))
+    # plank
+    c = dict(c)
+    gu_hips(c, 0.0, Y0, 0.345, rx=65, ry=0)
+    c.update(sp_rx=0, ch_rx=0)
+    k.keys.append((0.74, c))
+    PLANK = dict(c)
+    # right foot swings up beside the right hand
+    c = dict(c)
+    gu_hips(c, 0.0, 0.40, 0.355, rx=66, ry=0)
+    gu_foot(c, 'R', (-0.13, 0.55, 0.34), fp=-20, fr=0, fy=8, pole=(-0.8, -0.5, 0.7), z=0.34)
+    k.keys.append((0.90, c))
+    c = dict(c)
+    gu_hips(c, 0.0, 0.39, 0.365, rx=67, ry=0)
+    gu_foot(c, 'R', (-0.10, 0.09, 0.17), fp=-8, fr=0, fy=7, pole=(-0.5, -1.0, 0.5), z=0.19)
+    k.keys.append((0.96, c))
+    # crouch: right foot flat at the Idle front-foot spot
+    c = dict(c)
+    gu_hips(c, 0.0, 0.38, 0.375, rx=68, ry=0)
+    gu_foot(c, 'R', (-0.09, 0.03, 0.105), fp=-3, fr=0, fy=6, pole=(-0.15, -1.0, 0.4), z=0.105)
+    k.keys.append((1.04, c))
+    c = dict(c)
+    gu_foot(c, 'R', FR, fp=0, fr=0, fy=6, pole=(-0.15, -1.0, 0.4), z=0.085)
+    k.keys.append((1.09, c))
+    # left foot steps in
+    c = dict(c)
+    gu_hips(c, 0.0, 0.36, 0.385, rx=68, ry=0)
+    gu_foot(c, 'L', (0.11, 1.02, 0.27), fp=-30, fr=0, fy=0, pole=(0.3, -1.0, 0.6), z=0.27)
+    k.keys.append((1.17, c))
+    c = dict(c)
+    tuck(c, 'L', 0.10, 0.80, 0.15)
+    c["LAz"] += 0.07
+    gu_hips(c, 0.0, 0.345, 0.42, rx=72, ry=0)
+    k.keys.append((1.25, c))
+    c = dict(c)
+    tuck(c, 'L', 0.10, 0.80, 0.15)
+    c["LPx"], c["LPy"], c["LPz"] = 0.4, -1.0, 1.0
+    gu_hips(c, 0.0, 0.34, 0.42, rx=72, ry=0)
+    LT2 = {n: c[n] for n in ("LAx", "LAy", "LAz", "LFp", "LFr", "LFy", "LT")}
+    k.keys.append((1.32, c))
+    # hands leave the ground (onto the thighs), torso comes up
+    c = dict(c)
+    gu_hips(c, 0.0, 0.27, 0.56, rx=40, ry=0)
+    c.update(sp_rx=2, ch_rx=2, nk_rx=-6, hd_rx=-8, stab=0.4)
+    gu_hand(c, 'L', (0.19, 0.20, 0.60), (0, -1, 0), (0, 0, 1), (0.8, 0.8, 0.2), 0.25)
+    gu_hand(c, 'R', (-0.19, 0.04, 0.50), (0, -1, 0), (0, 0, 1), (-0.8, 0.8, 0.2), 0.25)
+    k.keys.append((1.44, c))
+    # rising; rear foot starts to swing
+    c = dict(c)
+    gu_hips(c, 0.0, 0.14, 0.80, rx=14, ry=0)
+    c.update(sp_rx=3, ch_rx=3, nk_rx=0, hd_rx=0, stab=0.6)
+    gu_foot(c, 'L', (0.11, 0.46, 0.24), fp=-25, fr=0, fy=3, pole=(0.05, -1.0, 0.0), z=0.24)
+    arms_idle(c)
+    k.keys.append((1.57, c))
+    c = dict(c)
+    gu_hips(c, 0.0, 0.05, 0.92, rx=5, ry=0)
+    c.update(sp_rx=2, ch_rx=2)
+    gu_foot(c, 'L', (0.10, 0.19, 0.13), fp=-6, fr=0, fy=5, pole=(0.05, -1.0, 0.0), z=0.13)
+    arms_idle(c)
+    k.keys.append((1.69, c))
+    c = dict(c)
+    gu_foot(c, 'L', (0.09, 0.03, 0.105), fp=-2, fr=0, fy=6, pole=(0.03, -1.0, 0.0), z=0.105)
+    gu_hips(c, 0.0, 0.01, 0.94, rx=3, ry=0)
+    arms_idle(c)
+    k.keys.append((1.77, c))
+    c = dict(c)
+    gu_hips(c, 0.0, 0.0, 0.945, rx=2, ry=0)
+    c.update(sp_rx=1, ch_rx=1)
+    gu_foot(c, 'L', (0.09, 0.03), fp=0, fr=0, fy=6, pole=(0.03, -1.0, 0.0), z=0.085)
+    arms_idle(c)
+    k.keys.append((1.83, c))
+    c = dict(c)
+    gu_hips(c, 0.0, -0.006, 0.962, rx=-1.5, ry=0)
+    c.update(sp_rx=-0.5, ch_rx=-1.0, hd_rx=1.0)
+    arms_idle(c)
+    k.keys.append((1.99, c))
+    k.keys.append((2.15, idle_ik()))
+    # the rear foot stays planted until 1.50 s, then lifts straight up (no toe drag)
+    ce = k.eval(1.50)
+    for n_ in LT2:
+        ce[n_] = LT2[n_]
+    ce["LPx"], ce["LPy"], ce["LPz"] = 0.4, -1.0, 1.0
+    k.keys.append((1.50, ce))
+    k.keys.sort(key=lambda kk: kk[0])
+    return k
+
+
+gu_clip("GetUpFront", getup_front_keys(), 65)
+
 # CLIPS_END
 
 
 # ============================================================================ main
 if __name__ == "__main__":
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if "--out" in argv:
+        # optional export folder (FBX + previews/); the default stays Assets/Art/Animations
+        _i = argv.index("--out")
+        OUT = os.path.abspath(argv[_i + 1])
+        PREV = os.path.join(OUT, "previews")
+        os.makedirs(PREV, exist_ok=True)
+        del argv[_i:_i + 2]
     flags = [a for a in argv if a.startswith("--")]
     names = [a for a in argv if not a.startswith("--")] or list(CLIPS)
     run(names, preview="--nopreview" not in flags, export="--noexport" not in flags)

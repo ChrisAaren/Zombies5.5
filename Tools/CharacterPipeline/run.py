@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 BLENDER = os.environ.get("BLENDER", r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe")
 
-UNITY_CLI = os.environ.get("UNITY_CLI", r"C:\Users\<user>\AppData\Local\Unity\bin\unity.exe")
+UNITY_CLI = os.environ.get("UNITY_CLI", os.path.expandvars(r"%LOCALAPPDATA%\Unity\bin\unity.exe"))
 UNITY_EDITOR = os.environ.get("UNITY_EDITOR", r"D:\Unity\6000.6.9f1\Editor\Unity.exe")
 
 

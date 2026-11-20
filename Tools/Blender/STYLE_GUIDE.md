@@ -1,12 +1,12 @@
 # Zombies 5.5: visual target and gap analysis
 
 The user supplied reference screenshots of a gritty, realistic open-world city game and asked for
-the game to reach **the same style and level of refinement**: not a copy. The references are in:
+the game to reach **the same style and level of refinement**: not a copy. The references (not included in this repo) showed:
 
-- `reference image (not included)` (street level, character walking away)
-- `reference image (not included)` (street with parked cars and a storefront awning)
-- `reference image (not included)` (tunnel, burning car, character close-up)
-- `reference image (not included)` (night character close-up)
+- street level, character walking away
+- street with parked cars and a storefront awning
+- tunnel, burning car, character close-up
+- night character close-up
 
 **Hard rule:** match the *qualities* (materials, light, density, detail, realism), never the
 content. No characters, landmarks (no famous bridges), brands, vehicle designs, logos or signage

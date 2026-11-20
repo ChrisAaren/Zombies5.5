@@ -357,10 +357,21 @@ namespace Zombies55
 
         bool PistolSet => _weapons == null || _weapons.Current == null || _weapons.Current.Handgun;
 
+        bool _suspended;
+
+        // Knocked down: the ragdoll rig owns the bones. The animation logic, IK, knee alignment and the held gun all step aside.
+        public void SetSuspended(bool value)
+        {
+            if (_suspended == value) return;
+            _suspended = value;
+            if (gunMount != null) gunMount.gameObject.SetActive(!value);
+            if (!value) { _upperWeight = 0f; _readyBlend = 0f; _aimBlend = 0f; _ikWeight = 0f; _gripBlend = 0f; }
+        }
+
         void Update()
         {
             float dt = Time.deltaTime;
-            if (dt <= 0f || _player == null) return;
+            if (dt <= 0f || _player == null || _suspended) return;
 
             // Velocity the body really has (not the intended one: running into a wall must stop the legs), in the
             // character's own frame, m/s.
@@ -435,6 +446,7 @@ namespace Zombies55
         // points at the camera's aim point, put the left hand on the foregrip, curl the fingers.
         void LateUpdate()
         {
+            if (_suspended) return;
             KneeAlign.Apply(_anim, transform);
             if (gunMount != null) gunMount.localPosition = _mountRest + new Vector3(0f, -_kick * kickMeters, 0f);
             _gripBlend = Mathf.MoveTowards(_gripBlend, _gun != null && !_dead ? 1f : 0f, Time.deltaTime * 6f);

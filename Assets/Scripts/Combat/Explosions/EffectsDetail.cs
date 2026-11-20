@@ -32,6 +32,7 @@ namespace Zombies55
         static readonly int[] LightTable = { 1, 1, 2, 3 };
         static readonly int[] BurnTable = { 1, 2, 4, 6 };
         static readonly int[] ScorchTable = { 6, 12, 24, 40 };
+        static readonly int[] RagdollTable = { 4, 8, 12, 16 };
 
         // Multiplies every emitted particle count (fireballs, smoke puffs, sparks, embers, bits).
         public static float ParticleScale => ParticleTable[s_Level];
@@ -45,6 +46,8 @@ namespace Zombies55
         public static int MaxBurningWrecks => BurnTable[s_Level];
         // Ground scorch marks kept until the round resets.
         public static int MaxScorchMarks => ScorchTable[s_Level];
+        // Cap on simultaneously active enemy ragdolls (thrown corpses and knocked-down enemies); past it an enemy dies by animation.
+        public static int MaxRagdolls => RagdollTable[s_Level];
         // Brief exposure and bloom punch on a close blast.
         public static bool ExposurePunch => s_Level >= 1;
         // Particles that bounce off the world (debris bits, embers).

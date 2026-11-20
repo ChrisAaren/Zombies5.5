@@ -310,6 +310,8 @@ namespace Zombies55.EditorTools
         // such as bullets and blasts are unaffected). The crowd stays solid through a non-carving NavMeshObstacle on the player.
         static void ConfigurePhysicsLayers()
         {
+            EnsureRagdollLayer();
+            IgnoreRagdollCollisions();
             Physics.IgnoreLayerCollision(GameLayers.Player, GameLayers.Enemy, true);
             // Pooled blast debris never collides with the player, enemies, explosive props or itself (it cannot trap or push anyone).
             Physics.IgnoreLayerCollision(GameLayers.Debris, GameLayers.Player, true);

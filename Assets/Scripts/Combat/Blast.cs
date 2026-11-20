@@ -66,6 +66,17 @@ namespace Zombies55
         // Default Force (m/s of velocity change at the centre) per kind.
         public static float DefaultForce(BlastKind kind) => kind == BlastKind.Car ? 15f : kind == BlastKind.Barrel ? 11f : 9f;
 
+        static BlastInfo s_Active;
+        static bool s_HasActive;
+
+        // The blast whose damage is being applied right now (true only inside Detonate's damage pass). A victim that dies from it
+        // uses this to ragdoll in the same frame, before it ever starts its death animation.
+        public static bool TryGetActive(out BlastInfo info)
+        {
+            info = s_Active;
+            return s_HasActive;
+        }
+
         static readonly Collider[] s_Buffer = new Collider[160];
         static readonly Dictionary<IDamageable, Collider> s_Found = new Dictionary<IDamageable, Collider>();
         static readonly List<KeyValuePair<IDamageable, Collider>> s_Work = new List<KeyValuePair<IDamageable, Collider>>();
@@ -78,7 +89,11 @@ namespace Zombies55
         {
             var info = new BlastInfo(position, radius, damage, force > 0f ? force : DefaultForce(kind), kind, fromPlayer, source);
             CombatAudio.Instance?.PlayExplosion(position, kind, radius);
-            var result = Damage(position, radius, damage, source, fromPlayer, ignore);
+            s_Active = info;
+            s_HasActive = true;
+            BlastResult result;
+            try { result = Damage(position, radius, damage, source, fromPlayer, ignore); }
+            finally { s_HasActive = false; }
             Detonated?.Invoke(info);
             return result;
         }

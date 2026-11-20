@@ -7,7 +7,7 @@ namespace Zombies55
     // A hooded chaser. NavMeshAgent steering, melee attack on a windup that matches the attack clip's contact frame,
     // pooled by RoundManager. EnemyAnimation plays the humanoid clips (it reads the agent velocity through ICharacterMover).
     [RequireComponent(typeof(NavMeshAgent))]
-    public class Enemy : MonoBehaviour, IDamageable, ICharacterMover
+    public class Enemy : MonoBehaviour, IDamageable, ICharacterMover, IBlastRagdollVictim
     {
         public const float ShambleSpeed = 1.6f;
         public const float JogSpeed = 3.2f;
@@ -42,14 +42,27 @@ namespace Zombies55
         [SerializeField] float deathSeconds = 3f;
         [SerializeField] float sinkDepth = 0.7f;
 
+        [Header("Ragdoll")]
+        [Tooltip("Extra seconds a thrown corpse lies before it sinks (the fall takes longer than the death clip).")]
+        [SerializeField] float ragdollExtraSeconds = 1.5f;
+        [Tooltip("Seconds after getting up during which another blast only pushes, never knocks down.")]
+        [SerializeField] float knockdownProtection = 1f;
+        [SerializeField] float maxThrowSpeed = 16f;
+
         [Header("Stuck")]
         [SerializeField] float stuckSeconds = 6f;
 
-        enum State { Chase, Windup, Recover, Dead }
+        enum State { Chase, Windup, Recover, Dead, Down, GetUp }
 
         public float Health { get; private set; }
         public float MaxHealth { get; private set; }
         public bool IsAlive => _state != State.Dead && Health > 0f;
+        // Ragdoll state, for tests.
+        public bool IsDown => _state == State.Down;
+        public bool IsGettingUp => _state == State.GetUp;
+        public bool IsRagdollCorpse => _ragdollCorpse;
+        public RagdollRig Rig => _rig;
+        public Vector3 BlastCenter => _rig != null && _rig.IsBusy && _rig.Hips != null ? _rig.Hips.position : transform.position + Vector3.up * 0.95f;
         public int Round => _round;
 
         // ICharacterMover
@@ -65,6 +78,9 @@ namespace Zombies55
         float _lungeTotal, _lungeDone;
         Collider[] _colliders;
         EnemyAnimation _anim;
+        RagdollRig _rig;
+        float _protectedUntil;
+        bool _ragdollCorpse, _corpseFrozen;
         RoundManager _owner;
 
         State _state;
@@ -114,6 +130,7 @@ namespace Zombies55
             _agent.updateRotation = false;
             _colliders = GetComponentsInChildren<Collider>(true);
             _anim = GetComponentInChildren<EnemyAnimation>(true);
+            _rig = GetComponentInChildren<RagdollRig>(true);
             _baseScale = transform.localScale;
         }
 
@@ -137,9 +154,15 @@ namespace Zombies55
 
         static Transform PlayerTransform => PlayerHealth.Instance != null ? PlayerHealth.Instance.transform : null;
 
+        void OnDisable() => RagdollPool.Unregister(this);
+
         void OnEnable()
         {
             if (_agent == null) return;
+            RagdollPool.Register(this);
+            _protectedUntil = 0f;
+            _ragdollCorpse = false;
+            _corpseFrozen = false;
             MaxHealth = HealthForRound(_round);
             Health = MaxHealth;
             _state = State.Chase;
@@ -172,6 +195,8 @@ namespace Zombies55
             float dt = Time.deltaTime;
             if (_state == State.Dead) { UpdateDeath(dt); return; }
             if (dt <= 0f) return;
+            if (_state == State.Down) { if (_rig != null && _rig.Settled) StartGetUp(); return; }
+            if (_state == State.GetUp) { if (_rig == null || !_rig.IsBusy) EndGetUp(); return; }
 
             var loop = GameLoop.Instance;
             if (loop != null && loop.State == RunState.Lost)
@@ -371,13 +396,91 @@ namespace Zombies55
             if (lethal) Die(info);
         }
 
+        // ------------------------------------------------------------------ ragdoll
+
+        RagdollLaunch LaunchFor(in BlastInfo b, Vector3 velocity)
+        {
+            Vector3 hips = _rig.Hips != null ? _rig.Hips.position : transform.position + Vector3.up;
+            return new RagdollLaunch
+            {
+                BaseVelocity = velocity,
+                HasBlast = true,
+                Blast = b,
+                BlastScale = 1f,
+                MaxBlastSpeed = maxThrowSpeed,
+                Spin = 2f + 4f * b.Falloff(hips),
+            };
+        }
+
+        // A blast reached this enemy and it survived: knocked down, then back up. Over the ragdoll limit it just takes the knockback.
+        public void OnBlast(in BlastInfo info)
+        {
+            if (_state == State.Dead || _rig == null) return;
+            if (_state == State.Down) { _rig.Impulse(LaunchFor(info, Vector3.zero)); return; }
+            if (Time.time < _protectedUntil) return;
+            Vector3 v = _agent != null && _agent.enabled ? _agent.velocity : Vector3.zero;
+            if (!_rig.Begin(LaunchFor(info, v))) return;
+            _state = State.Down;
+            _knock = Vector3.zero;
+            if (_agent.enabled) { if (_agent.isOnNavMesh) { _agent.isStopped = true; _agent.velocity = Vector3.zero; } _agent.enabled = false; }
+            if (_anim != null) _anim.SetSuspended(true);
+        }
+
+        void StartGetUp()
+        {
+            _rig.ComputeGetUp(out Vector3 hipsGround, out Quaternion facing, out bool onBack);
+            Vector3 pos = _rig.RootForGetUp(hipsGround, facing);
+            // The agent stands on the valid NavMesh position nearest the hips.
+            bool found = false;
+            if (NavMesh.SamplePosition(pos, out var hit, 2.5f, NavMesh.AllAreas) || NavMesh.SamplePosition(hipsGround, out hit, 8f, NavMesh.AllAreas)
+                || NavMesh.SamplePosition(hipsGround, out hit, 30f, NavMesh.AllAreas))
+            {
+                pos = hit.position;
+                found = true;
+            }
+            // Thrown somewhere with no NavMesh near (a roof, outside the district): stand up at a spawn point instead.
+            if (!found && _owner != null && _owner.TryGetSpawnPoint(out var sp)) pos = sp;
+            _rig.BeginGetUp(pos, facing, onBack);
+            _agent.enabled = true;
+            if (_agent.isOnNavMesh) { _agent.Warp(pos); _agent.isStopped = true; _agent.velocity = Vector3.zero; }
+            _state = State.GetUp;
+        }
+
+        void EndGetUp()
+        {
+            _state = State.Chase;
+            if (_anim != null) _anim.SetSuspended(false);
+            if (_agent.enabled && _agent.isOnNavMesh) _agent.isStopped = false;
+            _repathTimer = 0f;
+            _cooldown = Mathf.Max(_cooldown, 0.5f);
+            _stuckAnchor = transform.position;
+            _stuckTimer = 0f;
+            _protectedUntil = Time.time + knockdownProtection;
+        }
+
         void Die(DamageInfo info)
         {
             Health = 0f;
+            bool wasDown = _state == State.Down;
+            bool wasGettingUp = _state == State.GetUp;
+            Vector3 runVelocity = _agent.enabled ? _agent.velocity : Vector3.zero;
             _state = State.Dead;
             foreach (var c in _colliders) c.enabled = false;
             if (_agent.enabled) _agent.enabled = false;
-            if (_anim != null) _anim.PlayDeath();
+
+            // A blast kill is thrown as a ragdoll in the same frame, before the death clip ever starts. A knocked-down enemy that
+            // dies stays as the ragdoll it is. Over the limit, or for any other death, the death animation plays as always.
+            _ragdollCorpse = false;
+            _corpseFrozen = false;
+            if (_rig != null)
+            {
+                if (wasGettingUp) _rig.Abort();
+                if (wasDown && _rig.IsRagdoll) _ragdollCorpse = true;
+                else if (info.Kind == DamageKind.Explosion && Blast.TryGetActive(out var blast))
+                    _ragdollCorpse = _rig.Begin(LaunchFor(blast, runVelocity));
+            }
+            if (_ragdollCorpse) { if (_anim != null) _anim.SetSuspended(true); }
+            else if (_anim != null) _anim.PlayDeath();
 
             _deathTimer = 0f;
             _deathPos = transform.position;
@@ -391,6 +494,21 @@ namespace Zombies55
         void UpdateDeath(float dt)
         {
             _deathTimer += dt;
+            if (_ragdollCorpse && _rig != null)
+            {
+                // The body is where the physics left it: lie still, then sink away by lowering the skeleton (the root stays put).
+                float lie = fallSeconds + 0.3f + ragdollExtraSeconds;
+                float total = deathSeconds + ragdollExtraSeconds;
+                if (_deathTimer >= lie && !_corpseFrozen) { _corpseFrozen = true; _rig.Freeze(); }
+                float k = Mathf.Clamp01((_deathTimer - lie) / Mathf.Max(0.01f, total - lie));
+                _rig.SinkOffset = sinkDepth * k * k;
+                if (_deathTimer >= total)
+                {
+                    gameObject.SetActive(false);
+                    if (_owner != null) _owner.Release(this);
+                }
+                return;
+            }
             // The EnemyDeath clip does the fall; the body lies there, then sinks away over the rest of the time.
             float sinkStart = fallSeconds + 0.3f;
             float s = Mathf.Clamp01((_deathTimer - sinkStart) / Mathf.Max(0.01f, deathSeconds - sinkStart));

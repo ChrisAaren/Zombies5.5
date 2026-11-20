@@ -37,6 +37,7 @@ namespace Zombies55
         {
             if (_anim == null) return;
             _dead = false;
+            _suspended = false;
             _lookWeight = 0f;
             _nextHit = 0f;
             _anim.Rebind();
@@ -49,13 +50,22 @@ namespace Zombies55
 
         void Update()
         {
-            if (_mover == null || _dead) return;
+            if (_mover == null || _dead || _suspended) return;
             Vector3 v = _mover.Velocity;
             v.y = 0f;
             _anim.SetFloat(Speed, v.magnitude, 0.1f, Time.deltaTime);
         }
 
         // Called at the start of the attack windup; the clip's contact frame (0.45 s) matches the damage time.
+        bool _suspended;
+
+        // Knocked down or ragdolled: the rig owns the bones, so no speed blend, knee alignment or head turn.
+        public void SetSuspended(bool value)
+        {
+            _suspended = value;
+            if (!value && _anim != null && _anim.enabled) { _lookWeight = 0f; _anim.SetFloat(Speed, 0f); }
+        }
+
         public void PlayAttack() => _anim.SetTrigger(Attack);
 
         public void PlayHit()
@@ -78,7 +88,7 @@ namespace Zombies55
         // After the animation and the foot IK: knees over the feet (only while the body is on screen; culled bodies are not posed).
         void LateUpdate()
         {
-            if (_dead || _anim == null) return;
+            if (_dead || _suspended || _anim == null) return;
             if (_body == null) _body = GetComponentInChildren<SkinnedMeshRenderer>();
             if (_body != null && !_body.isVisible) return;
             KneeAlign.Apply(_anim, transform);
@@ -87,7 +97,7 @@ namespace Zombies55
         void OnAnimatorIK(int layerIndex)
         {
             var player = PlayerHealth.Instance;
-            bool want = !_dead && player != null && player.IsAlive
+            bool want = !_dead && !_suspended && player != null && player.IsAlive
                 && (player.transform.position - transform.position).sqrMagnitude < lookRange * lookRange;
             _lookWeight = Mathf.MoveTowards(_lookWeight, want ? 1f : 0f, Time.deltaTime * 3f);
             if (_lookWeight <= 0.001f) { _anim.SetLookAtWeight(0f); return; }

@@ -208,6 +208,9 @@ namespace Zombies55.EditorTools
             var fall = AddClipState(sm, "Fall", "Fall", new Vector3(560f, 100f));
             var land = AddClipState(sm, "Land", "Land", new Vector3(560f, 200f));
             var death = AddClipState(sm, "Death", "Death", new Vector3(300f, 260f));
+            // Get-up clips after a ragdoll: entered by RagdollRig (Play), left by a crossfade to Locomotion; no transitions.
+            AddClipState(sm, "GetUpBack", "GetUpBack", new Vector3(300f, 340f));
+            AddClipState(sm, "GetUpFront", "GetUpFront", new Vector3(300f, 420f));
 
             var t = Link(loco, jump, 0.05f); t.AddCondition(AnimatorConditionMode.If, 0f, "Jump");
             t = Link(loco, fall, 0.15f); t.AddCondition(AnimatorConditionMode.If, 0f, "Airborne");
@@ -358,6 +361,8 @@ namespace Zombies55.EditorTools
 
             var attack = AddClipState(sm, "Attack", "EnemyAttack", new Vector3(560f, 100f));
             var death = AddClipState(sm, "Death", "EnemyDeath", new Vector3(300f, 260f));
+            AddClipState(sm, "GetUpBack", "GetUpBack", new Vector3(300f, 340f));
+            AddClipState(sm, "GetUpFront", "GetUpFront", new Vector3(300f, 420f));
 
             // The attack clip's contact frame (0.45 s) lines up with Enemy's windup time; the state ends with the recovery.
             var t = Link(loco, attack, 0.08f); t.AddCondition(AnimatorConditionMode.If, 0f, "Attack");

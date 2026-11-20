@@ -94,6 +94,7 @@ namespace Zombies55.EditorTools
 
             var character = BuildHollow(go.transform);
             character.AddComponent<EnemyAnimation>();
+            AddRagdollRig(character, RagdollArchetypeHollow, true, false, go.transform);
 
             // Hitboxes ride the animated bones, so a headshot lands on the head wherever the clip puts it. Shapes are
             // sized in the rest pose (upright, template at the origin), then parented to their bone.
@@ -201,7 +202,7 @@ namespace Zombies55.EditorTools
             surface.agentTypeID = 0;
             surface.collectObjects = CollectObjects.All;
             surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
-            int excluded = (1 << GameLayers.IgnoreRaycast) | (1 << GameLayers.Enemy) | (1 << GameLayers.Explosive) | (1 << GameLayers.Player) | (1 << GameLayers.Barrier);
+            int excluded = (1 << GameLayers.IgnoreRaycast) | (1 << GameLayers.Enemy) | (1 << GameLayers.Explosive) | (1 << GameLayers.Player) | (1 << GameLayers.Barrier) | (1 << GameLayers.Ragdoll);
             surface.layerMask = ~excluded;
             surface.defaultArea = 0;
             surface.ignoreNavMeshAgent = true;

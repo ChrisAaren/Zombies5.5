@@ -98,6 +98,7 @@ namespace Zombies55.EditorTools
             BuildZones();
             BuildEnemies();
             BuildPickups();
+            BuildRagdolls();
 
             MergeSkyline();
             MarkStatic(_city);
@@ -794,6 +795,8 @@ namespace Zombies55.EditorTools
             var character = BuildCourier(root.transform);
             _playerCharacter = character.transform;
             character.AddComponent<PlayerAnimation>();
+            AddRagdollRig(character, RagdollArchetypeCourier, false, true, root.transform);
+            root.AddComponent<PlayerRagdoll>();
         }
 
         static Transform _playerCharacter;

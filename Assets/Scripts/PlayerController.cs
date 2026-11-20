@@ -78,7 +78,7 @@ namespace Zombies55
             if (visual != null) _visualRest = visual.localPosition;
         }
 
-        const int SnapMask = ~((1 << GameLayers.Player) | (1 << GameLayers.Enemy) | (1 << GameLayers.IgnoreRaycast));
+        const int SnapMask = ~((1 << GameLayers.Player) | (1 << GameLayers.Enemy) | (1 << GameLayers.IgnoreRaycast) | (1 << GameLayers.Ragdoll));
 
         // After a Move that lost the ground (walking off a curb or over a seam), look for ground within the step offset
         // below the feet and drop onto it. Returns the distance dropped, or -1 when there is no walkable ground.
@@ -98,6 +98,8 @@ namespace Zombies55
         {
             float dt = Time.deltaTime;
             if (dt <= 0f) return;
+            // Knocked down by a blast: the ragdoll owns the body (the controller is switched off, so no Move).
+            if (PlayerRagdoll.IsDown) return;
 
             bool canAct = GameLoop.Instance == null || GameLoop.Instance.State == RunState.Running;
             Vector2 move = canAct ? ReadMove() : Vector2.zero;
@@ -182,6 +184,20 @@ namespace Zombies55
             _wasGrounded = IsGrounded;
 
             SmoothVisual(yBefore, jumpedThisFrame, dt);
+        }
+
+        // After a knockdown: no leftover run speed or fall speed.
+        public void ResetMotion()
+        {
+            _planarVelocity = Vector3.zero;
+            _verticalVelocity = -2f;
+            _yawVelocity = 0f;
+            IsGrounded = true;
+            _wasGrounded = true;
+            _airTime = 0f;
+            GroundVelocity = Vector3.zero;
+            PlanarAcceleration = Vector3.zero;
+            if (visual != null) { visual.localPosition = _visualRest; _visualOffset = 0f; _visualOffsetVel = 0f; }
         }
 
         // Keep the capsule exact but let the model glide over steps: the height jump of a grounded frame is absorbed

@@ -40,6 +40,8 @@ namespace Zombies55
             public string experiments;
             public bool explosions;          // -benchmarkExplosions: a car or barrel blown up near the player's path every 5 s
             public int explosionsFired;
+            public int ragdollsStarted, ragdollsRefused, ragdollPeakActive, playerKnockdowns;   // enemy and player ragdolls during the measured window
+            public float ragdollStartMsMax;
             public string note;
         }
 
@@ -110,6 +112,7 @@ namespace Zombies55
 
             float t0 = Time.unscaledTime;
             while (Time.unscaledTime - t0 < WarmupSeconds) { Drive(); yield return null; }
+            RagdollPool.Instance?.ResetStats();
 
             var ft = new List<float>(1 << 16);
             var main = new List<float>(1 << 16);
@@ -233,6 +236,9 @@ namespace Zombies55
             };
             Fill(r, ft);
             r.explosions = _explosions; r.explosionsFired = _boomsFired;
+            var rp = RagdollPool.Instance;
+            if (rp != null) { r.ragdollsStarted = rp.Granted; r.ragdollsRefused = rp.Refused; r.ragdollPeakActive = rp.PeakActive; r.ragdollStartMsMax = rp.MaxAcquireMs; }
+            if (PlayerRagdoll.Instance != null) r.playerKnockdowns = PlayerRagdoll.Instance.Knockdowns;
             foreach (var a in Environment.GetCommandLineArgs()) if (a.StartsWith("-bn=", StringComparison.OrdinalIgnoreCase)) r.experiments = a;
             r.trail = trail.ToArray();
             r.perSecondStats = perSecondStats.ToArray();

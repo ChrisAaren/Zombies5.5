@@ -155,7 +155,7 @@ namespace Zombies55
         void Update()
         {
             float dt = Time.deltaTime;
-            bool active = GameLoop.Instance == null || GameLoop.Instance.State == RunState.Running;
+            bool active = (GameLoop.Instance == null || GameLoop.Instance.State == RunState.Running) && !PlayerRagdoll.IsDown;
             var def = Current;
             var mouse = Mouse.current;
             var pad = Gamepad.current;

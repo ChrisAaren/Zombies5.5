@@ -174,6 +174,10 @@ def new_ch(**kw):
 
 
 # ============================================================================ solver
+# Lateral share of the knee pole: the knee heads over the foot (a few degrees of toe-out), not outward.
+KNEE_POLE_OUT = 0.03
+
+
 def two_bone(H, A, L1, L2, pole):
     d = A - H
     dist = d.length
@@ -279,7 +283,7 @@ def solve(c, cfg):
         if cfg.get("legs", "ik") == "ik":
             H = P[UL]
             A = Vector((c[sd + "Ax"], c[sd + "Ay"], c[sd + "Az"]))
-            pole = Vector((s * 0.14, -1.0, 0.0))
+            pole = Vector((s * KNEE_POLE_OUT, -1.0, 0.0))
             K, Ae, n = two_bone(H, A, LEN[UL], LEN[LL], pole)
             D[UL] = frame_rot(REST_DIR[UL], apex_rest, K - H, n)
             put(LL, frame_rot(REST_DIR[LL], apex_rest, Ae - K, n))
@@ -1139,7 +1143,7 @@ def set_leg(c, sd, ank, pitch=0.0, toe=0.0, yaw=None):
     c[sd + "Fy"] = 6.0 * 1 if yaw is None else yaw
 
 
-def stand_feet(c, xl=0.105, yl=0.03, xr=0.105, yr=0.03, yawl=6.0, yawr=6.0):
+def stand_feet(c, xl=0.09, yl=0.03, xr=0.09, yr=0.03, yawl=6.0, yawr=6.0):
     set_leg(c, 'L', (xl, yl, 0.085), yaw=yawl)
     set_leg(c, 'R', (-xr, yr, 0.085), yaw=yawr)
 
@@ -1150,24 +1154,24 @@ def lerp_ch(a, b, t):
 
 # ---------------------------------------------------------------- locomotion
 JOG = tuned(T=20, speed=3.6, beta=0.34, strike=8, u1=0.04, u2=0.17, push=34, clear=0.14, peak=0.5, swing_pitch=-8,
-           width=0.075, arc=0.0, cy=0.05, toeout=3, bobA=0.034, sway=0.02, yaw=9, tilt=2, lean=9, cr=0.9,
-           swing_f=38, swing_b=42, elbow0=88, elbow1=12, ab0=9, xab=7, curl=0.7, thumb=0.5, wrist=0,
+           width=0.06, arc=0.0, cy=0.05, toeout=3, bobA=0.034, sway=0.02, yaw=9, tilt=2, lean=9, cr=0.9,
+           swing_f=24, swing_b=26, elbow0=88, elbow1=12, ab0=9, xab=7, curl=0.7, thumb=0.5, wrist=0,
            reach=0.985, stab=0.75, look=4, toe_swing=-12, armlag=0.02)
 WALKB = tuned(T=30, speed=1.4, dir=(0, 1), back=True, beta=0.64, strike=14, u1=0.08, u2=0.42, push=14, clear=0.08,
-             peak=0.5, swing_pitch=-4, width=0.10, arc=0.01, cy=0.02, bobA=0.03, sway=0.03, yaw=4, yaw_sign=-1, tilt=3,
+             peak=0.5, swing_pitch=-4, width=0.07, arc=0.01, cy=0.02, bobA=0.03, sway=0.03, yaw=4, yaw_sign=-1, tilt=3,
              lean=-1, swing_f=12, swing_b=10, elbow0=20, elbow1=5, reach=0.995, stab=0.8, look=-1, toe_swing=-10)
 
 
 def strafe(dirx):
     return tuned(T=18, speed=1.6, dir=(dirx, 0), beta=0.58, strike=0, u1=0.05, u2=0.42, push=14, clear=0.07, peak=0.5,
-                swing_pitch=0, width=0.105, arc=0.0, cross=0.16, cy=0.04, toeout=4, bobA=0.022, sway=0.025, yaw=2.5,
+                swing_pitch=0, width=0.08, arc=0.0, cross=0.16, cy=0.04, toeout=4, bobA=0.022, sway=0.025, yaw=2.5,
                 tilt=3, lean=3, swing_f=8, swing_b=8, elbow0=30, elbow1=4, ab0=9, xab=2, reach=0.99, stab=0.8,
                 look=1, toe_swing=-4)
 
 
 loco_clip("Walk", tuned(T=27, speed=1.6, beta=0.62, strike=16, u1=0.08, u2=0.40, push=26, clear=0.10, peak=0.45,
-                       swing_pitch=3, width=0.10, bobA=0.025, sway=0.03, yaw=4, tilt=4, lean=3, swing_f=18,
-                       swing_b=24, elbow0=24, elbow1=9, reach=0.998, stab=0.8, look=2))
+                       swing_pitch=3, width=0.07, bobA=0.025, sway=0.03, yaw=4, tilt=4, lean=3, swing_f=11,
+                       swing_b=14, elbow0=24, elbow1=9, reach=0.998, stab=0.8, look=2))
 loco_clip("Jog", JOG)
 loco_clip("WalkBack", WALKB)
 loco_clip("StrafeLeft", strafe(1))
@@ -1176,18 +1180,18 @@ loco_clip("StrafeRight", strafe(-1))
 
 # ---------------------------------------------------------------- contract v2 locomotion
 RUN = tuned(T=19, speed=5.0, beta=0.32, strike=8, u1=0.04, u2=0.16, push=40, clear=0.11, peak=0.5, swing_pitch=-8,
-           width=0.075, arc=0.0, cy=0.08, toeout=3, bobA=0.018, sway=0.02, yaw=8, tilt=2, lean=11, cr=0.9,
-           swing_f=42, swing_b=46, elbow0=88, elbow1=12, ab0=9, xab=7, curl=0.7, thumb=0.5, wrist=0,
+           width=0.055, arc=0.0, cy=0.08, toeout=3, bobA=0.018, sway=0.02, yaw=8, tilt=2, lean=11, cr=0.9,
+           swing_f=26, swing_b=28, elbow0=88, elbow1=12, ab0=9, xab=7, curl=0.7, thumb=0.5, wrist=0,
            reach=1.0, stab=0.8, look=5, toe_swing=-12, armlag=0.02)
 SPRINT = tuned(T=14, speed=8.5, beta=0.22, strike=12, push=45, clear=0.28, peak=0.55, swing_pitch=-18, fore=True,
-              width=0.06, arc=0.0, cy=0.20, toeout=2, bobA=0.04, sway=0.015, yaw=12, tilt=1.5, lean=16, cr=1.0,
-              swing_f=55, swing_b=60, elbow0=90, elbow1=10, ab0=6, xab=6, curl=0.85, thumb=0.6, wrist=0,
+              width=0.04, arc=0.0, cy=0.20, toeout=2, bobA=0.04, sway=0.015, yaw=12, tilt=1.5, lean=16, cr=1.0,
+              swing_f=38, swing_b=42, elbow0=90, elbow1=10, ab0=6, xab=6, curl=0.85, thumb=0.6, wrist=0,
               reach=1.0, stab=0.8, look=10, toe_swing=-20, armlag=0.02, neck=-4)
 loco_clip("Run", RUN)
 loco_clip("Sprint", SPRINT)
 
 AIM = dict(speed=2.0, beta=0.58, strike=14, u1=0.08, u2=0.42, push=30, clear=0.065, peak=0.5, swing_pitch=-2,
-           width=0.10, arc=0.01, cy=0.08, toeout=5, bobA=0.012, bob_peak=0.32, sway=0.02, yaw=3, tilt=2.5, lean=4,
+           width=0.065, arc=0.01, cy=0.08, toeout=5, bobA=0.012, bob_peak=0.32, sway=0.02, yaw=3, tilt=2.5, lean=4,
            cr=0.8, swing_f=6, swing_b=6, elbow0=55, elbow1=4, ab0=9, xab=2, curl=0.7, thumb=0.5, wrist=0, reach=0.995,
            drop=0.0, stab=0.95, look=0, toe_swing=-6)
 
@@ -1199,7 +1203,7 @@ def aim_loco(T=22, **kw):
 
 def diag(dx, dy, twist):
     back = dy > 0
-    lo = aim_loco(T=22, dir=(dx, dy), extra_yaw=twist, cross=0.10, yaw_sign=(-1.0 if back else 1.0),
+    lo = aim_loco(T=22, dir=(dx, dy), extra_yaw=twist, cross=0.10, width=0.08, yaw_sign=(-1.0 if back else 1.0),
                   lean=(2 if back else 4), back=back, strike=(12 if back else 14), push=(28 if back else 30),
                   cy=(-0.02 if back else 0.08), swing_pitch=(-4 if back else -2), post=lambda S, c, p, tw=twist: c.update(
                       sp_rz=c["sp_rz"] - 0.35 * tw, ch_rz=c["ch_rz"] - 0.5 * tw))
@@ -1212,7 +1216,7 @@ loco_clip("AimWalkBack", aim_loco(22, dir=(0, 1), back=True, yaw_sign=-1.0, lean
                                    u2=0.42, toe_swing=-10, look=-1))
 for _nm, _dir in (("AimStrafeLeft", 1), ("AimStrafeRight", -1)):
     loco_clip(_nm, aim_loco(22, dir=(_dir, 0), beta=0.54, cy=0.04, strike=0, u1=0.05, u2=0.42, push=12, cross=0.24, swing_pitch=0,
-                            yaw=2.5, lean=3, width=0.105, toe_swing=-4))
+                            yaw=2.5, lean=3, width=0.065, toe_swing=-4))
 loco_clip("AimWalkFL", diag(_h, -_h, 18))
 loco_clip("AimWalkFR", diag(-_h, -_h, -18))
 loco_clip("AimWalkBL", diag(_h, _h, -18))
@@ -1244,7 +1248,7 @@ def idle_pose(f, N=120):
         c[sd + "ae"] = 13 + 1.2 * math.sin(TAU * p + 1.4)
         c[sd + "w2"] = 3 * math.sin(TAU * p + 2.0)
         c[sd + "c"] = 0.30 + 0.03 * math.sin(TAU * p + 1.0 + s)
-    stand_feet(c, 0.105, 0.03, 0.105, 0.03)
+    stand_feet(c, 0.09, 0.03, 0.09, 0.03)
     return c
 
 
@@ -1267,7 +1271,7 @@ def jump_keys():
               Laf=70, Raf=70, Laa=18, Raa=18, Lae=18, Rae=18)
     for sd in "LR":
         s_ = SIDE[sd][1]
-        a = ball_ank(0.105 * s_, -0.10, -42)
+        a = ball_ank(0.09 * s_, -0.10, -42)
         ex[sd + "Ax"], ex[sd + "Ay"], ex[sd + "Az"] = a
         ex[sd + "Fp"] = -42; ex[sd + "T"] = 36
     k.keys.append((0.07, ex))
@@ -1798,16 +1802,16 @@ def enemy_loco(**kw):
 
 
 SHAMBLE = enemy_loco(T=34, speed=1.6, betaL=0.63, betaR=0.55, offR=0.465, strike=8, u1=0.07, u2=0.45, push=12,
-                     clear=0.07, clearL=0.07, clearR=0.07, swing_pitchL=-12, toe_swingL=-4, peak=0.5, swing_pitch=-4, width=0.11, arc=0.02, cy=0.05, toeout=12, bobA=0.028,
+                     clear=0.07, clearL=0.07, clearR=0.07, swing_pitchL=-12, toe_swingL=-4, peak=0.5, swing_pitch=-4, width=0.065, arc=0.02, cy=0.05, toeout=12, bobA=0.028,
                      sway=0.05, yaw=7, tilt=5, lean=14, cr=0.3, swing_f=52, swing_b=-18, elbow0=62, elbow1=7,
                      ab0=15, xab=1, curl=0.5, thumb=0.1, wrist=12, stab=0.15, neck=20, head=6, reach=0.99,
                      toe_swing=-10, beta=0.6)
 ENJOG = enemy_loco(T=20, speed=3.2, beta=0.36, strike=6, u1=0.04, u2=0.17, push=32, clear=0.14, peak=0.5,
-                   swing_pitch=-6, width=0.08, cy=0.07, toeout=6, bobA=0.034, sway=0.03, yaw=10, tilt=3, lean=16, cr=0.5,
+                   swing_pitch=-6, width=0.06, cy=0.07, toeout=6, bobA=0.034, sway=0.03, yaw=10, tilt=3, lean=16, cr=0.5,
                    swing_f=45, swing_b=-5, elbow0=70, elbow1=14, ab0=14, xab=5, curl=0.5, thumb=0.1, wrist=10,
                    stab=0.2, neck=18, head=6, reach=0.985, toe_swing=-10)
 ENSPRINT = enemy_loco(T=17, speed=5.0, beta=0.27, strike=4, u1=0.03, u2=0.12, push=40, clear=0.2, peak=0.5,
-                      swing_pitch=-10, width=0.07, cy=0.12, toeout=5, bobA=0.04, sway=0.03, yaw=12, tilt=3, lean=26, cr=0.4,
+                      swing_pitch=-10, width=0.05, cy=0.12, toeout=5, bobA=0.04, sway=0.03, yaw=12, tilt=3, lean=26, cr=0.4,
                       swing_f=68, swing_b=12, elbow0=50, elbow1=12, ab0=18, xab=6, curl=0.5, thumb=0.1, wrist=10,
                       stab=0.2, neck=20, head=8, reach=1.0, toe_swing=-14)
 for nm, lo in (("Shamble", SHAMBLE), ("EnemyJog", ENJOG), ("EnemySprint", ENSPRINT)):

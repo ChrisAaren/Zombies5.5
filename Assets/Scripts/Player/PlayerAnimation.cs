@@ -64,6 +64,10 @@ namespace Zombies55
         [SerializeField] Vector3 supportCurl = new Vector3(62f, 80f, 55f);
         [SerializeField] Vector3 supportThumb = new Vector3(40f, 40f, 40f);
         [SerializeField] Vector3 thumbAxis = new Vector3(0f, 0f, -1f);
+        [Tooltip("Elbow pole of the support arm in the gun's space (X right, Y up, Z forward, origin at the grip): below and outboard" +
+                 " of the handguard, so the forearm comes up to it from underneath and never crosses the receiver or magazine.")]
+        [SerializeField] Vector3 supportElbowLong = new Vector3(-0.50f, -0.20f, 0f);
+        [SerializeField] Vector3 supportElbowPistol = new Vector3(-0.30f, -0.30f, -0.05f);
         [Header("Shouldering")]
         [Tooltip("Shoulder pocket, from the shoulder joint: metres forward, inward (towards the neck) and down.")]
         [SerializeField] Vector3 pocket = new Vector3(0.10f, 0.06f, 0.0f);
@@ -73,6 +77,8 @@ namespace Zombies55
         [SerializeField] float clavicleReach = 10f;
         [Tooltip("Muzzle pitch below the horizon, degrees, when a long gun is carried at low ready.")]
         [SerializeField] float lowReadyPitch = 40f;
+        [Tooltip("Degrees the aimed long gun is canted towards the cheek (top of the gun towards the left).")]
+        [SerializeField] float aimCant = 8f;
 
         Animator _anim;
         PlayerController _player;
@@ -418,6 +424,7 @@ namespace Zombies55
         // points at the camera's aim point, put the left hand on the foregrip, curl the fingers.
         void LateUpdate()
         {
+            KneeAlign.Apply(_anim, transform);
             if (gunMount != null) gunMount.localPosition = _mountRest + new Vector3(0f, -_kick * kickMeters, 0f);
             _gripBlend = Mathf.MoveTowards(_gripBlend, _gun != null && !_dead ? 1f : 0f, Time.deltaTime * 6f);
             ApplyLanding();
@@ -453,7 +460,7 @@ namespace Zombies55
                     // Low ready: muzzle down in front of the chest; blends into the real aim point as the aim comes up.
                     Vector3 lowDir = Quaternion.AngleAxis(lowReadyPitch, _root.right) * _root.forward;
                     Vector3 low = _muzzle.position + lowDir * 10f;
-                    ShoulderGun(w, aim ? Vector3.Lerp(low, aimPoint, _aimBlend) : low, _chest.TransformPoint(_pocketLocal), _stock.position);
+                    ShoulderGun(w, aim ? Vector3.Lerp(low, aimPoint, _aimBlend) : low, _chest.TransformPoint(_pocketLocal), _stock.position, true);
                 }
             }
             else if (_readyBlend > 0.001f && _gun != null && _muzzle != null && !_dead)
@@ -535,7 +542,7 @@ namespace Zombies55
         }
 
         // The gun's anchor (butt of a long gun, grip of a pistol) goes to pocketWorld and the gun turns about it to the aim point.
-        void ShoulderGun(float weight, Vector3 aimPoint, Vector3 pocketWorld, Vector3 anchorWorld)
+        void ShoulderGun(float weight, Vector3 aimPoint, Vector3 pocketWorld, Vector3 anchorWorld, bool level = false)
         {
             Transform g = _gun.transform;
             Quaternion rot = g.rotation;
@@ -549,6 +556,16 @@ namespace Zombies55
                 Vector3 want = aimPoint - muzzleWorld;
                 if (want.sqrMagnitude < 0.04f) break;
                 rot = Quaternion.FromToRotation(rot * muzzleFwdLocal, want.normalized) * rot;
+            }
+            if (level)
+            {
+                // Roll the gun about its barrel until its top is the torso's up (the clips' wrist roll can leave a rifle on its side
+                // at low ready), with the aimed rifle canted a few degrees towards the cheek.
+                Vector3 bore = rot * muzzleFwdLocal;
+                Vector3 gunUp = Vector3.ProjectOnPlane(rot * Vector3.up, bore);
+                Vector3 refUp = Vector3.ProjectOnPlane(_root.up, bore);
+                if (gunUp.sqrMagnitude > 1e-4f && refUp.sqrMagnitude > 1e-4f)
+                    rot = Quaternion.AngleAxis(Vector3.SignedAngle(gunUp, refUp, bore) + aimCant * _aimBlend, bore) * rot;
             }
             Vector3 gunPos = pocketWorld - rot * stockLocal;
             Quaternion rel = Quaternion.Inverse(_rHand.rotation) * g.rotation;
@@ -604,14 +621,15 @@ namespace Zombies55
             var upperRot = _lUpper.localRotation;
             var lowerRot = _lLower.localRotation;
             var handRot = _lHand.localRotation;
-            SolveTwoBone(_lUpper, _lLower, _lHand, wristGoal, _lLower.position);
+            Vector3 pole = _gun != null ? _gun.transform.TransformPoint(_stock != null ? supportElbowLong : supportElbowPistol) : _lLower.position;
+            SolveTwoBone(_lUpper, _lLower, _lHand, wristGoal, pole);
             _lHand.rotation = handGoal;
             _lUpper.localRotation = Quaternion.Slerp(upperRot, _lUpper.localRotation, weight);
             _lLower.localRotation = Quaternion.Slerp(lowerRot, _lLower.localRotation, weight);
             _lHand.localRotation = Quaternion.Slerp(handRot, _lHand.localRotation, weight);
         }
 
-        static void SolveTwoBone(Transform upper, Transform lower, Transform end, Vector3 target, Vector3 pole)
+        public static void SolveTwoBone(Transform upper, Transform lower, Transform end, Vector3 target, Vector3 pole)
         {
             Vector3 a = upper.position, b = lower.position, c = end.position;
             float l1 = (b - a).magnitude, l2 = (c - b).magnitude;

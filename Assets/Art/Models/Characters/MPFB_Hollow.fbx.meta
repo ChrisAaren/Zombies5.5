@@ -813,7 +813,7 @@ ModelImporter:
     - name: mixamorig:LeftUpLeg
       parentName: mixamorig:Hips
       position: {x: -0.11394204, y: -0.0064589246, z: -0.013656033}
-      rotation: {x: 0.96400344, y: -0.07710486, z: 0.22410871, w: -0.120530166}
+      rotation: {x: 0.9629299, y: -0.036560554, z: 0.23320866, w: -0.1305494}
       scale: {x: 0.99999976, y: 0.9999999, z: 0.9999987}
     - name: mixamorig:LeftButtock
       parentName: mixamorig:LeftUpLeg
@@ -838,7 +838,7 @@ ModelImporter:
     - name: mixamorig:RightUpLeg
       parentName: mixamorig:Hips
       position: {x: 0.11394204, y: -0.0064589246, z: -0.013656033}
-      rotation: {x: 0.96400344, y: 0.07710486, z: -0.22410871, w: -0.120530166}
+      rotation: {x: 0.9629299, y: 0.036560554, z: -0.23320866, w: -0.1305494}
       scale: {x: 0.99999976, y: 0.9999999, z: 0.9999987}
     - name: mixamorig:RightButtock
       parentName: mixamorig:RightUpLeg

@@ -217,6 +217,7 @@ namespace Zombies55.EditorTools
                 list[i] = hb;
                 changed = true;
             }
+            if (IsMpfbModel(path) && AdductMpfbLegs(hd, path, out var skeleton)) { hd.skeleton = skeleton; changed = true; }
             if (!hasChest)
             {
                 // Unity's automatic mapping leaves the optional Chest out: the clip skeleton's Chest sits between Spine and
@@ -231,6 +232,53 @@ namespace Zombies55.EditorTools
             mi.humanDescription = hd;
             mi.SaveAndReimport();
             return true;
+        }
+
+        // The MPFB rest pose stands with the legs splayed 4.9 degrees wider than the clip skeleton's, and Mecanim keeps the rest
+        // pose as muscle zero, so every clip walked with the feet 8 to 10 cm too far apart and the knees bowed outwards. Both
+        // upper legs go to a straight-down T-pose in the avatar's skeleton description (rotation about the forward axis, the
+        // model itself and its skinning are untouched). Idempotent: the target rotation is derived from the model, not from the
+        // description. Returns true when the description changed.
+        const float LegAdductionDegrees = 4.9f;
+        static bool AdductMpfbLegs(HumanDescription hd, string path, out SkeletonBone[] skeleton)
+        {
+            skeleton = hd.skeleton;
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            bool changed = false;
+            foreach (var legName in new[] { "LeftUpperLeg", "RightUpperLeg" })
+            {
+                string legBone = null, kneeBone = null;
+                foreach (var hb in hd.human)
+                {
+                    if (hb.humanName == legName) legBone = hb.boneName;
+                    else if (hb.humanName == legName.Replace("Upper", "Lower")) kneeBone = hb.boneName;
+                }
+                Transform leg = null, knee = null;
+                foreach (var t in model.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name == legBone) leg = t;
+                    else if (t.name == kneeBone) knee = t;
+                }
+                if (leg == null || knee == null || leg.parent == null) continue;
+                Vector3 thigh = knee.position - leg.position;
+                Quaternion best = Quaternion.identity;
+                float bestSlope = float.MaxValue;
+                foreach (float sign in new[] { 1f, -1f })
+                {
+                    var r = Quaternion.AngleAxis(sign * LegAdductionDegrees, Vector3.forward);
+                    Vector3 d = r * thigh;
+                    float slope = Mathf.Abs(d.x / d.y);
+                    if (slope < bestSlope) { bestSlope = slope; best = r; }
+                }
+                Quaternion want = Quaternion.Inverse(leg.parent.rotation) * (best * leg.rotation);
+                for (int i = 0; i < skeleton.Length; i++)
+                {
+                    if (skeleton[i].name != legBone || Quaternion.Angle(skeleton[i].rotation, want) < 0.05f) continue;
+                    skeleton[i].rotation = want;
+                    changed = true;
+                }
+            }
+            return changed;
         }
 
         static Avatar AvatarAt(string path)

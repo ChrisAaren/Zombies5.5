@@ -457,3 +457,19 @@ Bounds are the full mesh including door mirrors (x = width over mirrors, y up, z
 - Body = subdivided quad cage (Subsurf level 2 applied). Wheel arches are boolean-cut with a `Rubber` well liner; wheels (tire with sidewall bulge, rim lip / dish / spokes or hubcap, disc, caliper, lug nuts) sit ~0.03-0.05 m inside the fender line.
 - Details (geometry): panel-gap grooves (hood, trunk / tailgate, door outlines), door handles, mirrors on stalks, grille slats, fog lamps, bumper shut lines, wipers, cowl strip, recessed plate frames, tailpipe.
 - Back-face culling should be ON for `Rubber` (liner / well faces point toward the cavity). Previews: `previews/V3_Car_<Name>_{front34,rear34,side}.png`, curb lineups `previews/V3_Lineup_{curb,curb_close,across_a,across_b}.png`.
+
+## Pickups (`Models/Pickups/`, script `make_pickups.py`)
+Run: `blender --background --factory-startup --python make_pickups.py [-- noprev]`. Power-ups dropped by enemies; Unity hovers and spins them about the pivot.
+Pivot = bottom centre of the footprint (on the origin), +Z forward, bevelled edges. One mesh per FBX (name = file name). Sizes are x wide, y up, z deep (m).
+| Name | Size | Tris | Slots | Glow parts |
+|---|---|---|---|---|
+| `Pickup_AmmoCache` | 0.52 x 0.43 x 0.32 | 1042 | `PickupBody`, `PickupMetal`, `PickupGlow`, `PickupDecal`, `Paint` | band around the lower crate |
+| `Pickup_Shockwave` | 0.46 x 0.52 x 0.43 | 2034 | `PickupBody`, `PickupMetal`, `PickupGlow`, `PickupDecal` | floating ring + core shaft between the ribs |
+| `Pickup_Deadeye` | 0.52 x 0.54 x 0.52 | 2096 | `PickupBody` (brass case), `PickupMetal` (bullet, reticle ring), `PickupGlow`, `PickupDecal` | bullet tip |
+| `Pickup_Payday` | 0.51 x 0.41 x 0.37 | 836 | `PickupBody` (cash), `PickupMetal` (gold clip), `PickupGlow`, `PickupDecal` | bank bands on the bricks |
+- `PickupGlow` faces are separate faces (never shared with other slots) so Unity can tint and pulse them; viewport colours are plausible only.
+- `PickupDecal`: single atlas `Assets/Art/Textures/Pickups_Decals.png` (1024 x 1024 RGBA, straight alpha), 2 columns x 4 rows of 512 x 256 cells,
+  cell i = col i % 2, row i // 2 from the top. 0 "CAL. MIXED / RESUPPLY", 1 "LOT 55-C / CACHE-A", 2 "ARC-7 / EMITTER", 3 hazard stripes (opaque),
+  4 "DEADEYE / .50 AP" headstamp, 5 reticle ticks (wraps a ring), 6 fictional banknote face, 7 "FIRST CITY / TREASURY 10,000" band label.
+  Decal faces float 1.2 mm above the surface with hand UVs: material = alpha-blend or cutout, no tiling, no tint (or tint only lightly). All other faces use world-meter box UVs.
+- Previews: `previews/Pickup_<Name>_34.png`, `_far.png` (10 m, camera 1.7 m), `Pickup_Lineup.png`, `Pickup_Lineup_far.png`.

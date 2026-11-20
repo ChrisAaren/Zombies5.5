@@ -73,6 +73,17 @@ namespace Zombies55
             _anim.SetBool(Dead, true);
         }
 
+        SkinnedMeshRenderer _body;
+
+        // After the animation and the foot IK: knees over the feet (only while the body is on screen; culled bodies are not posed).
+        void LateUpdate()
+        {
+            if (_dead || _anim == null) return;
+            if (_body == null) _body = GetComponentInChildren<SkinnedMeshRenderer>();
+            if (_body != null && !_body.isVisible) return;
+            KneeAlign.Apply(_anim, transform);
+        }
+
         void OnAnimatorIK(int layerIndex)
         {
             var player = PlayerHealth.Instance;

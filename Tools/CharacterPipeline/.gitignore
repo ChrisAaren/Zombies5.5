@@ -1,2 +1,5 @@
 work/*/v*/
 work/*.png
+
+# Blender save of the test character; embeds local user paths. Regenerate with make_test_input.py.
+test_input/testcourier_source.blend

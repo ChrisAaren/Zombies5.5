@@ -33,6 +33,8 @@ Mac builds made this way are not signed with an Apple Developer account, so macO
 
 ## Controls
 
+These are the defaults. To rebind them, open **Settings > Keybinds**. Every action has a keyboard/mouse slot, an alternate slot and a gamepad slot. Binding a key that is already in use swaps it with the other action. Bindings are saved between sessions.
+
 | Action | Keyboard / mouse | Gamepad |
 |---|---|---|
 | Move | WASD or arrow keys | Left stick |

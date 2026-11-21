@@ -1,6 +1,5 @@
 using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace Zombies55
 {
@@ -133,12 +132,10 @@ namespace Zombies55
             bool affordable = wallet && PlayerWallet.Instance.CanAfford(cost);
 
             if (full) HudPrompt.Show(this, _def.DisplayName + " ammo is full", true);
-            else if (owned) HudPrompt.Show(this, "Hold E for " + _def.DisplayName + " ammo [" + cost + "]", affordable);
-            else HudPrompt.Show(this, "Hold E to buy " + _def.DisplayName + " [" + cost + "]", affordable);
+            else if (owned) HudPrompt.Show(this, "Hold " + GameInput.PromptKey(GameAction.Interact) + " for " + _def.DisplayName + " ammo [" + cost + "]", affordable);
+            else HudPrompt.Show(this, "Hold " + GameInput.PromptKey(GameAction.Interact) + " to buy " + _def.DisplayName + " [" + cost + "]", affordable);
 
-            var kb = Keyboard.current;
-            var pad = Gamepad.current;
-            bool held = !full && ((kb != null && kb.eKey.isPressed) || (pad != null && pad.buttonWest.isPressed));
+            bool held = !full && GameInput.IsPressed(GameAction.Interact);
             if (!held)
             {
                 _hold = 0f;

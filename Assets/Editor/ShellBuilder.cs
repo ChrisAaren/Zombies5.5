@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
 using TMPro;
 using UnityEditor;
@@ -146,9 +147,11 @@ namespace Zombies55.EditorTools
             Place(prompt.rectTransform, new Vector2(0.5f, 0.25f), Vector2.zero, new Vector2(900f, 70f));
 
             var controls = CreateText(root, "Controls",
+                // Design-time text only: ControlsHintText replaces it at runtime.
                 "WASD MOVE · SHIFT SPRINT · SPACE JUMP · LMB FIRE · RMB AIM · R RELOAD · 1/2 SWAP · E BUY · ESC PAUSE",
                 24, Palette.WithAlpha(Palette.UiLight, 0.85f), 2f, true);
             Place(controls.rectTransform, new Vector2(0.5f, 0.18f), Vector2.zero, new Vector2(1850f, 50f));
+            controls.gameObject.AddComponent<ControlsHintText>();   // rewrites the line from the current bindings
 
             // Small settings button; the S key and gamepad Y open it too.
             settingsButton = CreateButton(root, "SettingsButton", "SETTINGS  (S)", new Vector2(0f, -440f),
@@ -534,15 +537,16 @@ namespace Zombies55.EditorTools
             var heading = CreateText(cardRt, "Heading", "SETTINGS", 90, Palette.Accent, 8f, true);
             Place(heading.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 395f), new Vector2(700f, 110f));
 
-            const int TabCount = 5;
-            string[] tabNames = { "CONTROLS", "CROSSHAIR", "AUDIO", "GRAPHICS", "BENCHMARK" };
+            const int TabCount = 6;
+            string[] tabNames = { "CONTROLS", "KEYBINDS", "CROSSHAIR", "AUDIO", "GRAPHICS", "BENCHMARK" };
             var tabButtons = new UnityEngine.UI.Button[TabCount];
             var tabPanels = new GameObject[TabCount];
             var firsts = new UnityEngine.UI.Selectable[TabCount];
             for (int i = 0; i < TabCount; i++)
             {
+                // Six tabs keep the 27.5 px side margins the five had: 238 wide, 15 apart.
                 tabButtons[i] = CreateButton(cardRt, tabNames[i] + "Tab", tabNames[i],
-                    new Vector2(-610f + i * 305f, 300f), new Vector2(285f, 66f), 30f);
+                    new Vector2(-633.5f + i * 253.4f, 300f), new Vector2(238f, 66f), 26f);
                 tabPanels[i] = CreateStretched(tabNames[i] + "Panel", cardRt).gameObject;
             }
 
@@ -553,8 +557,12 @@ namespace Zombies55.EditorTools
             AddSliderRow(controls, SettingId.ControllerSensitivity, "CONTROLLER LOOK", new Vector2(0f, -20f), 1200f, 70f);
             AddToggleRow(controls, SettingId.InvertY, "INVERT Y AXIS", new Vector2(0f, -110f), 1200f, 70f);
 
+            // Keybinds
+            var keybinds = (RectTransform)tabPanels[1].transform;
+            firsts[1] = BuildKeybindsTab(keybinds, out var bindingRows);
+
             // Crosshair: preview on the left, options on the right
-            var cross = (RectTransform)tabPanels[1].transform;
+            var cross = (RectTransform)tabPanels[2].transform;
             var previewPanel = CreateImage(cross, "PreviewPanel", s_RoundedRect, Palette.Asphalt, true);
             Place(previewPanel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(-520f, -10f), new Vector2(480f, 460f));
             var patch = CreateImage(previewPanel.rectTransform, "PreviewPatch", null, Palette.Sand, false);
@@ -572,7 +580,7 @@ namespace Zombies55.EditorTools
             pso.ApplyModifiedPropertiesWithoutUndo();
 
             float rx = 300f, rw = 860f, rh = 52f, y = 215f, dy = 56f;
-            firsts[1] = AddStepperRow(cross, SettingId.CrosshairStyle, "STYLE", new Vector2(rx, y), rw, rh, false);
+            firsts[2] = AddStepperRow(cross, SettingId.CrosshairStyle, "STYLE", new Vector2(rx, y), rw, rh, false);
             AddStepperRow(cross, SettingId.CrosshairColor, "COLOR", new Vector2(rx, y - dy), rw, rh, true);
             AddSliderRow(cross, SettingId.CrosshairSize, "SIZE", new Vector2(rx, y - dy * 2), rw, rh);
             AddSliderRow(cross, SettingId.CrosshairGap, "GAP", new Vector2(rx, y - dy * 3), rw, rh);
@@ -584,18 +592,18 @@ namespace Zombies55.EditorTools
             AddToggleRow(cross, SettingId.CrosshairDynamic, "DYNAMIC SPREAD", new Vector2(rx, y - dy * 9), rw, rh);
 
             // Audio
-            var audio = (RectTransform)tabPanels[2].transform;
-            firsts[2] = AddSliderRow(audio, SettingId.MusicVolume, "MUSIC VOLUME", new Vector2(0f, 90f), 1200f, 70f);
+            var audio = (RectTransform)tabPanels[3].transform;
+            firsts[3] = AddSliderRow(audio, SettingId.MusicVolume, "MUSIC VOLUME", new Vector2(0f, 90f), 1200f, 70f);
             AddSliderRow(audio, SettingId.SfxVolume, "SFX VOLUME", new Vector2(0f, 0f), 1200f, 70f);
 
             // Graphics: a scrolling list in five groups.
-            var gfx = (RectTransform)tabPanels[3].transform;
+            var gfx = (RectTransform)tabPanels[4].transform;
             var scroll = BuildScrollList(gfx, "GraphicsScroll", new Vector2(0f, -2f), new Vector2(1380f, 520f), out var content, true);
             const float gw = 1200f, gh = 54f;
             AddHeader(content, "DISPLAY");
             // The monitor row is greyed out with a single display, so the mode row takes the initial focus.
             AddStepperRow(content, SettingId.Monitor, "MONITOR", default, gw, gh, false, 560f, true, "Which monitor the game runs on. Greyed out when only one is connected.");
-            firsts[3] = AddStepperRow(content, SettingId.DisplayMode, "DISPLAY MODE", default, gw, gh, false, 560f, true, "Fullscreen is borderless and always uses the monitor's current refresh rate. Windowed keeps a normal window.");
+            firsts[4] = AddStepperRow(content, SettingId.DisplayMode, "DISPLAY MODE", default, gw, gh, false, 560f, true, "Fullscreen is borderless and always uses the monitor's current refresh rate. Windowed keeps a normal window.");
             AddStepperRow(content, SettingId.Resolution, "RESOLUTION", default, gw, gh, false, 560f, true, "Output resolution of the chosen monitor. Lower it for speed, or use Render Scale to keep the desktop resolution.");
             AddStepperRow(content, SettingId.FrameRate, "FRAME RATE", default, gw, gh, false, 260f, true, "Caps the frame rate. Unlimited removes the cap (with VSync off, frames can tear).");
             AddToggleRow(content, SettingId.VSync, "VSYNC", default, gw, gh, 0.34f, true, "Waits for the display refresh: no tearing, a little more input latency. Off gives the lowest latency.");
@@ -636,9 +644,9 @@ namespace Zombies55.EditorTools
             AddDescription(gfxBench.gameObject, "Measure how this PC runs the game with these settings: a 60 second route through the city.");
 
             // Benchmark tab
-            var bench = (RectTransform)tabPanels[4].transform;
+            var bench = (RectTransform)tabPanels[5].transform;
             var benchPanel = BuildBenchmarkTab(bench, out var runBench);
-            firsts[4] = runBench;
+            firsts[5] = runBench;
 
             var description = CreateText(cardRt, "Description", string.Empty, 24,
                 Palette.WithAlpha(Palette.UiLight, 0.92f), 1f, true);
@@ -651,6 +659,8 @@ namespace Zombies55.EditorTools
             var hint = CreateText(cardRt, "Hint", "LB / RB  TABS        ESC / B  BACK", 22,
                 Palette.WithAlpha(Palette.UiLight, 0.7f), 6f, true);
             Place(hint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -446f), new Vector2(900f, 28f));
+
+            LinkKeybindsNavigation(bindingRows, tabButtons[1], reset, back);
 
             var so = new SerializedObject(menu);
             WireArray(so, "tabButtons", tabButtons);
@@ -667,6 +677,165 @@ namespace Zombies55.EditorTools
 
             for (int i = 1; i < TabCount; i++) tabPanels[i].SetActive(false);
             return menu;
+        }
+
+        // ------------------------------------------------------------------ keybinds tab
+
+        const float BindRowW = 1200f, BindRowH = 54f, BindLabelW = 350f, BindSlotX = 380f, BindSlotW = 256f, BindSlotStep = 272f;
+
+        sealed class BindRowInfo
+        {
+            public SettingsBindingRow Row;
+            public UnityEngine.UI.Button[] Slots;
+        }
+
+        // Column headings, then the scrolling list: groups of rebindable rows, then the read-only fixed controls.
+        static UnityEngine.UI.Selectable BuildKeybindsTab(RectTransform panel, out List<BindRowInfo> rows)
+        {
+            rows = new List<BindRowInfo>();
+            BuildScrollList(panel, "KeybindsScroll", new Vector2(0f, -27f), new Vector2(1380f, 470f), out var content, true);
+
+            // Headings sit above the list, centred over the keycaps. The viewport is the list minus the scrollbar gutter.
+            float rowLeft = -9f - BindRowW * 0.5f;
+            var action = CreateText(panel, "ActionHeading", "ACTION", 20, Palette.Accent, 3f, true);
+            action.alignment = TextAlignmentOptions.MidlineLeft;
+            Place(action.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(rowLeft + 22f + BindLabelW * 0.5f, 232f), new Vector2(BindLabelW, 30f));
+            string[] heads = { "KEYBOARD / MOUSE", "ALTERNATE", "GAMEPAD" };
+            for (int i = 0; i < 3; i++)
+            {
+                var h = CreateText(panel, "SlotHeading" + i, heads[i], 20, Palette.Accent, 3f, true);
+                Place(h.rectTransform, new Vector2(0.5f, 0.5f),
+                    new Vector2(rowLeft + BindSlotX + BindSlotW * 0.5f + i * BindSlotStep, 232f), new Vector2(BindSlotW, 30f));
+            }
+            var rule = CreateImage(panel, "HeadingRule", null, Palette.WithAlpha(Palette.Accent, 0.55f), false);
+            Place(rule.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(-9f, 214f), new Vector2(BindRowW, 2f));
+
+            AddHeader(content, "MOVEMENT");
+            foreach (var a in new[] { GameAction.MoveForward, GameAction.MoveBack, GameAction.MoveLeft, GameAction.MoveRight, GameAction.Sprint, GameAction.Jump })
+                rows.Add(AddBindingRow(content, a));
+            AddHeader(content, "COMBAT");
+            foreach (var a in new[] { GameAction.Fire, GameAction.Aim, GameAction.Reload, GameAction.Weapon1, GameAction.Weapon2, GameAction.NextWeapon })
+                rows.Add(AddBindingRow(content, a));
+            AddHeader(content, "GENERAL");
+            foreach (var a in new[] { GameAction.Interact, GameAction.Pause })
+                rows.Add(AddBindingRow(content, a));
+
+            AddHeader(content, "FIXED CONTROLS");
+            AddFixedRow(content, "LOOK", "MOUSE", "—", "R-STICK");
+            AddFixedRow(content, "START GAME (TITLE)", "ANY KEY / LMB", "—", "A / START");
+            AddFixedRow(content, "OPEN SETTINGS (TITLE)", "S", "—", "Y");
+            AddFixedRow(content, "BACK / CANCEL", "ESC", "—", "B / START");
+            AddFixedRow(content, "RESTART (AFTER DEATH)", "R / ENTER", "—", "A");   // the end screen focuses its RESTART button
+            AddFixedRow(content, "SETTINGS TABS", "—", "—", "LB / RB");
+            AddFixedRow(content, "MENU MOVE", "ARROWS / WASD", "—", "D-PAD / L-STICK");
+            AddFixedRow(content, "MENU SELECT", "ENTER", "—", "A");
+
+            return rows[0].Slots[0];
+        }
+
+        static BindRowInfo AddBindingRow(RectTransform content, GameAction a)
+        {
+            var bg = CreateRowBase(content, a + "BindRow", GameInput.Label(a), default, BindRowW, BindRowH, false, BindLabelW / BindRowW, true);
+            bg.color = Palette.WithAlpha(Palette.Shadow, 0.4f);
+            var label = bg.rectTransform.Find("Label").GetComponent<TextMeshProUGUI>();
+            label.fontSize = 26f; label.characterSpacing = 2f;
+
+            var buttons = new UnityEngine.UI.Button[3];
+            var texts = new TMP_Text[3];
+            var images = new UnityEngine.UI.Image[3];
+            var descs = new string[3];
+            for (int i = 0; i < 3; i++)
+            {
+                var slot = (BindingSlot)i;
+                var b = CreateButton(bg.rectTransform, slot + "Slot", "—", Vector2.zero, new Vector2(BindSlotW, 42f), 26f);
+                PlaceCorner((RectTransform)b.transform, new Vector2(0f, 0.5f), new Vector2(BindSlotX + i * BindSlotStep, 0f), new Vector2(BindSlotW, 42f));
+                // Keycap: light cap, accent when focused, a dim dark cap when the slot is fixed.
+                var colors = b.colors;
+                colors.normalColor = Palette.UiLight;
+                colors.highlightedColor = Color.Lerp(Palette.UiLight, Palette.Accent, 0.55f);
+                colors.selectedColor = Palette.Accent;
+                colors.pressedColor = Color.Lerp(Palette.Accent, Palette.UiDark, 0.25f);
+                colors.disabledColor = Palette.WithAlpha(Palette.UiDark, 0.55f);
+                b.colors = colors;
+                var t = b.GetComponentInChildren<TextMeshProUGUI>();
+                t.enableAutoSizing = true; t.fontSizeMin = 14f; t.fontSizeMax = 26f;
+                t.characterSpacing = 2f;
+                t.rectTransform.offsetMin = new Vector2(8f, 0f);
+                t.rectTransform.offsetMax = new Vector2(-8f, 0f);
+                buttons[i] = b; texts[i] = t; images[i] = b.GetComponent<UnityEngine.UI.Image>();
+                descs[i] = BindingSlotDescription(a, slot);
+                AddDescription(b.gameObject, descs[i]);
+            }
+
+            var row = bg.gameObject.AddComponent<SettingsBindingRow>();
+            var so = new SerializedObject(row);
+            so.FindProperty("action").enumValueIndex = (int)a;
+            WireArray(so, "slotButtons", buttons);
+            WireArray(so, "slotTexts", texts);
+            WireArray(so, "slotImages", images);
+            var dp = so.FindProperty("slotDescriptions");
+            dp.arraySize = 3;
+            for (int i = 0; i < 3; i++) dp.GetArrayElementAtIndex(i).stringValue = descs[i];
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            // Locked slots are not selectable (the row also sets this at runtime).
+            for (int i = 0; i < 3; i++) buttons[i].interactable = GameInput.IsRebindable(a, (BindingSlot)i);
+            return new BindRowInfo { Row = row, Slots = buttons };
+        }
+
+        static string BindingSlotDescription(GameAction a, BindingSlot slot)
+        {
+            if (GameInput.IsRebindable(a, slot)) return GameInput.Description(a) + " Enter / A to change.";
+            if (a == GameAction.Pause) return slot == BindingSlot.Gamepad ? "Start always pauses and goes back." : "Esc always pauses and goes back.";
+            return "The gamepad left stick always moves. It cannot be changed.";
+        }
+
+        // Read-only line: plain, dimmer text, not selectable.
+        static void AddFixedRow(RectTransform content, string label, string kb, string alt, string pad)
+        {
+            var bg = CreateRowBase(content, label + "FixedRow", label, default, BindRowW, 46f, false, BindLabelW / BindRowW, true);
+            bg.color = Palette.WithAlpha(Palette.Shadow, 0.18f);
+            var l = bg.rectTransform.Find("Label").GetComponent<TextMeshProUGUI>();
+            l.fontSize = 24f; l.characterSpacing = 2f; l.color = Palette.WithAlpha(Palette.UiLight, 0.6f);
+            string[] cells = { kb, alt, pad };
+            for (int i = 0; i < 3; i++)
+            {
+                var t = CreateText(bg.rectTransform, "Cell" + i, cells[i], 22f, Palette.WithAlpha(Palette.UiLight, 0.6f), 2f, false);
+                t.enableAutoSizing = true; t.fontSizeMin = 14f; t.fontSizeMax = 22f;
+                PlaceCorner(t.rectTransform, new Vector2(0f, 0.5f), new Vector2(BindSlotX + i * BindSlotStep, 0f), new Vector2(BindSlotW, 46f));
+            }
+        }
+
+        // Explicit navigation: up / down stays in the column (nearest column when a slot is fixed), left / right moves along the row.
+        static void LinkKeybindsNavigation(List<BindRowInfo> rows, UnityEngine.UI.Selectable tab,
+            UnityEngine.UI.Button reset, UnityEngine.UI.Button back)
+        {
+            UnityEngine.UI.Selectable Find(int r, int dir, int col)
+            {
+                for (r += dir; r >= 0 && r < rows.Count; r += dir)
+                {
+                    UnityEngine.UI.Button best = null; int bestD = 99;
+                    for (int c = 0; c < 3; c++)
+                        if (rows[r].Slots[c].interactable && Mathf.Abs(c - col) < bestD) { best = rows[r].Slots[c]; bestD = Mathf.Abs(c - col); }
+                    if (best != null) return best;
+                }
+                return null;
+            }
+            for (int r = 0; r < rows.Count; r++)
+                for (int c = 0; c < 3; c++)
+                {
+                    var b = rows[r].Slots[c];
+                    if (!b.interactable) continue;
+                    UnityEngine.UI.Selectable left = null, right = null;
+                    for (int k = c - 1; k >= 0 && left == null; k--) if (rows[r].Slots[k].interactable) left = rows[r].Slots[k];
+                    for (int k = c + 1; k < 3 && right == null; k++) if (rows[r].Slots[k].interactable) right = rows[r].Slots[k];
+                    var nav = new UnityEngine.UI.Navigation { mode = UnityEngine.UI.Navigation.Mode.Explicit };
+                    nav.selectOnLeft = left;
+                    nav.selectOnRight = right;
+                    nav.selectOnUp = Find(r, -1, c) ?? tab;
+                    nav.selectOnDown = Find(r, 1, c) ?? (c == 2 ? back : reset);
+                    b.navigation = nav;
+                }
         }
 
         // ------------------------------------------------------------------ scrolling lists

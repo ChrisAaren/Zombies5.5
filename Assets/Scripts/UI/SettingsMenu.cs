@@ -7,13 +7,18 @@ using UnityEngine.UI;
 
 namespace Zombies55
 {
-    // The settings screen: Controls / Crosshair / Audio / Graphics / Benchmark tabs, reset and back. GameShell opens it, closes it
+    // The settings screen: Controls / Keybinds / Crosshair / Audio / Graphics / Benchmark tabs, reset and back. GameShell opens it, closes it
     // (it owns the Esc and B input so pause handling cannot fight it) and restores the previous screen.
     public class SettingsMenu : MonoBehaviour
     {
-        public const int BenchmarkTab = 4;
+        public const int ControlsTab = 0;
+        public const int KeybindsTab = 1;
+        public const int CrosshairTab = 2;
+        public const int AudioTab = 3;
+        public const int GraphicsTab = 4;
+        public const int BenchmarkTab = 5;
 
-        [SerializeField] Button[] tabButtons;      // Controls, Crosshair, Audio, Graphics, Benchmark
+        [SerializeField] Button[] tabButtons;      // indexed by the *Tab constants
         [SerializeField] GameObject[] tabPanels;
         [SerializeField] Selectable[] firstSelectable; // focus target when a tab opens
         [SerializeField] Button resetButton;
@@ -41,7 +46,13 @@ namespace Zombies55
                 int index = i;
                 tabButtons[i].onClick.AddListener(() => { GameAudio.Instance?.PlayClick(); SelectTab(index, false); });
             }
-            resetButton.onClick.AddListener(() => { GameAudio.Instance?.PlayClick(); GameSettings.Reset(); });
+            resetButton.onClick.AddListener(() =>
+            {
+                GameAudio.Instance?.PlayClick();
+                // Each tab resets only its own settings: key bindings are separate from GameSettings.
+                if (_tab == KeybindsTab) GameInput.ResetToDefaults();
+                else GameSettings.Reset();
+            });
             backButton.onClick.AddListener(() => { GameAudio.Instance?.PlayClick(); BackRequested?.Invoke(); });
             if (benchmarkPanel != null) benchmarkPanel.ViewChanged += RefreshFooter;
             if (graphicsBenchmarkButton != null)
@@ -102,7 +113,7 @@ namespace Zombies55
                 tabButtons[i].colors = colors;
             }
             RefreshFooter();
-            if (_tab == 3 && graphicsScroll != null) graphicsScroll.verticalNormalizedPosition = 1f;
+            if (_tab == GraphicsTab && graphicsScroll != null) graphicsScroll.verticalNormalizedPosition = 1f;
             if (focus && EventSystem.current != null)
             {
                 GameObject target = firstSelectable[_tab] != null ? firstSelectable[_tab].gameObject : null;
@@ -114,7 +125,7 @@ namespace Zombies55
         void Update()
         {
             var pad = Gamepad.current;
-            if (pad == null) return;
+            if (pad == null || GameInput.MenuInputBlocked) return;
             if (pad.rightShoulder.wasPressedThisFrame) SelectTab(_tab + 1, true);
             else if (pad.leftShoulder.wasPressedThisFrame) SelectTab(_tab - 1, true);
         }

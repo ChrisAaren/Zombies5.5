@@ -1,11 +1,10 @@
 using System;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace Zombies55
 {
     // Two weapon slots, hitscan firing, reload, aim and buying (Give / RefillAmmo).
-    // Mouse: LMB fire, RMB aim, R reload, 1/2 or wheel swap. Gamepad: RT fire, LT aim, X reload, Y swap.
+    // Input comes from GameInput (rebindable). Defaults: LMB fire, RMB aim, R reload, 1/2 or wheel swap; gamepad RT, LT, X, Y.
     public class PlayerWeapons : MonoBehaviour
     {
         public const int SlotCount = 2;
@@ -157,13 +156,9 @@ namespace Zombies55
             float dt = Time.deltaTime;
             bool active = (GameLoop.Instance == null || GameLoop.Instance.State == RunState.Running) && !PlayerRagdoll.IsDown;
             var def = Current;
-            var mouse = Mouse.current;
-            var pad = Gamepad.current;
-            var kb = Keyboard.current;
 
             // Aim
-            bool wantAim = active && def != null &&
-                ((mouse != null && mouse.rightButton.isPressed) || (pad != null && pad.leftTrigger.ReadValue() > 0.4f));
+            bool wantAim = active && def != null && GameInput.IsPressed(GameAction.Aim);
             IsAiming = wantAim;
             _aimBlend = Mathf.MoveTowards(_aimBlend, wantAim ? 1f : 0f, dt * 8f);
             if (wantAim != _aimSent)
@@ -175,11 +170,11 @@ namespace Zombies55
 
             if (active && def != null)
             {
-                HandleSwapInput(kb, mouse, pad);
-                HandleReloadInput(kb, pad);
+                HandleSwapInput();
+                HandleReloadInput();
                 UpdateReload();
                 UpdateBurstAndBolt(def);
-                HandleFire(def, mouse, pad);
+                HandleFire(def);
             }
             else if (IsReloading && !active)
             {
@@ -190,34 +185,24 @@ namespace Zombies55
             UpdateSpread(def, dt);
         }
 
-        void HandleSwapInput(Keyboard kb, Mouse mouse, Gamepad pad)
+        void HandleSwapInput()
         {
-            if (kb != null)
-            {
-                if (kb.digit1Key.wasPressedThisFrame) TrySwap(0);
-                if (kb.digit2Key.wasPressedThisFrame) TrySwap(1);
-            }
-            if (mouse != null)
-            {
-                float wheel = mouse.scroll.ReadValue().y;
-                if (Mathf.Abs(wheel) > 0.1f) TrySwap((ActiveSlot + 1) % SlotCount);
-            }
-            if (pad != null && pad.buttonNorth.wasPressedThisFrame) TrySwap((ActiveSlot + 1) % SlotCount);
+            if (GameInput.WasPressedThisFrame(GameAction.Weapon1)) TrySwap(0);
+            if (GameInput.WasPressedThisFrame(GameAction.Weapon2)) TrySwap(1);
+            if (GameInput.WasPressedThisFrame(GameAction.NextWeapon)) TrySwap((ActiveSlot + 1) % SlotCount);
         }
 
-        void HandleReloadInput(Keyboard kb, Gamepad pad)
+        void HandleReloadInput()
         {
-            bool pressed = (kb != null && kb.rKey.wasPressedThisFrame)
-                || (pad != null && pad.buttonWest.wasPressedThisFrame && !WeaponKiosk.PlayerAtKiosk);
-            if (pressed) StartReload();
+            // Reload and Buy may share a control (gamepad X): holding Buy at a terminal must not also reload.
+            bool atBuy = (WeaponKiosk.PlayerAtKiosk || ZoneGate.PlayerAtGate) && GameInput.IsPressed(GameAction.Interact);
+            if (GameInput.WasPressedThisFrame(GameAction.Reload) && !atBuy) StartReload();
         }
 
-        void HandleFire(WeaponDefinition def, Mouse mouse, Gamepad pad)
+        void HandleFire(WeaponDefinition def)
         {
-            bool pressed = (mouse != null && mouse.leftButton.wasPressedThisFrame)
-                || (pad != null && pad.rightTrigger.wasPressedThisFrame);
-            bool held = (mouse != null && mouse.leftButton.isPressed)
-                || (pad != null && pad.rightTrigger.isPressed);
+            bool pressed = GameInput.WasPressedThisFrame(GameAction.Fire);
+            bool held = GameInput.IsPressed(GameAction.Fire);
             if (pressed) _fireBufferUntil = Time.time + FireBufferSeconds;
 
             bool want = def.Mode == FireMode.Auto ? held : Time.time <= _fireBufferUntil;

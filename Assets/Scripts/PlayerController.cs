@@ -1,12 +1,11 @@
 using System;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace Zombies55
 {
     // Camera-relative run and jump on a CharacterController.
-    // Keyboard: WASD / arrows to move, Shift to sprint, Space to jump.
-    // Gamepad: left stick to move, left stick press to sprint (right trigger fires), South button to jump.
+    // Move, sprint and jump come from GameInput, so the keys are rebindable (defaults: WASD / arrows, Shift, Space;
+    // gamepad: left stick, left stick press, South button).
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour, ICharacterMover
     {
@@ -220,38 +219,10 @@ namespace Zombies55
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() { ScriptedInput = false; ScriptedMove = default; ScriptedSprint = false; }
 
-        static Vector2 ReadMove()
-        {
-            if (ScriptedInput) return ScriptedMove;
-            Vector2 v = Vector2.zero;
-            var kb = Keyboard.current;
-            if (kb != null)
-            {
-                if (kb.wKey.isPressed || kb.upArrowKey.isPressed) v.y += 1f;
-                if (kb.sKey.isPressed || kb.downArrowKey.isPressed) v.y -= 1f;
-                if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) v.x += 1f;
-                if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) v.x -= 1f;
-            }
-            var pad = Gamepad.current;
-            if (pad != null) v += pad.leftStick.ReadValue();
-            return Vector2.ClampMagnitude(v, 1f);
-        }
+        static Vector2 ReadMove() => ScriptedInput ? ScriptedMove : GameInput.Move;
 
-        static bool ReadSprint()
-        {
-            if (ScriptedInput) return ScriptedSprint;
-            var kb = Keyboard.current;
-            var pad = Gamepad.current;
-            return (kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed))
-                || (pad != null && pad.leftStickButton.isPressed);
-        }
+        static bool ReadSprint() => ScriptedInput ? ScriptedSprint : GameInput.IsPressed(GameAction.Sprint);
 
-        static bool ReadJumpPressed()
-        {
-            var kb = Keyboard.current;
-            var pad = Gamepad.current;
-            return (kb != null && kb.spaceKey.wasPressedThisFrame)
-                || (pad != null && pad.buttonSouth.wasPressedThisFrame);
-        }
+        static bool ReadJumpPressed() => GameInput.WasPressedThisFrame(GameAction.Jump);
     }
 }

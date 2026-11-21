@@ -1,9 +1,8 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace Zombies55
 {
-    // Terminal on the owned side of a barrier. Hold E (gamepad X) to buy the district beyond.
+    // Terminal on the owned side of a barrier. Hold the Buy key (default E / gamepad X) to buy the district beyond.
     // ZoneManager shows it only while owner is owned and target is not.
     public class ZoneGate : MonoBehaviour
     {
@@ -50,11 +49,9 @@ namespace Zombies55
             _near = true;
             PlayerAtGate = true;
             bool affordable = PlayerWallet.Instance != null && PlayerWallet.Instance.CanAfford(info.Cost);
-            HudPrompt.Show(this, "Hold E to open " + info.Name + " [" + info.Cost + "]", affordable);
+            HudPrompt.Show(this, "Hold " + GameInput.PromptKey(GameAction.Interact) + " to open " + info.Name + " [" + info.Cost + "]", affordable);
 
-            var kb = Keyboard.current;
-            var pad = Gamepad.current;
-            bool held = (kb != null && kb.eKey.isPressed) || (pad != null && pad.buttonWest.isPressed);
+            bool held = GameInput.IsPressed(GameAction.Interact);
             if (!held) { _hold = 0f; _consumed = false; HoldProgress = 0f; return; }
             if (_consumed) return;
 

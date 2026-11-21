@@ -17,7 +17,7 @@ namespace Zombies55
     //   view:vista|closeup|x,z,yaw,pitch   put the gameplay camera there (the player is warped, the crowd is switched off)
     //   settle   wait 2 s     wait:seconds     shot:name   save a PNG of the game screen (its own backbuffer, never the desktop) to -gfxOut
     //   log:label   print the applied graphics state     state:label   print game-state flags     hideui | showui
-    //   menu:tab   open the settings menu on a tab (3 graphics, 4 benchmark)     click:ObjectName   click an active button
+    //   menu:tab   open the settings menu on a tab (4 graphics, 5 benchmark; see SettingsMenu tab constants)     click:ObjectName   click an active button
     //   waitbench:seconds   wait until a menu benchmark has finished and its results screen is up     exit
     static class GfxTestHook
     {

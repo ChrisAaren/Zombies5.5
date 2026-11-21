@@ -136,7 +136,8 @@ namespace Zombies55
             if (_settingsOpen)
             {
                 // The settings screen swallows input; Esc, B and Start go back.
-                if (BackPressed()) CloseSettings();
+                // Not while a rebind runs or the key that ended it is still down.
+                if (!GameInput.MenuInputBlocked && BackPressed()) CloseSettings();
                 return;
             }
 
@@ -200,13 +201,7 @@ namespace Zombies55
                 || (pad != null && (pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame));
         }
 
-        static bool PausePressed()
-        {
-            var keyboard = Keyboard.current;
-            var pad = Gamepad.current;
-            return (keyboard != null && (keyboard.escapeKey.wasPressedThisFrame || keyboard.pKey.wasPressedThisFrame))
-                || (pad != null && pad.startButton.wasPressedThisFrame);
-        }
+        static bool PausePressed() => GameInput.WasPressedThisFrame(GameAction.Pause);
 
         static bool RestartKeyPressed()
         {
